@@ -1,20 +1,25 @@
 # nlib/CMakeLists.txt
 
+set(CPU_COMPILE_FLAGS
+    -mcpu=${CPU}
+    -mthumb
+)
+
+set(CPU_LINK_FLAGS
+    -mcpu=${CPU}
+    -mthumb
+)
+
 add_library(nlib STATIC
-    src/core.c
+    core.c
 )
 
 target_include_directories(nlib
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_compile_options(nlib
     PRIVATE
-        # Add compiler options specific to nlib if needed
-)
-
-target_compile_definitions(nlib
-    PUBLIC
-        # e.g., -DNLIB_CONFIG_OPTION
+        ${CPU_COMPILE_FLAGS}
 )
