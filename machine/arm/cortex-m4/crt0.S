@@ -5,7 +5,7 @@
 .global vector_table
 
 .type vector_table, %object
-.section .ivt, "a", %progbits
+.section .ivt.core, "a", %progbits
 vector_table:
 .word __stack
 .word reset_hndlr
@@ -33,8 +33,6 @@ vector_table:
         0: b 0b
         .size \fnct, . - \fnct
 .endm
-
-.include "isr_ext.S"
 
 .text
 .align

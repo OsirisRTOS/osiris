@@ -13,9 +13,16 @@ __stack_top = ORIGIN(RAM) + LENGTH(RAM);
 
 SECTIONS
 {
+    .ivt ORIGIN(FLASH) :
+    {
+        __vector_table = .;
+
+        KEEP(*(.ivt.core));
+        KEEP(*(.ivt.device));
+    } > FLASH
+
     .text
     {
-        KEEP(*(.ivt))
         *(.text .text.* .gnu.linkonce.t*)
         *(.gnu.warning)
     } > FLASH
