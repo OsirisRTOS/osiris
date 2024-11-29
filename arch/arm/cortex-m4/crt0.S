@@ -52,7 +52,7 @@ hndl_weak_endl sys_tick_hndlr
 .thumb_func
 .global reset_hndlr
 reset_hndlr:
-    ldr r1,=__estack
+    ldr r1,=__stack_end
     mov sp, r1
     bl _main
 
