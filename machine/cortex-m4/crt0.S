@@ -7,7 +7,7 @@
 .type vector_table, %object
 .section .ivt.core, "a", %progbits
 vector_table:
-.word __stack
+.word __stack_top
 .word reset_hndlr
 .word nmi_hndlr
 .word hard_fault_hndlr
@@ -50,7 +50,7 @@ hndl_weak_endl sys_tick_hndlr
 .thumb_func
 .global reset_hndlr
 reset_hndlr:
-    ldr r1,=__stack_end
+    ldr r1,=__stack_top
     mov sp, r1
     bl _main
 

@@ -21,7 +21,7 @@ SECTIONS
         KEEP(*(.ivt.device));
     } > FLASH
 
-    .text
+    .text :
     {
         *(.text .text.* .gnu.linkonce.t*)
         *(.gnu.warning)

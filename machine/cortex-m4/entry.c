@@ -50,4 +50,9 @@ void _main(void)
     main();
 
     call_destructors();
+
+    while (1)
+    {
+        __asm("wfi");
+    }
 }

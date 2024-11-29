@@ -1,12 +1,12 @@
-#include "core.h"
+#include <nlib/core.h>
 
-#ifdef defined(__GNUC__) || defined(__GNUG__)
+#if defined(__GNUC__) || defined(__GNUG__)
 void *__inhibit_loop_to_libcall memcpy(void *__restrict dst0, const void *__restrict src0, size_t len)
 {
     char *dst = (char *)dst0;
     char *src = (char *)src0;
 
-    _PTR save = dst0;
+    void *save = dst0;
 
     while (len--)
     {
@@ -29,7 +29,7 @@ void *__inhibit_loop_to_libcall memset(void *dst0, int c, size_t len)
 void *__inhibit_loop_to_libcall memmove(void *dst0, const void *src0, size_t len)
 {
     char *dst = dst0;
-    _CONST char *src = src0;
+    const char *src = src0;
 
     if (src < dst && dst < src + len)
     {

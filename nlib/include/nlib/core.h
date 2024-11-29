@@ -1,6 +1,8 @@
 #ifndef CORE_H
 #define CORE_H
 
+#include <stddef.h>
+
 /* This is a minimal implementation of functions needed to run a C program. */
 
 #if defined(__clang__)
