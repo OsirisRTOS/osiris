@@ -7,7 +7,7 @@ set(COMBO_IS_VALID FALSE)
 
 # The layout is "board cpu1,cpu2,...,cpuN"
 set(BOARD_CPU_MAP 
-    "stm32-nucleo-l4r5zi cortex-m4,cortex-m7"
+    "stm32-nucleo-l4r5zi cortex-m4"
     ""
 )
 
