@@ -66,7 +66,7 @@ if(NOT EXISTS "${LINKER_SCRIPT}")
 endif()
 
 include_directories(
-    ${CMAKE_SOURCE_DIR}/nlib/include
+    ${CMAKE_SOURCE_DIR}/include
 )
 
 # Now add our startup code and the nlib.
