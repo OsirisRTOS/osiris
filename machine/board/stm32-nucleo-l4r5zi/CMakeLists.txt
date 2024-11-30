@@ -1,5 +1,4 @@
-
-# machine/arm/cortex-m4/CMakeLists.txt
+# machine/board/stm32-nucleo-l4r5zi/CMakeLists.txt
 
 add_library(startup_${BOARD} OBJECT
     isr_ext.c
