@@ -79,6 +79,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         nlib
         $<TARGET_OBJECTS:startup_${CPU}>
+        $<TARGET_OBJECTS:startup_${BOARD}>
 )
 
 target_link_options(${PROJECT_NAME}

@@ -12,7 +12,7 @@ set(CPU_LINK_FLAGS
 
 set_property(SOURCE crt0.s APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")
 
-add_library(startup_${CPU} STATIC
+add_library(startup_${CPU} OBJECT
     crt0.S
     entry.c
 )
