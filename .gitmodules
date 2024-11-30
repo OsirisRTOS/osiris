@@ -1,0 +1,3 @@
+[submodule "hal/stm32l4"]
+	path = hal/stm32l4
+	url = https://github.com/OsirisRTOS/stm32l4-hal.git

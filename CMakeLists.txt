@@ -1,3 +1,5 @@
+# ./CMakeLists.txt
+
 cmake_minimum_required(VERSION 3.28)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -62,6 +64,9 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
 )
 
+# First add our HAL, so that we can use it.
+add_subdirectory(hal)
+
 # Now add our startup code and the nlib.
 # This will also set the compiler and linker flags.
 add_subdirectory(machine/${CPU})
@@ -74,12 +79,12 @@ add_executable(${PROJECT_NAME}
     main.c
 )
 
-
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        nlib
         $<TARGET_OBJECTS:startup_${CPU}>
         $<TARGET_OBJECTS:startup_${BOARD}>
+        nlib
+        hal
 )
 
 target_link_options(${PROJECT_NAME}
