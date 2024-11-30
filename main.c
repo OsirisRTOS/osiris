@@ -4,6 +4,8 @@
 
 int main(void)
 {
+    hw_init();
+
     const char message[] = "Hello World!\n";
 
     semihosting_call(SYS_WRITE0, message);
