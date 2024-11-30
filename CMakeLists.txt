@@ -53,15 +53,7 @@ project(Osiris LANGUAGES C CXX ASM)
 set(STARTUP_DIR "${CMAKE_SOURCE_DIR}/machine/${CPU}")
 set(LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/machine/board/${BOARD}/link.ld")
 
-# Check if all the files exist.
-if(NOT EXISTS "${STARTUP_DIR}/crt0.S")
-    message(FATAL_ERROR "Startup file crt0.S not found in ${STARTUP_DIR}")
-endif()
-
-if(NOT EXISTS "${STARTUP_DIR}/entry.c")
-    message(FATAL_ERROR "Startup file entry.c not found in ${STARTUP_DIR}")
-endif()
-
+# Check if the linker script exists.
 if(NOT EXISTS "${LINKER_SCRIPT}")
     message(FATAL_ERROR "Linker script not found: ${LINKER_SCRIPT}")
 endif()
@@ -71,22 +63,12 @@ include_directories(
 )
 
 # Now add our startup code and the nlib.
-add_subdirectory(nlib)
+# This will also set the compiler and linker flags.
 add_subdirectory(machine/${CPU})
 
-# Retrieve CPU-specific flags.
-if(DEFINED COMPILE_FLAGS_${CPU})
-    set(CPU_COMPILE_FLAGS ${COMPILE_FLAGS_${CPU}})
-else()
-    message(FATAL_ERROR "Compilation flags for CPU '${CPU}' not defined.")
-endif()
-
-if(DEFINED LINK_FLAGS_${CPU})
-    set(CPU_LINK_FLAGS ${LINK_FLAGS_${CPU}})
-else()
-    message(FATAL_ERROR "Linking flags for CPU '${CPU}' not defined.")
-endif()
-
+# Add the nlib and the board-specific code.
+add_subdirectory(nlib)
+add_subdirectory(machine/board/${BOARD})
 
 add_executable(${PROJECT_NAME} 
     main.c
@@ -113,7 +95,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 #Compiler options.
 target_compile_options(${PROJECT_NAME}
     PRIVATE
-        ${CPU_COMPILE_FLAGS}
+        ${COMPILE_FLAGS_${CPU}}
         -Wall
         -Wextra
 )
@@ -121,7 +103,7 @@ target_compile_options(${PROJECT_NAME}
 # Linker options.
 target_link_options(${PROJECT_NAME}
     PRIVATE
-        ${CPU_LINK_FLAGS}
+        ${LINK_FLAGS_${CPU}}
         "-T${LINKER_SCRIPT}"
         "-nostartfiles"
         "-nostdlib"

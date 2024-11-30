@@ -18,7 +18,7 @@ SECTIONS
         __vector_table = .;
 
         KEEP(*(.ivt.core));
-        KEEP(*(.ivt.device));
+        KEEP(*(.ivt.ext));
     } > FLASH
 
     .text :

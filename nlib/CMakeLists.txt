@@ -1,15 +1,5 @@
 # nlib/CMakeLists.txt
 
-set(CPU_COMPILE_FLAGS
-    -mcpu=${CPU}
-    -mthumb
-)
-
-set(CPU_LINK_FLAGS
-    -mcpu=${CPU}
-    -mthumb
-)
-
 add_library(nlib STATIC
     core.c
 )
@@ -21,5 +11,5 @@ target_include_directories(nlib
 
 target_compile_options(nlib
     PRIVATE
-        ${CPU_COMPILE_FLAGS}
+        ${COMPILE_FLAGS_${CPU}}
 )
