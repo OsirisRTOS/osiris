@@ -5,6 +5,7 @@
  * External interrupt vector table for the STM32 Nucleo L4R5ZI
  * Used references: https://www.st.com/resource/en/reference_manual/rm0432-stm32l4-series-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
  */
+
 extern void wwdg_hndlr(void);
 extern void pvd_pvm_hndlr(void);
 extern void tamp_stamp_hndlr(void);
