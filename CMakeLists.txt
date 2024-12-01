@@ -16,4 +16,12 @@ FetchContent_MakeAvailable(Corrosion)
 
 corrosion_import_crate(MANIFEST_PATH Cargo.toml NO_STD)
 
+target_sources(kernel 
+    INTERFACE
+        FILE_SET HEADERS 
+        BASE_DIRS include
+        FILES
+            include/kernel/lib.h
+)
+
 set(RUST_KERNEL true PARENT_SCOPE)
