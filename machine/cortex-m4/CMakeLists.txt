@@ -3,6 +3,7 @@
 set(CPU_COMPILE_FLAGS
     -mcpu=${CPU}
     -mthumb
+    -z noexecstack
 )
 
 set(CPU_LINK_FLAGS

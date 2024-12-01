@@ -1,14 +1,9 @@
 #include <stdint.h>
 #include <nlib/core.h>
-
-extern void kernel_init(void);
+#include <kernel/lib.h>
 
 int main(void)
 {
     kernel_init();
-
-    while (1)
-    {
-        __asm__("WFI");
-    }
+    unreachable();
 }

@@ -103,11 +103,6 @@ else()
     )
 endif()
 
-target_link_options(${PROJECT_NAME}
-    PRIVATE
-        "-T${LINKER_SCRIPT}"
-)
-
 set_target_properties(${PROJECT_NAME} PROPERTIES
     LINK_DEPENDS "${LINKER_SCRIPT}"
     OUTPUT_NAME "${PROJECT_NAME}"

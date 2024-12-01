@@ -48,11 +48,5 @@ void _main(void)
 
     // call main
     main();
-
-    call_destructors();
-
-    while (1)
-    {
-        __asm("wfi");
-    }
+    unreachable();
 }

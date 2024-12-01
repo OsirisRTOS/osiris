@@ -84,6 +84,8 @@ SECTIONS
 
     . = ALIGN(4);
     __heap_start = .;
+
+    /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
 }
 
 PROVIDE(wwdg_hndlr = default_hndlr);
