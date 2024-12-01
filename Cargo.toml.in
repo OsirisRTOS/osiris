@@ -1,0 +1,14 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+hal = { path = "@HAL_DIR@" }
+
+[build-dependencies]
+cbindgen = "0.26.0"
+bindgen = "0.69.5"
+
