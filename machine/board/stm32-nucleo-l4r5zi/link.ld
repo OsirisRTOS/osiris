@@ -1,6 +1,3 @@
-SEARCH_DIR(.)
-__DYNAMIC = 0;
-
 ENTRY(reset_hndlr)
 
 MEMORY
