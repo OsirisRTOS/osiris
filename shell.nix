@@ -2,6 +2,7 @@ with import <nixpkgs> { };
 
 mkShell {
   nativeBuildInputs = [
+    rustup
     direnv
     gcc-arm-embedded
     cmake
@@ -54,5 +55,6 @@ mkShell {
     cd ..
   fi
   export PATH=$(pwd)/qemu/build:$PATH
+  rustup target add thumbv7em-none-eabi
   '';
 }
