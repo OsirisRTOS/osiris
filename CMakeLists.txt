@@ -64,9 +64,6 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# First add our HAL, so that we can use it.
-add_subdirectory(hal)
-
 # Now add our startup code and the nlib.
 # This will also set the compiler and linker flags.
 add_subdirectory(machine/${CPU})
@@ -75,17 +72,36 @@ add_subdirectory(machine/${CPU})
 add_subdirectory(nlib)
 add_subdirectory(machine/board/${BOARD})
 
+add_subdirectory(hal)
+
+add_subdirectory(kernel)
+
 add_executable(${PROJECT_NAME} 
-    main.c
+    bootstrap.c
 )
 
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-        $<TARGET_OBJECTS:startup_${CPU}>
-        $<TARGET_OBJECTS:startup_${BOARD}>
-        nlib
-        hal
-)
+if (RUST_KERNEL)
+    message(STATUS "Linking Rust kernel.")
+    # A rust kernel does only support rust HALs and links it themselves.
+    target_link_libraries(${PROJECT_NAME}
+        PRIVATE
+            $<TARGET_OBJECTS:startup_${CPU}>
+            $<TARGET_OBJECTS:startup_${BOARD}>
+            nlib
+            kernel
+    )
+else()
+    message(STATUS "Linking C kernel.")
+
+    target_link_libraries(${PROJECT_NAME}
+        PRIVATE
+            $<TARGET_OBJECTS:startup_${CPU}>
+            $<TARGET_OBJECTS:startup_${BOARD}>
+            nlib
+            hal
+            kernel
+    )
+endif()
 
 target_link_options(${PROJECT_NAME}
     PRIVATE

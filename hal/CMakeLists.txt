@@ -13,5 +13,12 @@ if (NOT EXISTS "${HAL_SOURCE_DIR}")
     message(FATAL_ERROR "HAL does not support board '${BOARD}'.")
 endif()
 
-# Add the Hal library.
-add_subdirectory(${HAL_SOURCE_DIR})
+set(HAL_DIR ${HAL_SOURCE_DIR} PARENT_SCOPE)
+
+if (RUST_KERNEL)
+    message(STATUS "Detected Rust kernel. Skipping HAL.")
+else()
+    # Add our HAL.
+    add_subdirectory(${HAL_SOURCE_DIR})
+endif()
+

@@ -20,7 +20,4 @@ void *__inhibit_loop_to_libcall memmove(void *dst0, const void *src0, size_t len
 
 #endif // defined(__GNUC__) || defined(__GNUG__)
 
-#define SYS_WRITE0 0x04
-int semihosting_call(int reason, const void *arg);
-
 #endif // CORE_H
