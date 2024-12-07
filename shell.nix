@@ -19,7 +19,6 @@ mkShell {
     meson
     pixman
     vde2
-    alsa-lib
     texinfo
     lzo
     snappy
