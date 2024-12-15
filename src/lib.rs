@@ -1,7 +1,5 @@
 #![no_std]
 
-mod task;
-
 extern crate hal;
 
 #[no_mangle]
