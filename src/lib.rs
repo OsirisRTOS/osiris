@@ -11,5 +11,8 @@ pub extern "C" fn kernel_init() {
     if let Err(err) = hal::hprintln!("The magic number is {}!", 42) {
         hal::semih::write_debug(hal::cstr!("Failed to write to host."));
     }
+
+    panic!("End of kernel_init");
+
     loop {}
 }

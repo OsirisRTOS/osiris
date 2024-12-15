@@ -6,7 +6,7 @@ version = "0.1.0"
 crate-type = ["staticlib"]
 
 [dependencies]
-hal = { path = "@HAL_DIR@", features = ["panic-semih"] }
+hal = { path = "@HAL_DIR@", features = ["panic-semih", "panic-exit"] }
 
 [build-dependencies]
 cbindgen = "0.26.0"
