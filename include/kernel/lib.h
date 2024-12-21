@@ -7,4 +7,6 @@
 
 void kernel_init(void);
 
+void syscall_dummy(const void *svc_args);
+
 #endif /* KERNEL_H */

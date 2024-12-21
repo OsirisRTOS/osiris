@@ -3,9 +3,11 @@
 extern crate hal;
 extern crate macros;
 
-use core::{arch::asm, ffi::c_void};
-
+pub mod syscalls;
 pub mod task;
+
+use core::arch::asm;
+use syscalls::dummy::*;
 
 #[no_mangle]
 pub extern "C" fn kernel_init() {
@@ -13,21 +15,16 @@ pub extern "C" fn kernel_init() {
 
     hal::semih::write_debug(hal::cstr!("Hello, world!\n"));
 
-    if let Err(err) = hal::hprintln!("The magic number is {}!", 42) {
+    if let Err(_err) = hal::hprintln!("The magic number is {}!", 42) {
         hal::semih::write_debug(hal::cstr!("Failed to write to host."));
     }
 
-    unsafe {
-        asm!("mov r0, 75", "svc 1");
-    }
+    syscall!(SYSCALL_DUMMY_NUM, 75);
 
     panic!("End of kernel_init");
-
-    loop {}
 }
 
-use hal::common::types::SchedCtx;
-use macros::syscall_handler;
+use hal::common::{syscall, types::SchedCtx};
 
 /// cbindgen:ignore
 /// cbindgen:no-export
@@ -35,15 +32,4 @@ use macros::syscall_handler;
 extern "C" fn sched_call(ctx_in: SchedCtx) -> SchedCtx {
     // For now the scheduler does not switch tasks, so we just return the context as is.
     ctx_in
-}
-
-/// cbindgen:ignore
-/// cbindgen:no-export
-#[no_mangle]
-#[syscall_handler(args = 1, num = 1)]
-extern "C" fn among(svc_args: *const c_void) {
-    let num = unsafe { *(svc_args as *const i32) };
-    if let Err(err) = hal::hprintln!("amogus {}!", num) {
-        hal::semih::write_debug(hal::cstr!("Failed to write to host."));
-    }
 }
