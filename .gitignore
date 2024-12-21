@@ -2,3 +2,5 @@ build/
 .vscode/
 qemu/
 .venv/
+
+*.gen.h
