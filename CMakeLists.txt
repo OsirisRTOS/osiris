@@ -1,5 +1,7 @@
 # kernel/CMakeLists.txt
 
+cmake_minimum_required(VERSION 3.23)
+
 include(FetchContent)
 
 # Path to your Cargo.toml file
@@ -22,6 +24,7 @@ target_sources(kernel
         BASE_DIRS include
         FILES
             include/kernel/lib.h
+            include/kernel/syscalls.map.gen.h
 )
 
 set(RUST_KERNEL true PARENT_SCOPE)

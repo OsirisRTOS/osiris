@@ -1,6 +1,7 @@
 #![no_std]
 
 extern crate hal;
+extern crate macros;
 
 use core::{arch::asm, ffi::c_void};
 
@@ -26,6 +27,7 @@ pub extern "C" fn kernel_init() {
 }
 
 use hal::common::types::SchedCtx;
+use macros::syscall_handler;
 
 /// cbindgen:ignore
 /// cbindgen:no-export
@@ -38,13 +40,8 @@ extern "C" fn sched_call(ctx_in: SchedCtx) -> SchedCtx {
 /// cbindgen:ignore
 /// cbindgen:no-export
 #[no_mangle]
-extern "C" fn reset(argc: i32, svc_args: *const c_void) {
-    loop {}
-}
-
-/// cbindgen:no-export
-#[no_mangle]
-extern "C" fn among(argc: i32, svc_args: *const c_void) {
+#[syscall_handler(args = 1, num = 1)]
+extern "C" fn among(svc_args: *const c_void) {
     let num = unsafe { *(svc_args as *const i32) };
     if let Err(err) = hal::hprintln!("amogus {}!", num) {
         hal::semih::write_debug(hal::cstr!("Failed to write to host."));
