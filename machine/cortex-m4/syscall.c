@@ -1,0 +1,22 @@
+
+/*
+ * This code has been taken from the following example:
+ * https://developer.arm.com/documentation/ka004005/latest/
+ *
+ */
+
+#include "syscall.map.generated.h"
+
+extern void _syscall_hndlr(unsigned int *svc_args);
+
+DECLARE_SYSCALLS()
+
+void _syscall_hndlr(unsigned int *svc_args)
+{
+    unsigned int svc_number;
+    svc_number = ((char *)svc_args[6])[-2];
+    switch (svc_number)
+    {
+        IMPLEMENT_SYSCALLS()
+    }
+}

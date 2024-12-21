@@ -42,10 +42,7 @@ hndl_weak_endl hard_fault_hndlr
 hndl_weak_endl mem_mngmt_hndlr
 hndl_weak_endl bus_fault_hndlr
 hndl_weak_endl usage_fault_hndlr
-hndl_weak_endl svc_hndlr
 hndl_weak_endl debug_mon_hndlr
-hndl_weak_endl pend_sv_hndlr
-hndl_weak_endl sys_tick_hndlr
 
 .thumb_func
 .global reset_hndlr

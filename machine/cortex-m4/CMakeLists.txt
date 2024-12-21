@@ -16,6 +16,8 @@ set_property(SOURCE crt0.s APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-
 add_library(startup_${CPU} OBJECT
     crt0.S
     entry.c
+    syscall.c
+    irq.S
 )
 
 target_include_directories(startup_${CPU}
