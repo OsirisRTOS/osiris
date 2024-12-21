@@ -7,4 +7,6 @@
 
 void kernel_init(void);
 
+void among(int32_t argc, const void *svc_args);
+
 #endif /* KERNEL_H */
