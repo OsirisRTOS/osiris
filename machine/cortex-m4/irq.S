@@ -55,7 +55,7 @@
 .global irq_enter_switch_no_fp
 irq_enter_switch_no_fp:
     @ Check which stack we need to use.
-    tst lr, 0x7
+    tst lr, #4
     ite eq
     mrseq r0, psp
     mrsne r0, msp
@@ -63,21 +63,8 @@ irq_enter_switch_no_fp:
     @ Save the general purpose registers.
     stmdb r0!, {r4-r11}
 
-    @ This function has to return a uint32_t which represents EXC_RETURN.
-    bl sched_call
-    mov lr, r0
-
-    @ Check which stack we need to use.
-    tst lr, 0x7
-    ite eq
-    mrseq r0, psp
-    mrsne r0, msp
-
-    @ Restore the general purpose registers.
-    ldmia r0!, {r4-r11}
-
-    @ Return to the task
-    bx lr
+    @ This function takes a pointer to the task's context as the first argument and does never return.
+    b sched_enter
 
 .thumb_func
 .global irq_enter_no_switch_no_fp
@@ -110,7 +97,7 @@ irq_enter_no_switch_no_fp:
 .global syscall_enter
 syscall_enter:
     @ Check which stack we need to use.
-    tst lr, 0x7
+    tst lr, #4
     ite eq
     mrseq r0, psp
     mrsne r0, msp

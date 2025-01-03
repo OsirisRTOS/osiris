@@ -5,7 +5,7 @@
  *
  */
 
-#include "syscall.map.generated.h"
+#include <syscalls.map.gen.h>
 
 extern void _syscall_hndlr(unsigned int *svc_args);
 
