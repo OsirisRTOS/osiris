@@ -4,7 +4,7 @@ extern crate hal;
 extern crate macros;
 
 pub mod syscalls;
-pub mod task;
+pub mod sched;
 
 use core::arch::asm;
 use syscalls::dummy::*;

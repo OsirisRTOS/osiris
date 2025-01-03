@@ -1,6 +1,6 @@
 //! Task management module.
 
-/*use crate::common::ThreadContext;
+use crate::common::ThreadContext;
 
 type TaskId = u32;
 
@@ -23,7 +23,7 @@ struct Thread {
 }
 
 enum ThreadState {
-    Running,
+    Runs,
     Ready,
     Waits,
-}*/
+}
