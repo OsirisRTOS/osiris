@@ -4,3 +4,7 @@
 [submodule "kernel"]
 	path = kernel
 	url = git@github.com:OsirisRTOS/kernel.git
+[submodule "hal/cortex-m"]
+	path = hal/cortex-m
+	url = git@github.com:OsirisRTOS/ocortex-m.git
+
