@@ -64,7 +64,7 @@ irq_enter_switch_no_fp:
     stmdb r0!, {r4-r11}
 
     @ This function takes a pointer to the task's context as the first argument and does never return.
-    b sched_enter
+    @b sched_enter
 
 .thumb_func
 .global irq_enter_no_switch_no_fp

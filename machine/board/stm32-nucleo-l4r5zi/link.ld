@@ -6,7 +6,10 @@ MEMORY
   RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 640K
 }
 
-__stack_top = ORIGIN(RAM) + LENGTH(RAM);
+__stack_size = 0x1000;
+
+__ram_start = ORIGIN(RAM);
+__ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
 SECTIONS
 {
@@ -17,6 +20,15 @@ SECTIONS
         KEEP(*(.ivt.core));
         KEEP(*(.ivt.ext));
     } > FLASH
+
+    .stack (NOLOAD) :
+    {
+        . = ALIGN(8);
+        __stack_start = .;
+        . = . + __stack_size;
+        . = ALIGN(8);
+        __stack_top = .;
+    } > RAM
 
     .text :
     {
@@ -72,6 +84,7 @@ SECTIONS
 
     .bss (NOLOAD):
     {
+        . = ALIGN(4);
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)

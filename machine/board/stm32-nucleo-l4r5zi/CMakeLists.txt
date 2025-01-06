@@ -2,6 +2,7 @@
 
 add_library(startup_${BOARD} OBJECT
     isr_ext.c
+    jumper.c
 )
 
 target_include_directories(startup_${BOARD}
