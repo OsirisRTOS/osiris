@@ -25,8 +25,8 @@ pub struct MemMapEntry {
 pub struct BootInfo {
     pub implementer: *const c_char,
     pub variant: *const c_char,
-    pub mem_map: *const MemMapEntry,
-    pub mem_map_len: usize,
+    pub mmap: [MemMapEntry; 32],
+    pub mmap_len: usize,
 }
 
 #[no_mangle]

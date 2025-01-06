@@ -20,9 +20,7 @@ static GLOBAL_ALLOCATOR: SpinLocked<BestFitAllocator> = SpinLocked::new(BestFitA
 pub fn init_memory(boot_info: &BootInfo) -> Result<(), alloc::AllocError> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-    let mem_map = unsafe { core::slice::from_raw_parts(boot_info.mem_map, boot_info.mem_map_len) };
-
-    for entry in mem_map {
+    for entry in boot_info.mmap.iter().take(boot_info.mmap_len) {
         if entry.ty == MemoryTypes::Available as u32 {
             let range = entry.addr as usize..(entry.addr + entry.length) as usize;
             unsafe {

@@ -21,8 +21,8 @@ typedef struct __attribute__((packed)) MemMapEntry {
 typedef struct BootInfo {
   const char *implementer;
   const char *variant;
-  const struct MemMapEntry *mem_map;
-  uintptr_t mem_map_len;
+  struct MemMapEntry mmap[32];
+  uintptr_t mmap_len;
 } BootInfo;
 
 void kernel_init(struct BootInfo boot_info);
