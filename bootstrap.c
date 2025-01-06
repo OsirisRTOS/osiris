@@ -4,19 +4,13 @@
 
 #define MEM_MAP_CAPACITY 32
 
-extern uint32_t get_mem_map(MemMapEntry *mem_map, uint32_t max_size);
+extern void init_boot_info(BootInfo *boot_info);
 
 int main(void)
 {
     BootInfo boot_info;
-    boot_info.implementer = "ARM";
-    boot_info.variant = "Cortex-M4";
-    MemMapEntry mem_map[MEM_MAP_CAPACITY];
-
-    uint32_t entries = get_mem_map(mem_map, MEM_MAP_CAPACITY);
-
-    boot_info.mem_map = mem_map;
-    boot_info.mem_map_len = entries;
+    memset(&boot_info, 0, sizeof(BootInfo));
+    init_boot_info(&boot_info);
 
     kernel_init(boot_info);
     unreachable();
