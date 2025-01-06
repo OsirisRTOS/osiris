@@ -1,6 +1,6 @@
 use core::ffi::c_void;
 
-use crate::macros::syscall_handler;
+use macros::syscall_handler;
 
 #[no_mangle]
 #[syscall_handler(args = 1, num = 1)]

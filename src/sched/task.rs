@@ -1,6 +1,6 @@
 //! Task management module.
 
-use crate::common::ThreadContext;
+use hal::common::sched::ThreadContext;
 
 type TaskId = u32;
 

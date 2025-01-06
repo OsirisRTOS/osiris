@@ -4,6 +4,7 @@ extern crate rand;
 extern crate syn;
 extern crate walkdir;
 
+use cbindgen::LayoutConfig;
 use std::io::Write;
 use syn::{Attribute, LitInt};
 use walkdir::WalkDir;
@@ -24,6 +25,10 @@ fn main() {
         "stdbool.h".to_string(),
         "stdarg.h".to_string(),
     ];
+    config.layout = LayoutConfig {
+        packed: Some("__attribute__((packed))".to_string()),
+        ..Default::default()
+    };
 
     cbindgen::Builder::new()
         .with_crate(crate_dir)
