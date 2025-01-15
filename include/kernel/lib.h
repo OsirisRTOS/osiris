@@ -21,11 +21,13 @@ typedef struct __attribute__((packed)) MemMapEntry {
 typedef struct BootInfo {
   const char *implementer;
   const char *variant;
-  struct MemMapEntry mmap[32];
+  struct MemMapEntry mmap[8];
   uintptr_t mmap_len;
 } BootInfo;
 
-void kernel_init(struct BootInfo boot_info);
+void kernel_init(const struct BootInfo *boot_info);
+
+CtxPtr sched_enter(CtxPtr ctx);
 
 void syscall_dummy(const void *svc_args);
 

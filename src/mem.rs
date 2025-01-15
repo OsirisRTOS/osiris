@@ -5,6 +5,8 @@ use crate::BootInfo;
 
 pub mod alloc;
 pub mod pool;
+pub mod boxed;
+pub mod array;
 
 #[repr(C)]
 enum MemoryTypes {
@@ -31,3 +33,20 @@ pub fn init_memory(boot_info: &BootInfo) -> Result<(), alloc::AllocError> {
 
     Ok(())
 }
+
+pub fn malloc(size: usize, align: usize) -> Option<*mut u8> {
+    let mut allocator = GLOBAL_ALLOCATOR.lock();
+    allocator.malloc(size, align).ok()
+}
+
+pub unsafe fn free(ptr: *mut u8) {
+    let mut allocator = GLOBAL_ALLOCATOR.lock();
+    allocator.free(ptr);
+}
+
+pub fn align_up(size: usize) -> usize {
+    let align = align_of::<u128>();
+    (size + align - 1) & !(align - 1)
+}
+
+

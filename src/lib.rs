@@ -25,27 +25,28 @@ pub struct MemMapEntry {
 pub struct BootInfo {
     pub implementer: *const c_char,
     pub variant: *const c_char,
-    pub mmap: [MemMapEntry; 32],
+    pub mmap: [MemMapEntry; 8],
     pub mmap_len: usize,
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn kernel_init(boot_info: BootInfo) {
+pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
     //let _ = hprintln!("[Kernel] Initializing Osiris...");
+    let boot_info = &*boot_info;
 
     let implementer = unsafe { CStr::from_ptr(boot_info.implementer) };
     let variant = unsafe { CStr::from_ptr(boot_info.variant) };
 
-    /*if let (Ok(implementer), Ok(variant)) = (implementer.to_str(), variant.to_str()) {
+    if let (Ok(implementer), Ok(variant)) = (implementer.to_str(), variant.to_str()) {
         let _ = hprintln!("[Kernel] Detected Processor:");
         let _ = hprintln!("[Kernel] Manufacturer    : {}", implementer);
         let _ = hprintln!("[Kernel] Name            : {}", variant);
-    }*/
+    }
 
     hal::hal_hw_init();
 
     // Initialize the memory allocator.
-    if let Err(e) = mem::init_memory(&boot_info) {
+    if let Err(e) = mem::init_memory(boot_info) {
         panic!("[Kernel] Failed to initialize memory allocator: {:?}", e);
     }
 

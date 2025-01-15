@@ -1,4 +1,4 @@
-use core::{fmt::Debug, num::NonZeroUsize, ops::Range, ptr::write};
+use core::{fmt::Debug, num::NonZeroUsize, ops::Range};
 
 pub trait Allocator {
     fn malloc(&mut self, size: usize, align: usize) -> Result<*mut u8, AllocError>;
@@ -47,7 +47,7 @@ impl BestFitAllocator {
             next: self.head,
         };
 
-        write(ptr as *mut BestFitMeta, meta);
+        core::ptr::write(ptr as *mut BestFitMeta, meta);
         self.head = Some(unsafe { NonZeroUsize::new_unchecked(ptr) });
         Ok(())
     }
@@ -59,23 +59,20 @@ impl BestFitAllocator {
         (align - (meta % align)) % align
     }
 
-    fn align(size: usize) -> usize {
-        let align = align_of::<u128>();
-        (size + align - 1) & !(align - 1)
-    }
-
     /// Selects the best fit block for the given size.
-    fn select_block(&mut self, size: usize) -> Result<NonZeroUsize, AllocError> {
+    fn select_block(&mut self, size: usize) -> Result<(NonZeroUsize, Option<NonZeroUsize>), AllocError> {
         let mut best_fit = Err(AllocError::OutOfMemory);
         let mut best_fit_size = usize::MAX;
 
         let mut current = self.head;
+        let mut prev = None;
 
         while let Some(ptr) = current {
             let meta = unsafe { &*(ptr.get() as *const BestFitMeta) };
 
             if meta.size >= size && meta.size < best_fit_size {
-                best_fit = Ok(ptr);
+                best_fit = Ok((ptr, prev));
+                prev = current;
                 best_fit_size = meta.size;
             }
 
@@ -92,8 +89,8 @@ impl Allocator for BestFitAllocator {
             return Err(AllocError::InvalidAlign);
         }
 
-        let size = Self::align(size);
-        let block = self.select_block(size)?;
+        let size = super::align_up(size);
+        let (block, prev) = self.select_block(size)?;
 
         let meta = unsafe { &*(block.get() as *const BestFitMeta) };
 
@@ -108,8 +105,16 @@ impl Allocator for BestFitAllocator {
             let ptr = block.get() + min;
 
             unsafe {
-                write(ptr as *mut BestFitMeta, remaining_meta);
+                core::ptr::write(ptr as *mut BestFitMeta, remaining_meta);
             }
+
+            if let Some(prev) = prev {
+                let prev_meta = unsafe { &mut *(prev.get() as *mut BestFitMeta) };
+                prev_meta.next = Some(unsafe { NonZeroUsize::new_unchecked(ptr) });
+            }
+        } else if let Some(prev) = prev {
+            let prev_meta = unsafe { &mut *(prev.get() as *mut BestFitMeta) };
+            prev_meta.next = None;
         }
 
         self.head = meta.next;
