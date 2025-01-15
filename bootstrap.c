@@ -12,6 +12,6 @@ int main(void)
     memset(&boot_info, 0, sizeof(BootInfo));
     init_boot_info(&boot_info);
 
-    kernel_init(boot_info);
+    kernel_init(&boot_info);
     unreachable();
 }
