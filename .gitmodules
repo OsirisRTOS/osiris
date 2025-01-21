@@ -7,3 +7,6 @@
 [submodule "hal/cortex-m"]
 	path = hal/cortex-m
 	url = git@github.com:OsirisRTOS/ocortex-m.git
+[submodule "verus"]
+	path = verus
+	url = https://github.com/verus-lang/verus.git
