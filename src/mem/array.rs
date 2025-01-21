@@ -69,7 +69,7 @@ impl<T, const N: usize> IndexMap<T, N> {
     pub fn next(&self, index: usize) -> Option<usize> {
         for (i, elem) in self.iter_from_cycle(index).enumerate() {
             if elem.is_some() {
-                return Some(index);
+                return Some(i);
             }
         }
 

@@ -27,8 +27,6 @@ typedef struct BootInfo {
 
 void kernel_init(const struct BootInfo *boot_info);
 
-CtxPtr sched_enter(CtxPtr ctx);
-
 void syscall_dummy(const void *svc_args);
 
 #endif /* KERNEL_H */

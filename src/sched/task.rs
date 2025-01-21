@@ -1,10 +1,10 @@
 //! Task management module.
 
-use core::{num::NonZero, ops::Add};
+use core::num::NonZero;
 
-use hal::common::sched::{CtxPtr, ThreadContext, ThreadDesc};
+use hal::common::sched::ThreadContext;
 
-use crate::mem::{alloc::AllocError, array::IndexMap};
+use crate::mem::{self, alloc::AllocError, array::IndexMap};
 
 pub type ThreadId = u32;
 
@@ -103,8 +103,9 @@ pub struct TaskMemory {
 }
 
 impl TaskMemory {
-    pub fn new(begin: *mut u8, size: usize) -> Self {
-        Self { begin, size }
+    pub fn new(size: usize) -> Result<Self, AllocError> {
+        let begin = mem::malloc(size, align_of::<u128>()).ok_or(AllocError::OutOfMemory)?;
+        Ok(Self { begin, size })
     }
 
     pub fn stack(&self) -> *mut u8 {

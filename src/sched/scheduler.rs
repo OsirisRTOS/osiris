@@ -21,11 +21,15 @@ impl Scheduler {
 
     pub fn create_task(&mut self, desc: TaskDesc, init_desc: ThreadDesc) -> Result<TaskId, AllocError> {
         let size = mem::align_up(desc.mem_size) + mem::align_up(desc.stack_size);
-        let alloc = mem::malloc(size, align_of::<u128>()).ok_or(AllocError::OutOfMemory)?;
-        let memory = TaskMemory::new(alloc, size);
+        let memory = TaskMemory::new(size)?;
         
         let ctx = unsafe { ThreadContext::from_empty(memory.stack(), init_desc) };
-        let task_id = self.tasks.insert_next(Task::new(memory, ctx))?;
+
+        self.add_task(Task::new(memory, ctx))
+    }
+
+    pub fn add_task(&mut self, task: Task) -> Result<TaskId, AllocError> {
+        let task_id = self.tasks.insert_next(task)?;
 
         if let Some(task) = self.tasks.get_mut(task_id) {
             task.id = task_id.into();
@@ -53,6 +57,20 @@ impl Scheduler {
     }
 }
 
+pub fn reschedule() -> Option<CtxPtr> {
+    SCHEDULER.lock().reschedule()
+}
+
+pub fn create_task(desc: TaskDesc, init_desc: ThreadDesc) -> Result<TaskId, AllocError> {
+    SCHEDULER.lock().create_task(desc, init_desc)
+}
+
+pub fn add_task(task: Task) -> Result<TaskId, AllocError> {
+    SCHEDULER.lock().add_task(task)
+}
+
+/// cbindgen:ignore
+/// cbindgen:no-export
 #[no_mangle]
 pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
     {
@@ -65,15 +83,6 @@ pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
     }
     
     reschedule().unwrap_or(ctx)
-}
-
-pub fn reschedule() -> Option<CtxPtr> {
-    
-    SCHEDULER.lock().reschedule()
-}
-
-pub fn create_task(desc: TaskDesc, init_desc: ThreadDesc) -> Result<TaskId, AllocError> {
-    SCHEDULER.lock().create_task(desc, init_desc)
 }
 
 

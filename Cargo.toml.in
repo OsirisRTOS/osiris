@@ -10,6 +10,7 @@ crate-type = ["staticlib"]
 hal = { path = "@HAL_DIR@", features = ["panic-semih", "panic-exit"] }
 macros = { path = "macros" }
 
+
 [build-dependencies]
 cbindgen = "0.26.0"
 bindgen = "0.69.5"
