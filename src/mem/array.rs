@@ -66,7 +66,12 @@ impl<T, const N: usize> IndexMap<T, N> {
         self.data.iter().cycle().skip(index)
     }
 
-    pub fn next(&self, index: usize) -> Option<usize> {
+    pub fn next(&self, index: Option<usize>) -> Option<usize> {
+        let index = match index {
+            Some(index) => index,
+            None => 0,
+        };
+
         for (i, elem) in self.iter_from_cycle(index).enumerate() {
             if elem.is_some() {
                 return Some(i);

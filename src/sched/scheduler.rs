@@ -2,19 +2,19 @@ use hal::common::{sched::{CtxPtr, ThreadContext, ThreadDesc}, sync::SpinLocked};
 
 use crate::mem::{self, alloc::AllocError, array::IndexMap};
 
-use super::task::{Task, TaskDesc, TaskId, TaskMemory};
+use super::{reschedule, task::{Task, TaskDesc, TaskId, TaskMemory}};
 
-static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
+pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
 
-struct Scheduler {
-    current: TaskId,
+pub struct Scheduler {
+    current: Option<TaskId>,
     tasks: IndexMap<Task, 4>
 }
 
 impl Scheduler {
     pub const fn new() -> Self {
         Self {
-            current: TaskId::Kernel,
+            current: None,
             tasks: IndexMap::new(),
         }
     }
@@ -39,34 +39,22 @@ impl Scheduler {
         Err(AllocError::OutOfMemory)
     }
 
-    pub fn reschedule(&mut self) -> Option<CtxPtr> {
-        let mut id = self.current;
+    fn select_task(&mut self) -> Option<CtxPtr> {
+        let mut id = self.current.map(|id| id.into());
         let mut ctx = None;
-    
-        if let Some(next) = self.tasks.next(id.into()) {
+
+        if let Some(next) = self.tasks.next(id) {
             if let Some(task) = self.tasks.get(next) {
                 if let Some(new_ctx) = task.get_active_ctx() {
-                    id = TaskId::from(next);
+                    id = Some(next);
                     ctx = Some((*new_ctx).into());
                 }
             }
         }
     
-        self.current = id;
+        self.current = id.map(|id| TaskId::from(id));
         ctx
     }
-}
-
-pub fn reschedule() -> Option<CtxPtr> {
-    SCHEDULER.lock().reschedule()
-}
-
-pub fn create_task(desc: TaskDesc, init_desc: ThreadDesc) -> Result<TaskId, AllocError> {
-    SCHEDULER.lock().create_task(desc, init_desc)
-}
-
-pub fn add_task(task: Task) -> Result<TaskId, AllocError> {
-    SCHEDULER.lock().add_task(task)
 }
 
 /// cbindgen:ignore
@@ -75,14 +63,16 @@ pub fn add_task(task: Task) -> Result<TaskId, AllocError> {
 pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
     {
         let mut scheduler = SCHEDULER.lock();
-        let id = scheduler.current;
 
-        if let Some(task) = scheduler.tasks.get_mut(id.into()) {
-            task.save_context(task.get_active_thread(), ctx.into());
+        if let Some(id) = scheduler.current {
+            if let Some(task) = scheduler.tasks.get_mut(id.into()) {
+                task.save_context(task.get_active_thread(), ctx.into());
+            }
         }
+
+        scheduler.select_task().unwrap_or(ctx)
     }
-    
-    reschedule().unwrap_or(ctx)
 }
+
 
 

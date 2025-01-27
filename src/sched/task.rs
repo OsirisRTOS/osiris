@@ -11,26 +11,20 @@ pub type ThreadId = u32;
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TaskId {
-    Kernel = 0,
-    User(NonZero<u16>),
+    User(u16),
 }
 
 impl From<TaskId> for usize {
     fn from(val: TaskId) -> Self {
         match val {
-            TaskId::Kernel => 0,
-            TaskId::User(id) => id.get() as usize,
+            TaskId::User(id) => id as usize,
         }
     }
 }
 
 impl From<usize> for TaskId {
     fn from(val: usize) -> Self {
-        if val == 0 {
-            TaskId::Kernel
-        } else {
-            TaskId::User(NonZero::new(val as u16).unwrap())
-        }
+        TaskId::User(val as u16)
     }
 }
 
@@ -57,7 +51,7 @@ impl Task {
 
         
         Self {
-            id: TaskId::Kernel,
+            id: TaskId::User(0),
             memory,
             active_thread: 0,
             threads,

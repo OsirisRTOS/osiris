@@ -1,8 +1,10 @@
 #![no_std]
 
+mod macros;
 mod mem;
 mod sched;
 mod syscalls;
+mod services;
 
 use core::arch::asm;
 use core::ffi::{c_char, CStr};
@@ -49,6 +51,12 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
     if let Err(e) = mem::init_memory(boot_info) {
         panic!("[Kernel] Failed to initialize memory allocator: {:?}", e);
     }
+
+    // Initialize the services.
+    services::init_services();
+
+    // Start the scheduling.
+    sched::reschedule();
 
     syscall!(SYSCALL_DUMMY_NUM, 75);
 
