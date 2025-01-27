@@ -52,13 +52,13 @@
 #     bx lr
 
 .thumb_func
-.global irq_enter_switch_fp
-irq_enter_switch_fp:
+.global pend_sv
+pend_sv:
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
-    mrseq r0, psp
-    mrsne r0, msp
+    mrseq r0, msp
+    mrsne r0, psp
 
     @ Check if we need to save the floating point registers.
     @tst lr, #10
@@ -66,7 +66,7 @@ irq_enter_switch_fp:
     @vstmdbeq r0!, {s16-s31}
     
     @ Save the EXEC_RETURN of this thread.
-    stmdb r0, {r4-r11, lr}
+    stmdb r0!, {r4-r11, lr}
 
     @ This function takes a pointer to the thread's context as the first argument.
     blx sched_enter
@@ -82,8 +82,8 @@ irq_enter_switch_fp:
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
-    msreq psp, r0
-    msrne msp, r0
+    msreq msp, r0
+    msrne psp, r0
 
     @ See Cortex-M4 errata.
     isb
@@ -97,8 +97,8 @@ irq_enter_no_switch_fp:
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
-    mrseq r0, psp
-    mrsne r0, msp
+    mrseq r0, msp
+    mrsne r0, psp
 
     @ Check if we need to save the floating point registers.
     @tst lr, #10
@@ -122,8 +122,8 @@ irq_enter_no_switch_fp:
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
-    msreq psp, r0
-    msrne msp, r0
+    msreq msp, r0
+    msrne psp, r0
 
     @ Return to the thread
     bx lr
@@ -134,8 +134,8 @@ syscall_enter:
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
-    mrseq r0, psp
-    mrsne r0, msp
+    mrseq r0, msp
+    mrsne r0, psp
 
     @ We don't need to save the other general purpose registers, because the syscall obeys the AAPCS calling convention.
     b _syscall_hndlr
