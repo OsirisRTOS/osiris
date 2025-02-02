@@ -24,7 +24,7 @@ extern void init_boot_info(BootInfo *boot_info)
     boot_info->mmap[1] = (MemMapEntry){
         .size = sizeof(MemMapEntry),
         .addr = 0x20030000,
-        .length = 0x100000,
+        .length = 0x10000,
         .ty = 1};
 
     // SRAM3

@@ -101,7 +101,7 @@ SECTIONS
 PROVIDE(irq_hndlr = default_hndlr);
 
 PROVIDE(pend_sv_hndlr = pend_sv);
-PROVIDE(sys_tick_hndlr = irq_enter_no_switch_fp);
+PROVIDE(sys_tick_hndlr = systick);
 PROVIDE(svc_hndlr = syscall_enter);
 
 PROVIDE(wwdg_hndlr = irq_enter_no_switch_fp);
