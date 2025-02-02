@@ -2,7 +2,6 @@ use core::mem::MaybeUninit;
 
 use super::alloc::AllocError;
 
-
 pub struct IndexMap<T, const N: usize> {
     data: [Option<T>; N],
 }
@@ -63,18 +62,15 @@ impl<T, const N: usize> IndexMap<T, N> {
     }
 
     pub fn iter_from_cycle(&self, index: usize) -> impl Iterator<Item = &Option<T>> {
-        self.data.iter().cycle().skip(index)
+        self.data.iter().cycle().skip(index + 1)
     }
 
     pub fn next(&self, index: Option<usize>) -> Option<usize> {
-        let index = match index {
-            Some(index) => index,
-            None => 0,
-        };
+        let index = index.unwrap_or(0);
 
         for (i, elem) in self.iter_from_cycle(index).enumerate() {
             if elem.is_some() {
-                return Some(i);
+                return Some((index + i + 1) % N);
             }
         }
 

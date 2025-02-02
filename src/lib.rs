@@ -1,16 +1,13 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 mod macros;
 mod mem;
 mod sched;
 mod syscalls;
 mod services;
+mod uspace;
 
-use core::arch::asm;
 use core::ffi::{c_char, CStr};
-
-use hal::common::syscall;
-use syscalls::dummy::SYSCALL_DUMMY_NUM;
 
 /// The memory map entry type.
 ///
@@ -57,8 +54,11 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
 
     // Start the scheduling.
     sched::reschedule();
+}
 
-    syscall!(SYSCALL_DUMMY_NUM, 75);
 
-    panic!("[Kernel] Abort.");
+#[cfg(all(not(test), not(doctest)))]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    hal::common::panic::panic_handler(info);
 }

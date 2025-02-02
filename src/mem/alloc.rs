@@ -42,8 +42,10 @@ impl BestFitAllocator {
             return Err(AllocError::InvalidAlign);
         }
 
+        let user_pointer = ptr + size_of::<BestFitMeta>() + Self::align_up();
+
         let meta = BestFitMeta {
-            size: range.end - ptr,
+            size: range.end - user_pointer,
             next: self.head,
         };
 
@@ -72,10 +74,9 @@ impl BestFitAllocator {
 
             if meta.size >= size && meta.size < best_fit_size {
                 best_fit = Ok((ptr, prev));
-                prev = current;
                 best_fit_size = meta.size;
             }
-
+            prev = current;
             current = meta.next;
         }
 
@@ -92,15 +93,18 @@ impl Allocator for BestFitAllocator {
         let size = super::align_up(size);
         let (block, prev) = self.select_block(size)?;
 
-        let meta = unsafe { &*(block.get() as *const BestFitMeta) };
+        let meta = unsafe { &mut *(block.get() as *mut BestFitMeta) };
 
-        let min = size + size_of::<BestFitMeta>() + Self::align_up();
+        let min = size_of::<BestFitMeta>() + Self::align_up() + size;
 
-        if meta.size > min {
+        if meta.size > min + size_of::<BestFitMeta>() + Self::align_up() {
             let remaining_meta = BestFitMeta {
                 size: meta.size - min,
                 next: meta.next,
             };
+
+            meta.size = size;
+            meta.next = None;
 
             let ptr = block.get() + min;
 
@@ -111,15 +115,19 @@ impl Allocator for BestFitAllocator {
             if let Some(prev) = prev {
                 let prev_meta = unsafe { &mut *(prev.get() as *mut BestFitMeta) };
                 prev_meta.next = Some(unsafe { NonZeroUsize::new_unchecked(ptr) });
+            } else {
+                self.head = Some(unsafe { NonZeroUsize::new_unchecked(ptr) });
             }
         } else if let Some(prev) = prev {
             let prev_meta = unsafe { &mut *(prev.get() as *mut BestFitMeta) };
             prev_meta.next = None;
+        } else {
+            self.head = None;
         }
 
-        self.head = meta.next;
+        let user_ptr = block.get() + size_of::<BestFitMeta>() + Self::align_up();
 
-        Ok(block.get() as *mut u8)
+        Ok(user_ptr as *mut u8)
     }
 
     unsafe fn free(&mut self, ptr: *mut u8) {
@@ -133,3 +141,75 @@ impl Allocator for BestFitAllocator {
         meta.next = head;
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allocate_one() {
+        let mut allocator = BestFitAllocator::new();
+
+        let alloc_range = std::alloc::Layout::from_size_align(4096, 1).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+
+        let begin = ptr as usize;
+        let range = begin..ptr as usize + 4096;
+        unsafe {
+            allocator.add_range(range).unwrap();
+        }
+
+        let ptr = allocator.malloc(128, 1).unwrap();
+        assert_eq!(ptr as usize, begin + size_of::<BestFitMeta>());
+    }
+
+    #[test]
+    fn allocate_two() {
+        let mut allocator = BestFitAllocator::new();
+        let alloc_range = std::alloc::Layout::from_size_align(4096, 1).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+
+        let begin = ptr as usize;
+        let range = ptr as usize..ptr as usize + 4096;
+        unsafe {
+            allocator.add_range(range).unwrap();
+        }
+
+        let ptr1 = allocator.malloc(128, 1).unwrap();
+        let ptr2 = allocator.malloc(128, 1).unwrap();
+        assert_eq!(ptr1 as usize, begin + size_of::<BestFitMeta>());
+        assert_eq!(ptr2 as usize, begin + size_of::<BestFitMeta>() + 128 + size_of::<BestFitMeta>());
+    }
+
+    #[test]
+    fn allocate_check_no_overwrite() {
+        let mut allocator = BestFitAllocator::new();
+        let alloc_range = std::alloc::Layout::from_size_align(4096, 1).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+
+        let begin = ptr as usize;
+        let range = ptr as usize..ptr as usize + 4096;
+        unsafe {
+            allocator.add_range(range).unwrap();
+        }
+
+        let ptr1 = allocator.malloc(128, 1).unwrap();
+        let ptr2 = allocator.malloc(128, 1).unwrap();
+        assert_eq!(ptr1 as usize, begin + size_of::<BestFitMeta>());
+        assert_eq!(ptr2 as usize, begin + size_of::<BestFitMeta>() + 128 + size_of::<BestFitMeta>());
+
+        // Overwrite the whole allocation and check that the metadata of the second block is still intact.
+        for i in 0..128 {
+            unsafe {
+                std::ptr::write((begin + i) as *mut u8, 0);
+            }
+        }
+
+        let meta = unsafe { &*((ptr2 as usize - size_of::<BestFitMeta>()) as *mut BestFitMeta) };
+        assert_eq!(meta.size, 128);
+        assert_eq!(meta.next, None);
+    }
+}
+
+

@@ -2,20 +2,24 @@ use hal::common::{sched::{CtxPtr, ThreadContext, ThreadDesc}, sync::SpinLocked};
 
 use crate::mem::{self, alloc::AllocError, array::IndexMap};
 
-use super::{reschedule, task::{Task, TaskDesc, TaskId, TaskMemory}};
+use super::task::{Task, TaskDesc, TaskId, TaskMemory};
 
-pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
+pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new(1));
 
 pub struct Scheduler {
     current: Option<TaskId>,
-    tasks: IndexMap<Task, 4>
+    tasks: IndexMap<Task, 4>,
+    time: usize,
+    interval: usize,
 }
 
 impl Scheduler {
-    pub const fn new() -> Self {
+    pub const fn new(interval: usize) -> Self {
         Self {
             current: None,
             tasks: IndexMap::new(),
+            time: 0,
+            interval
         }
     }
 
@@ -52,8 +56,19 @@ impl Scheduler {
             }
         }
     
-        self.current = id.map(|id| TaskId::from(id));
+        self.current = id.map(TaskId::from);
         ctx
+    }
+
+    fn tick(&mut self) -> bool {
+        self.time += 1;
+
+        if self.time >= self.interval {
+            self.time = 0;
+            return true;
+        }
+
+        false
     }
 }
 
@@ -61,6 +76,8 @@ impl Scheduler {
 /// cbindgen:no-export
 #[no_mangle]
 pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
+    hal::hprintln!("Scheduler resched.").unwrap();
+
     {
         let mut scheduler = SCHEDULER.lock();
 
@@ -71,6 +88,20 @@ pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
         }
 
         scheduler.select_task().unwrap_or(ctx)
+    }
+}
+
+/// cbindgen:ignore
+/// cbindgen:no-export
+#[no_mangle]
+pub extern "C" fn systick() {
+    let resched = {
+        let mut scheduler = SCHEDULER.lock();
+        scheduler.tick()
+    };
+
+    if resched {
+        hal::common::sched::reschedule();
     }
 }
 
