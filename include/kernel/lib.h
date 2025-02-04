@@ -6,6 +6,11 @@
 #include "stdarg.h"
 
 /**
+ * TODO: Make this dynamic.
+ */
+#define MAX_THREADS 32
+
+/**
  * The memory map entry type.
  *
  * This structure shall be compatible with the multiboot_memory_map_t struct at

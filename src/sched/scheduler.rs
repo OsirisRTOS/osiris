@@ -1,69 +1,134 @@
-use hal::common::{sched::{CtxPtr, ThreadContext, ThreadDesc}, sync::SpinLocked};
+use hal::common::{sched::{CtxPtr, ThreadDesc}, sync::SpinLocked};
 
-use crate::mem::{self, alloc::AllocError, array::IndexMap};
+use crate::mem::{self, alloc::AllocError, array::IndexMap, heap::PriorityQueue, queue::Queue};
 
-use super::task::{Task, TaskDesc, TaskId, TaskMemory};
+use super::task::{Task, TaskDesc, TaskId, Thread, ThreadId, ThreadState, Timing};
 
-pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new(1));
+pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
 
-pub struct Scheduler {
-    current: Option<TaskId>,
-    tasks: IndexMap<Task, 4>,
+/// TODO: Make this dynamic.
+pub const MAX_THREADS: usize = 32;
+
+pub struct Scheduler<'a> {
+    current: Option<ThreadId>,
+    // Fast interval store.
+    current_interval: usize,
+    tasks: IndexMap<Task<'a>, 8>,
+    threads: IndexMap<Thread, 32>,
+    queue: PriorityQueue<'a, (ThreadId, usize)>,
+    callbacks: Queue<(ThreadId, usize), 32>,
     time: usize,
-    interval: usize,
 }
 
-impl Scheduler {
-    pub const fn new(interval: usize) -> Self {
+impl Scheduler<'_> {
+    pub const fn new() -> Self {
         Self {
             current: None,
+            current_interval: 0,
             tasks: IndexMap::new(),
-            time: 0,
-            interval
+            threads: IndexMap::new(),
+            queue: PriorityQueue::new(),
+            callbacks: Queue::new(),
+            time: 0
         }
     }
 
-    pub fn create_task(&mut self, desc: TaskDesc, init_desc: ThreadDesc) -> Result<TaskId, AllocError> {
+    pub fn create_task(&mut self, desc: TaskDesc, main_desc: ThreadDesc, main_timing: Timing) -> Result<TaskId, AllocError> {
         let size = mem::align_up(desc.mem_size) + mem::align_up(desc.stack_size);
-        let memory = TaskMemory::new(size)?;
-        
-        let ctx = unsafe { ThreadContext::from_empty(memory.stack(), init_desc) };
+        let mut task = Task::new(size)?;
 
-        self.add_task(Task::new(memory, ctx))
-    }
+        let period = main_timing.period;
 
-    pub fn add_task(&mut self, task: Task) -> Result<TaskId, AllocError> {
+        let thread_ctx = task.create_thread_ctx(main_desc)?;
+        let thread = Thread::new(thread_ctx, main_timing);
+
+        let thread_id = self.threads.insert_next(thread)?;
+        task.register_thread(thread_id)?;
+
         let task_id = self.tasks.insert_next(task)?;
+
+        self.queue.push((thread_id, period));
 
         if let Some(task) = self.tasks.get_mut(task_id) {
             task.id = task_id.into();
             return Ok(task_id.into());
         }
 
+        
         Err(AllocError::OutOfMemory)
     }
 
-    fn select_task(&mut self) -> Option<CtxPtr> {
-        let mut id = self.current.map(|id| id.into());
-        let mut ctx = None;
-
-        if let Some(next) = self.tasks.next(id) {
-            if let Some(task) = self.tasks.get(next) {
-                if let Some(new_ctx) = task.get_active_ctx() {
-                    id = Some(next);
-                    ctx = Some((*new_ctx).into());
-                }
+    fn update_current_ctx(&mut self, ctx: CtxPtr) {
+        if let Some(id) = self.current {
+            if let Some(thread) = self.threads.get_mut(id) {
+                thread.context = ctx.into();
             }
         }
-    
-        self.current = id.map(TaskId::from);
-        ctx
+    }
+
+    fn select_new_thread(&mut self) -> Option<CtxPtr> {
+        if let Some(id) = self.queue.pop().map(|(id, _)| id) {
+            // Set the previous thread as ready. And add a callback from now.
+            if let Some(id) = self.current {
+                if let Some(thread) = self.threads.get_mut(id) {
+                    thread.state = ThreadState::Ready;
+                    // The delay that is already in the queue.
+                    let delay = self.callbacks.back().map(|(_, delay)| *delay).unwrap_or(0);
+                    // Add the callback to the queue.
+                    if thread.period - self.time + delay > 0 {
+                        self.callbacks.push_back((id, thread.period - self.time + delay));
+                    } else {
+                        self.queue.push((id, thread.period));
+                    }
+                }
+            }
+
+            if let Some(thread) = self.threads.get_mut(id) {
+                thread.state = ThreadState::Runs;
+
+                // Set the new thread as the current one.
+                self.current_interval = thread.deadline;
+                self.current = Some(id);
+
+                // Return the new thread context.
+                return Some(thread.context.into());
+            }
+        }
+
+        None
+    }
+
+    fn fire_thread_if_necessary(&mut self) -> bool {
+        let mut found = false;
+        loop {
+            if let Some((id, cnt)) = self.callbacks.front().cloned() {
+                if cnt - 1 == 0 {
+                    self.callbacks.pop_front();
+                    if let Some(thread) = self.threads.get_mut(id) {
+                        thread.state = ThreadState::Ready;
+                        self.queue.push((id, thread.deadline));
+                        found = true;
+                    }
+                } else {
+                    self.callbacks.insert(0, (id, cnt - 1));
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        found
     }
 
     fn tick(&mut self) -> bool {
         self.time += 1;
 
-        if self.time >= self.interval {
+        if self.fire_thread_if_necessary() {
+            return true;
+        }
+
+        if self.time >= self.current_interval {
             self.time = 0;
             return true;
         }
@@ -81,13 +146,8 @@ pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
     {
         let mut scheduler = SCHEDULER.lock();
 
-        if let Some(id) = scheduler.current {
-            if let Some(task) = scheduler.tasks.get_mut(id.into()) {
-                task.save_context(task.get_active_thread(), ctx.into());
-            }
-        }
-
-        scheduler.select_task().unwrap_or(ctx)
+        scheduler.update_current_ctx(ctx);
+        scheduler.select_new_thread().unwrap_or(ctx)
     }
 }
 

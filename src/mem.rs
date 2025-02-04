@@ -7,6 +7,8 @@ pub mod alloc;
 pub mod pool;
 pub mod boxed;
 pub mod array;
+pub mod heap;
+pub mod queue;
 
 #[repr(C)]
 enum MemoryTypes {

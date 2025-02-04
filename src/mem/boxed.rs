@@ -2,7 +2,7 @@ use core::{mem::forget, ops::{Deref, DerefMut}, ptr::{drop_in_place, write}};
 
 use super::{free, malloc};
 
-pub struct Box<T> {
+pub struct Box<T: ?Sized> {
     ptr: *mut T,
 }
 
@@ -38,7 +38,7 @@ impl<T> Box<T> {
     }
 }
 
-impl<T> Drop for Box<T> {
+impl<T: ?Sized> Drop for Box<T> {
     fn drop(&mut self) {
         unsafe {
             drop_in_place(self.ptr);

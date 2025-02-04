@@ -42,8 +42,6 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
         let _ = hal::hprintln!("[Kernel] Name            : {}", variant);
     }
 
-    hal::hal_hw_init();
-
     // Initialize the memory allocator.
     if let Err(e) = mem::init_memory(boot_info) {
         panic!("[Kernel] Failed to initialize memory allocator: {:?}", e);
@@ -52,8 +50,12 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
     // Initialize the services.
     services::init_services();
 
+    hal::hal_hw_init();
+
     // Start the scheduling.
     sched::reschedule();
+
+    loop {}
 }
 
 

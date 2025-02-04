@@ -1,19 +1,19 @@
 //! Task management module.
 
-use core::num::NonZero;
+use hal::common::sched::{ThreadContext, ThreadDesc};
 
-use hal::common::sched::ThreadContext;
+use crate::mem::{self, alloc::AllocError, array::Vec};
 
-use crate::mem::{self, alloc::AllocError, array::IndexMap};
+// ----------------------------------- Identifiers -----------------------------------
 
-pub type ThreadId = u32;
-
+/// Id of a task. This is unique across all tasks.
 #[repr(u16)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub enum TaskId {
     User(u16),
 }
 
+/// Convert TaskId to usize.
 impl From<TaskId> for usize {
     fn from(val: TaskId) -> Self {
         match val {
@@ -22,72 +22,85 @@ impl From<TaskId> for usize {
     }
 }
 
+/// Convert usize to TaskId.
 impl From<usize> for TaskId {
     fn from(val: usize) -> Self {
         TaskId::User(val as u16)
     }
 }
 
+/// Id of a task. This is only unique within a Task.
+pub type ThreadId = usize;
+
+/// Unique identifier for a thread. Build from TaskId and ThreadId.
+#[derive(Clone, Copy, Debug)]
+pub struct ThreadUID {
+    pub task: TaskId,
+    pub thread: ThreadId,
+} 
+
+impl ThreadUID {
+    pub fn new(task: TaskId, thread: ThreadId) -> Self {
+        Self { task, thread }
+    }
+}
+
+impl PartialEq for ThreadUID {
+    fn eq(&self, other: &Self) -> bool {
+        self.task == other.task && self.thread == other.thread
+    }
+}
+
+impl Eq for ThreadUID {}
+
+impl PartialOrd for ThreadUID {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ThreadUID {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.task.cmp(&other.task).then(self.thread.cmp(&other.thread))
+    }
+}
+
+// -------------------------------------------------------------------------
+
 pub struct TaskDesc {
     pub mem_size: usize,
     pub stack_size: usize,
 }
 
-pub struct Task {
+pub struct Task<'a> {
     pub id: TaskId,
     memory: TaskMemory,
     active_thread: ThreadId,
-    threads: IndexMap<Thread, 4>,
+    threads: Vec<'a, ThreadId, 4>
 }
 
-impl Task {
-    pub fn new(memory: TaskMemory, init_ctx: ThreadContext) -> Self {
-        let mut threads = IndexMap::new();
+impl Task<'_> {
+    pub fn new(memory_size: usize) -> Result<Self, AllocError> {
+        let memory = TaskMemory::new(memory_size)?;
+        let threads = Vec::new();
 
-        threads.insert(0, Thread {
-            state: ThreadState::Ready,
-            context: init_ctx,
-        });
-
-        
-        Self {
+        Ok(Self {
             id: TaskId::User(0),
             memory,
             active_thread: 0,
             threads,
-        }
+        })
     }
 
-    pub fn set_id(&mut self, id: TaskId) {
-        self.id = id;
+    pub fn create_thread_ctx(&self, desc: ThreadDesc) -> Result<ThreadContext, AllocError> {
+        let stack = self.memory.stack();
+        // TODO: Check if stack is sufficient
+        let ctx = unsafe { ThreadContext::from_empty(stack, desc) };
+        Ok(ctx)
     }
 
-    pub fn add_thread(&mut self, thread: Thread) -> Result<ThreadId, AllocError> {
-        self.threads.insert_next(thread).map(|id| id as ThreadId)
-    }
-
-    pub fn remove_thread(&mut self, index: ThreadId) -> Option<Thread> {
-        self.threads.remove(index as usize)
-    }
-
-    pub fn set_state(&mut self, index: ThreadId, state: ThreadState) {
-        if let Some(thread) = self.threads.get_mut(index as usize) {
-            thread.state = state;
-        }
-    }
-
-    pub fn save_context(&mut self, index: ThreadId, ctx: ThreadContext) {
-        if let Some(thread) = self.threads.get_mut(index as usize) {
-            thread.context = ctx;
-        }
-    }
-
-    pub fn get_active_thread(&self) -> ThreadId {
-        self.active_thread
-    }
-
-    pub fn get_active_ctx(&self) -> Option<&ThreadContext> {
-        self.threads.get(self.active_thread as usize).map(|thread| &thread.context)
+    pub fn register_thread(&mut self, thread_id: ThreadId) -> Result<(), AllocError> {
+        self.threads.push(thread_id)
     }
 }
 
@@ -107,9 +120,30 @@ impl TaskMemory {
     }
 }
 
+pub struct Timing {
+    pub period: usize,
+    pub deadline: usize,
+    pub exec_time: usize,
+}
+
 pub struct Thread {
-    state: ThreadState,
-    context: ThreadContext,
+    pub state: ThreadState,
+    pub context: ThreadContext,
+    pub period: usize,
+    pub deadline: usize,
+    pub exec_time: usize,
+}
+
+impl Thread {
+    pub fn new(ctx: ThreadContext, timing: Timing) -> Self {
+        Self {
+            state: ThreadState::Ready,
+            context: ctx,
+            period: timing.period,
+            deadline: timing.deadline,
+            exec_time: timing.exec_time,
+        }
+    }
 }
 
 pub enum ThreadState {
