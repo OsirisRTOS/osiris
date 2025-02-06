@@ -1,11 +1,11 @@
 use super::{alloc::AllocError, array::Vec};
 
-pub struct PriorityQueue<'a, T> {
-    heap: Vec<'a, T, 32>,
+pub struct PriorityQueue<T> {
+    heap: Vec<T, 32>,
     size: usize,
 }
 
-impl<T: Clone + Ord> PriorityQueue<'_, T> {
+impl<T: Clone + Ord> PriorityQueue<T> {
     pub const fn new() -> Self {
         Self {
             heap: Vec::new(),
@@ -26,6 +26,8 @@ impl<T: Clone + Ord> PriorityQueue<'_, T> {
         }
 
         let value = self.peek().cloned();
+        self.heap.swap(0, self.size - 1);
+        self.heap.remove(self.size - 1);
         self.size -= 1;
         self.sift_down(0);
         value
@@ -80,3 +82,4 @@ impl<T: Clone + Ord> PriorityQueue<'_, T> {
         self.size
     }
 }
+

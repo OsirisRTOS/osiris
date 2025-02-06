@@ -1,6 +1,8 @@
 #![cfg_attr(not(test), no_std)]
 
 mod macros;
+#[macro_use]
+mod utils;
 mod mem;
 mod sched;
 mod syscalls;

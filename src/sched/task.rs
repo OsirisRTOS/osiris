@@ -1,5 +1,7 @@
 //! Task management module.
 
+use core::ptr::NonNull;
+
 use hal::common::sched::{ThreadContext, ThreadDesc};
 
 use crate::mem::{self, alloc::AllocError, array::Vec};
@@ -72,14 +74,14 @@ pub struct TaskDesc {
     pub stack_size: usize,
 }
 
-pub struct Task<'a> {
+pub struct Task {
     pub id: TaskId,
     memory: TaskMemory,
     active_thread: ThreadId,
-    threads: Vec<'a, ThreadId, 4>
+    threads: Vec<ThreadId, 4>
 }
 
-impl Task<'_> {
+impl Task {
     pub fn new(memory_size: usize) -> Result<Self, AllocError> {
         let memory = TaskMemory::new(memory_size)?;
         let threads = Vec::new();
@@ -95,7 +97,7 @@ impl Task<'_> {
     pub fn create_thread_ctx(&self, desc: ThreadDesc) -> Result<ThreadContext, AllocError> {
         let stack = self.memory.stack();
         // TODO: Check if stack is sufficient
-        let ctx = unsafe { ThreadContext::from_empty(stack, desc) };
+        let ctx = unsafe { ThreadContext::from_empty(stack.as_ptr(), desc) };
         Ok(ctx)
     }
 
@@ -105,7 +107,7 @@ impl Task<'_> {
 }
 
 pub struct TaskMemory {
-    begin: *mut u8,
+    begin: NonNull<u8>,
     size: usize,
 }
 
@@ -115,7 +117,7 @@ impl TaskMemory {
         Ok(Self { begin, size })
     }
 
-    pub fn stack(&self) -> *mut u8 {
+    pub fn stack(&self) -> NonNull<u8> {
         unsafe { self.begin.add(self.size) }
     }
 }

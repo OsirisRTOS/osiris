@@ -9,18 +9,18 @@ pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
 /// TODO: Make this dynamic.
 pub const MAX_THREADS: usize = 32;
 
-pub struct Scheduler<'a> {
+pub struct Scheduler {
     current: Option<ThreadId>,
     // Fast interval store.
     current_interval: usize,
-    tasks: IndexMap<Task<'a>, 8>,
+    tasks: IndexMap<Task, 8>,
     threads: IndexMap<Thread, 32>,
-    queue: PriorityQueue<'a, (ThreadId, usize)>,
+    queue: PriorityQueue<(usize, ThreadId)>,
     callbacks: Queue<(ThreadId, usize), 32>,
     time: usize,
 }
 
-impl Scheduler<'_> {
+impl Scheduler {
     pub const fn new() -> Self {
         Self {
             current: None,
@@ -47,7 +47,7 @@ impl Scheduler<'_> {
 
         let task_id = self.tasks.insert_next(task)?;
 
-        self.queue.push((thread_id, period));
+        self.queue.push((period, thread_id))?;
 
         if let Some(task) = self.tasks.get_mut(task_id) {
             task.id = task_id.into();
@@ -67,7 +67,7 @@ impl Scheduler<'_> {
     }
 
     fn select_new_thread(&mut self) -> Option<CtxPtr> {
-        if let Some(id) = self.queue.pop().map(|(id, _)| id) {
+        if let Some(id) = self.queue.pop().map(|(_, id)| id) {
             // Set the previous thread as ready. And add a callback from now.
             if let Some(id) = self.current {
                 if let Some(thread) = self.threads.get_mut(id) {
@@ -75,10 +75,10 @@ impl Scheduler<'_> {
                     // The delay that is already in the queue.
                     let delay = self.callbacks.back().map(|(_, delay)| *delay).unwrap_or(0);
                     // Add the callback to the queue.
-                    if thread.period - self.time + delay > 0 {
-                        self.callbacks.push_back((id, thread.period - self.time + delay));
+                    if thread.period > (self.time + delay) {
+                        self.callbacks.push_back((id, thread.period - (self.time + delay)));
                     } else {
-                        self.queue.push((id, thread.period));
+                        self.queue.push((thread.exec_time, id));
                     }
                 }
             }
@@ -87,7 +87,7 @@ impl Scheduler<'_> {
                 thread.state = ThreadState::Runs;
 
                 // Set the new thread as the current one.
-                self.current_interval = thread.deadline;
+                self.current_interval = thread.exec_time;
                 self.current = Some(id);
 
                 // Return the new thread context.
@@ -100,20 +100,16 @@ impl Scheduler<'_> {
 
     fn fire_thread_if_necessary(&mut self) -> bool {
         let mut found = false;
-        loop {
-            if let Some((id, cnt)) = self.callbacks.front().cloned() {
-                if cnt - 1 == 0 {
-                    self.callbacks.pop_front();
-                    if let Some(thread) = self.threads.get_mut(id) {
-                        thread.state = ThreadState::Ready;
-                        self.queue.push((id, thread.deadline));
-                        found = true;
-                    }
-                } else {
-                    self.callbacks.insert(0, (id, cnt - 1));
-                    break;
+        while let Some((id, cnt)) = self.callbacks.front().cloned() {
+            if cnt - 1 == 0 {
+                self.callbacks.pop_front();
+                if let Some(thread) = self.threads.get_mut(id) {
+                    thread.state = ThreadState::Ready;
+                    let _ = self.queue.push((thread.exec_time, id));
+                    found = true;
                 }
             } else {
+                let _ = self.callbacks.insert(0, (id, cnt - 1));
                 break;
             }
         }

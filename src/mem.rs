@@ -1,3 +1,5 @@
+use core::ptr::NonNull;
+
 use alloc::{Allocator, BestFitAllocator};
 use hal::common::sync::SpinLocked;
 
@@ -36,14 +38,14 @@ pub fn init_memory(boot_info: &BootInfo) -> Result<(), alloc::AllocError> {
     Ok(())
 }
 
-pub fn malloc(size: usize, align: usize) -> Option<*mut u8> {
+pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
     allocator.malloc(size, align).ok()
 }
 
-pub unsafe fn free(ptr: *mut u8) {
+pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
-    allocator.free(ptr);
+    allocator.free(ptr, size);
 }
 
 pub fn align_up(size: usize) -> usize {
