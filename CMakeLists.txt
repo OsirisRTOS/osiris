@@ -64,7 +64,11 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# TODO: Make this order, sane again.
+# Check if the kernel is a rust kernel.
+if(EXISTS "${CMAKE_SOURCE_DIR}/kernel/Cargo.toml" OR EXISTS "${CMAKE_SOURCE_DIR}/kernel/Cargo.toml.in")
+    set(RUST_KERNEL true)
+endif()
+
 add_subdirectory(hal)
 add_subdirectory(kernel)
 
@@ -115,6 +119,7 @@ target_compile_options(${PROJECT_NAME}
         ${COMPILE_FLAGS_${CPU}}
         -Wall
         -Wextra
+        "-fstack-usage"
 )
 
 # Linker options.
@@ -124,6 +129,7 @@ target_link_options(${PROJECT_NAME}
         "-T${LINKER_SCRIPT}"
         "-nostartfiles"
         "-nostdlib"
+        "-fstack-usage"
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
