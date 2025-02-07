@@ -86,7 +86,7 @@ pub struct Vec<T, const N: usize> {
     extra: Box<[MaybeUninit<T>]>
 }
 
-impl<T: Clone, const N: usize> Vec<T, N> {
+impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     pub const fn new() -> Self {
         Self {
             len: 0,
@@ -101,35 +101,33 @@ impl<T: Clone, const N: usize> Vec<T, N> {
             self.len += 1;
             Ok(())
         } else {
-            let extra = self.extra.len();
+            let len_extra = self.extra.len();
             
-            if self.len < N + extra {
+            if self.len < N + len_extra {
                 self.extra[self.len - N].write(value);
                 self.len += 1;
                 Ok(())
             } else {
-                let grow = (extra + 1) * 2;
+                let grow = (len_extra + 1) * 2;
                 let mut new_extra = Box::new_slice_uninit(grow)?;
 
                 BUG_ON!(new_extra.len() != grow);
 
-                // Only the first len - N elements are initialized.
-                for (i, elem) in self.extra.iter_mut().enumerate() {
-                    if i == self.len - N {
-                        break;
-                    }
-                    let new_elem = unsafe { elem.assume_init_ref().clone() };
-                    BUG_ON!(i >= new_extra.len());
-                    new_extra[i].write(new_elem);
-                    //unsafe { elem.assume_init_drop() };
-                }
+                new_extra[..len_extra].copy_from_slice(&self.extra);
 
                 self.extra = new_extra;
-                self.extra[extra].write(value);
+                self.extra[len_extra].write(value);
                 self.len += 1;
                 Ok(())
             }
         }
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        if self.len == 0 {
+            return None;
+        }
+        self.remove(self.len - 1)
     }
 
     pub fn remove(&mut self, index: usize) -> Option<T> {
@@ -137,36 +135,31 @@ impl<T: Clone, const N: usize> Vec<T, N> {
             return None;
         }
 
+        let value = self.at(index).cloned();
+
         if index < N {
-            // Safety: `index` is less then self.len. That means the element at `index` is initialized.
-            let value = unsafe { self.data[index].assume_init_read() };
-            let min = core::cmp::min(self.len, N);
+            let end = core::cmp::min(self.len, N);
 
-            for i in index..min - 1 {
-                self.data[i].write(unsafe { self.data[i + 1].assume_init_read() });
+            // Safety: index is less than N and min too.
+            self.data.copy_within(index+1..end, index);
+
+            if let Some(value) = self.at(N) {
+                self.data[end-1].write(*value);
             }
 
-            if self.len > N {
-                for i in 0..self.len - N - 2 {
-                    let value = unsafe { self.extra[i+1].assume_init_read() };
-                    self.extra[i].write(value);
-                }
+            if self.len() > N {
+                self.extra.copy_within(1..self.len - N, 0);
             }
-
-            self.len -= 1;
-            Some(value)
         } else {
             let index = index - N;
-            // Safety: `index` is less then self.len. That means the element at `index` is initialized.
-            let value = unsafe { self.extra[index].assume_init_read() };
-            for i in index..self.len - N - 2 {
-                let value = unsafe { self.extra[i+1].assume_init_read() };
-                self.extra[i].write(value);
-            }
+            let end = self.len - N;
 
-            self.len -= 1;
-            Some(value)
+            // Safety: index is less than N and min too.
+            self.extra.copy_within(index+1..end, index);
         }
+
+        self.len -= 1;
+        value
     }
 
     pub fn len(&self) -> usize {
@@ -187,18 +180,18 @@ impl<T: Clone, const N: usize> Vec<T, N> {
     }
 
     pub fn swap(&mut self, a: usize, b: usize) {
+        if a >= self.len || b >= self.len {
+            return;
+        }
+
         if a < N && b < N {
             self.data.swap(a, b);
         } else if a >= N && b >= N {
             self.extra.swap(a - N, b - N);
         } else if a >= N {
-            let helper = unsafe { self.extra[a-N].assume_init_ref().clone()};
-            self.extra[a-N].write(unsafe { self.data[b].assume_init_ref().clone() });
-            self.data[b].write(helper);
+            core::mem::swap(&mut self.extra[a-N], &mut self.data[b]);
         } else {
-            let helper = unsafe { self.data[a].assume_init_ref().clone()};
-            self.data[a].write(unsafe { self.extra[b-N].assume_init_ref().clone() });
-            self.extra[b-N].write(helper);
+            core::mem::swap(&mut self.data[a], &mut self.extra[b-N]);
         }
     }
 
@@ -210,11 +203,12 @@ impl<T: Clone, const N: usize> Vec<T, N> {
 impl<T, const N: usize> Drop for Vec<T, N> {
     fn drop(&mut self) {
         let min = core::cmp::min(self.len, N);
-        for elem in &mut self.data[0..min-1] {
+
+        for elem in &mut self.data[0..min] {
             unsafe { elem.assume_init_drop(); }
         }
 
-        for elem in &mut (*self.extra)[0..self.len - N-1] {
+        for elem in &mut (*self.extra)[0..self.len - N] {
             unsafe { elem.assume_init_drop(); }
         }
     }

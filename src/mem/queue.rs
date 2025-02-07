@@ -6,7 +6,7 @@ pub struct Queue<T: Clone, const N: usize> {
     front: usize,
 }
 
-impl<'a, T: Clone, const N: usize> Queue<T, N> {
+impl<T: Clone, const N: usize> Queue<T, N> {
     pub const fn new() -> Self {
         Self {
             data: IndexMap::new(),
@@ -43,11 +43,15 @@ impl<'a, T: Clone, const N: usize> Queue<T, N> {
     }
 
     pub fn front(&self) -> Option<&T> {
+        if self.is_empty() {
+            return None;
+        }
+
         self.data.get(self.front)
     }
 
     pub fn back(&self) -> Option<&T> {
-        if self.len == 0 {
+        if self.is_empty() {
             return None;
         }
 

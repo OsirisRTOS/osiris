@@ -1,6 +1,6 @@
 use core::{
     mem::{forget, MaybeUninit},
-    ops::{Deref, DerefMut, Index, IndexMut},
+    ops::{Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeTo},
     ptr::{drop_in_place, slice_from_raw_parts_mut, write, NonNull}, slice::from_raw_parts,
 };
 
@@ -124,8 +124,50 @@ impl<T> Index<usize> for Box<[T]> {
     }
 }
 
+impl<T> Index<Range<usize>> for Box<[T]> {
+    type Output = [T];
+
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        &self.as_ref()[index]
+    }
+}
+
+impl<T> Index<RangeTo<usize>> for Box<[T]> {
+    type Output = [T];
+
+    fn index(&self, index: RangeTo<usize>) -> &Self::Output {
+        &self.as_ref()[index]
+    }
+}
+
+impl<T> Index<RangeFrom<usize>> for Box<[T]> {
+    type Output = [T];
+
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        &self.as_ref()[index]
+    }
+}
+
 impl<T> IndexMut<usize> for Box<[T]> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.as_mut()[index]
+    }
+}
+
+impl<T> IndexMut<Range<usize>> for Box<[T]> {
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        &mut self.as_mut()[index]
+    }
+}
+
+impl<T> IndexMut<RangeTo<usize>> for Box<[T]> {
+    fn index_mut(&mut self, index: RangeTo<usize>) -> &mut Self::Output {
+        &mut self.as_mut()[index]
+    }
+}
+
+impl<T> IndexMut<RangeFrom<usize>> for Box<[T]> {
+    fn index_mut(&mut self, index: RangeFrom<usize>) -> &mut Self::Output {
         &mut self.as_mut()[index]
     }
 }

@@ -6,9 +6,6 @@ use super::task::{Task, TaskDesc, TaskId, Thread, ThreadId, ThreadState, Timing}
 
 pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
 
-/// TODO: Make this dynamic.
-pub const MAX_THREADS: usize = 32;
-
 pub struct Scheduler {
     current: Option<ThreadId>,
     // Fast interval store.
@@ -137,8 +134,6 @@ impl Scheduler {
 /// cbindgen:no-export
 #[no_mangle]
 pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
-    hal::hprintln!("Scheduler resched.").unwrap();
-
     {
         let mut scheduler = SCHEDULER.lock();
 

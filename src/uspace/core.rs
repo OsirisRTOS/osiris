@@ -14,8 +14,7 @@ impl Init {
         loop {
             let _ = hal::hprintln!("Hello, from init");
 
-            // Loop for 20ms to simulate some work.
-            for _ in 0..20_000 {
+            for _ in 0..1_000 {
                 unsafe { core::arch::asm!("nop") }
             }
         }
@@ -34,8 +33,7 @@ impl Dummy {
         loop {
             let _ = hal::hprintln!("Hello, from dummy");
 
-            // Loop for 20ms to simulate some work.
-            for _ in 0..20_000 {
+            for _ in 0..1_000 {
                 unsafe { core::arch::asm!("nop") }
             }
         }
@@ -54,8 +52,7 @@ impl Dummy2 {
         loop {
             let _ = hal::hprintln!("Hello, from dummy2");
 
-            // Loop for 20ms to simulate some work.
-            for _ in 0..20_000 {
+            for _ in 0..1_000 {
                 unsafe { core::arch::asm!("nop") }
             }
         }
