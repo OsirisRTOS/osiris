@@ -95,6 +95,48 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
     }
 
+    pub fn reserve(&mut self, additional: usize) -> Result<(), AllocError> {
+        let len_extra = self.extra.len();
+
+        if self.len + additional <= N + len_extra {
+            return Ok(());
+        }
+
+        let grow = additional - N + len_extra;
+        let mut new_extra = Box::new_slice_uninit(grow)?;
+
+        BUG_ON!(new_extra.len() != grow);
+
+        new_extra[..len_extra].copy_from_slice(&self.extra);
+
+        self.extra = new_extra;
+        Ok(())
+    }
+
+    pub fn new_init(length: usize, value: T) -> Result<Self, AllocError> {
+        let mut vec = Self::new();
+
+        if length <= N {
+            for i in 0..length {
+                vec.data[i].write(value);
+            }
+        } else {
+            vec.data.fill(MaybeUninit::new(value));
+
+            if length - N > 0 {
+                let mut extra = Box::new_slice_uninit(length - N)?;
+
+                for i in N..length {
+                    extra[i-N].write(value);
+                }
+
+                vec.extra = extra;
+            }
+        }
+
+        Ok(vec)
+    }
+
     pub fn push(&mut self, value: T) -> Result<(), AllocError> {
         if self.len < N {
             self.data[self.len].write(value);

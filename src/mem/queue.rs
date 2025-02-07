@@ -6,7 +6,7 @@ pub struct Queue<T: Clone, const N: usize> {
     front: usize,
 }
 
-impl<T: Clone, const N: usize> Queue<T, N> {
+impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     pub const fn new() -> Self {
         Self {
             data: IndexMap::new(),
@@ -21,6 +21,7 @@ impl<T: Clone, const N: usize> Queue<T, N> {
         }
 
         let back = (self.front + self.len) % N;
+
         self.data.insert(back, value)?;
         self.len += 1;
         Ok(())
