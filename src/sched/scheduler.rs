@@ -1,6 +1,6 @@
 use hal::common::{sched::{CtxPtr, ThreadDesc}, sync::SpinLocked};
 
-use crate::mem::{self, alloc::AllocError, array::IndexMap, heap::PriorityQueue, queue::Queue};
+use crate::mem::{self, alloc::AllocError, array::IndexMap, heap::BinaryHeap, queue::Queue};
 
 use super::task::{Task, TaskDesc, TaskId, Thread, ThreadId, ThreadState, Timing};
 
@@ -12,7 +12,7 @@ pub struct Scheduler {
     current_interval: usize,
     tasks: IndexMap<Task, 8>,
     threads: IndexMap<Thread, 32>,
-    queue: PriorityQueue<(usize, ThreadId)>,
+    queue: BinaryHeap<(usize, ThreadId), 32>,
     callbacks: Queue<(ThreadId, usize), 32>,
     time: usize,
 }
@@ -24,7 +24,7 @@ impl Scheduler {
             current_interval: 0,
             tasks: IndexMap::new(),
             threads: IndexMap::new(),
-            queue: PriorityQueue::new(),
+            queue: BinaryHeap::new(),
             callbacks: Queue::new(),
             time: 0
         }

@@ -1,10 +1,10 @@
 use super::{alloc::AllocError, array::Vec};
 
-pub struct PriorityQueue<T> {
-    vec: Vec<T, 32>,
+pub struct BinaryHeap<T, const N: usize> {
+    vec: Vec<T, N>,
 }
 
-impl<T: Clone + Copy + Ord> PriorityQueue<T> {
+impl<T: Clone + Copy + Ord, const N: usize> BinaryHeap<T, N> {
     pub const fn new() -> Self {
         Self {
             vec: Vec::new(),
