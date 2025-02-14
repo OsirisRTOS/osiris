@@ -1,12 +1,16 @@
 // For format details, see https://aka.ms/devcontainer.json.
 {
-	"name": "Nix Dev Container",
+	"name": "Osiris Dev Container",
 	"build": {
 		"dockerfile": "Dockerfile",
 		"context": ".."
 	},
 	"remoteUser": "vscode",
 	"privileged": false,
+	"capAdd": [
+		// Permissions for accessing host USB devices
+		"SYS_RAWIO", "CAP_MKNOD"
+	],
 	"customizations": {
 		"vscode": {
 			"extensions": [
@@ -17,7 +21,13 @@
 			]
 		}
 	},
+	"runArgs": [
+		// Mount USB devices under Linux
+		"--device",
+		"/dev/bus/usb:/dev/bus/usb"
+	],
 	"mounts": [
+		// Make ssh keys available
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	]
 }

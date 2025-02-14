@@ -37,8 +37,13 @@ RUN dnf update -y && \
 	socat \
 	libslirp-devel \
 	libffi-devel \
+	libusb1-devel \
 	ncurses-devel && \
 	dnf clean all
+
+RUN dnf install -y 'dnf-command(copr)' && \
+	dnf copr enable -y rleh/arm-none-eabi-gdb && \
+	dnf install -y arm-none-eabi-gdb
 
 ARG USERNAME=vscode
 RUN useradd -m -s /bin/bash ${USERNAME} && \
@@ -70,4 +75,12 @@ RUN git clone --depth 1 https://github.com/thomasw04/qemu.git /tmp/qemu && \
 	cd / && \
 	rm -rf /tmp/qemu
 
-CMD ["bash"]
+RUN git clone --single-branch --depth 1 -b "develop" \
+	https://github.com/stlink-org/stlink.git /tmp/stlink && \
+	cd /tmp/stlink && \
+	make -j release && \
+	sudo make install && \
+	sudo ldconfig
+
+# Fix for fedora not finding libstlink.so.1
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
