@@ -1,12 +1,9 @@
 [submodule "hal/stm32l4"]
 	path = hal/stm32l4
-	url = git@github.com:OsirisRTOS/stm32l4-hal.git
+	url = https://github.com/OsirisRTOS/stm32l4-hal.git
 [submodule "kernel"]
 	path = kernel
-    url = git@github.com:OsirisRTOS/kernel.git
-[submodule "hal/cortex-m"]
-	path = hal/cortex-m
-	url = git@github.com:OsirisRTOS/ocortex-m.git
-[submodule "verus"]
-	path = verus
-	url = https://github.com/verus-lang/verus.git
+    url = https://github.com/OsirisRTOS/kernel.git
+[submodule "hal/ocortex-m"]
+	path = hal/ocortex-m
+	url = https://github.com/OsirisRTOS/ocortex-m.git
