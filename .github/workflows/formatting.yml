@@ -8,6 +8,9 @@ on:
 
 name: Code formatting check
 
+permissions:
+  contents: read
+
 jobs:
   get-manifests:
     name: Get Cargo manifests
