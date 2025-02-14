@@ -64,6 +64,14 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
 )
 
+# Check if the kernel is a rust kernel.
+if(EXISTS "${CMAKE_SOURCE_DIR}/kernel/Cargo.toml" OR EXISTS "${CMAKE_SOURCE_DIR}/kernel/Cargo.toml.in")
+    set(RUST_KERNEL true)
+endif()
+
+add_subdirectory(hal)
+add_subdirectory(kernel)
+
 # Now add our startup code and the nlib.
 # This will also set the compiler and linker flags.
 add_subdirectory(machine/${CPU})
@@ -71,10 +79,6 @@ add_subdirectory(machine/${CPU})
 # Add the nlib and the board-specific code.
 add_subdirectory(nlib)
 add_subdirectory(machine/board/${BOARD})
-
-add_subdirectory(hal)
-
-add_subdirectory(kernel)
 
 add_executable(${PROJECT_NAME} 
     bootstrap.c
@@ -115,6 +119,7 @@ target_compile_options(${PROJECT_NAME}
         ${COMPILE_FLAGS_${CPU}}
         -Wall
         -Wextra
+        "-fstack-usage"
 )
 
 # Linker options.
@@ -124,6 +129,7 @@ target_link_options(${PROJECT_NAME}
         "-T${LINKER_SCRIPT}"
         "-nostartfiles"
         "-nostdlib"
+        "-fstack-usage"
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
