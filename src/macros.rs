@@ -1,4 +1,6 @@
+//! Macros for kernel development.
 
+/// Creates a slice from the raw arguments.
 #[macro_export]
 macro_rules! args_from_raw {
     ($argc:expr, $argv:expr) => {{

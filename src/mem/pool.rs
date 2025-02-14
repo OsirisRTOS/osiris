@@ -1,3 +1,5 @@
+//! This module provides a pool allocator implementation.
+
 use core::{
     marker::PhantomData,
     num::NonZeroUsize,
@@ -5,17 +7,20 @@ use core::{
     ptr::write,
 };
 
+/// Meta information for a block in the pool.
 struct SizedPoolMeta {
     size: usize,
     next: Option<NonZeroUsize>,
 }
 
+/// A pool allocator that allocates fixed-size blocks.
 pub struct SizedPool<T: Default> {
     head: Option<NonZeroUsize>,
     _marker: PhantomData<T>,
 }
 
 impl<T: Default> SizedPool<T> {
+    /// Create a new empty pool.
     pub const fn new() -> Self {
         Self {
             head: None,
@@ -23,6 +28,7 @@ impl<T: Default> SizedPool<T> {
         }
     }
 
+    /// Calculate the padding required to align the block to `align_of::<T>()`.
     const fn align_up() -> usize {
         let meta = size_of::<SizedPoolMeta>();
         let align = align_of::<T>();
@@ -31,6 +37,8 @@ impl<T: Default> SizedPool<T> {
     }
 
     /// Add a range of blocks to the pool.
+    ///
+    /// `range` - The range of blocks to add.
     ///
     /// # Safety
     ///
@@ -49,6 +57,8 @@ impl<T: Default> SizedPool<T> {
 
     /// Add a block to the pool.
     ///
+    /// `ptr` - The pointer to the block to add.
+    ///
     /// # Safety
     ///
     /// The caller must ensure that the pointer is valid and that the block is at least the size of `T` + `SizedPoolMeta` + Padding for `T`.
@@ -65,6 +75,9 @@ impl<T: Default> SizedPool<T> {
         self.head = Some(NonZeroUsize::new_unchecked(ptr));
     }
 
+    /// Allocate a block from the pool.
+    ///
+    /// Returns `Some(Owned<T>)` if a block was successfully allocated, otherwise `None`.
     pub fn alloc(&mut self) -> Option<Owned<T>> {
         let head = self.head.take();
 
@@ -79,6 +92,9 @@ impl<T: Default> SizedPool<T> {
         })
     }
 
+    /// Deallocate a block back to the pool.
+    ///
+    /// `block` - The block to deallocate.
     pub fn dealloc(&mut self, block: Owned<T>) {
         let ptr = block.ptr as usize - size_of::<SizedPoolMeta>() - Self::align_up();
 
@@ -93,6 +109,7 @@ impl<T: Default> SizedPool<T> {
     }
 }
 
+/// An owned block from a pool.
 pub struct Owned<T> {
     ptr: *mut T,
 }

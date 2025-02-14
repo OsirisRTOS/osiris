@@ -1,41 +1,21 @@
 //! This module provides a simple allocator.
 //! One implementation is the BestFitAllocator, which uses the best fit strategy.
 
-use core::{fmt::Debug, ops::Range, ptr::NonNull};
+use core::{ops::Range, ptr::NonNull};
 
-use crate::BUG_ON;
-
-/// The error type that is returned when an allocation fails.
-/// This type shall also be used by primitives that built on top of the allocator.
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum AllocError {
-    InvalidAlign,
-    InvalidPtr,
-    OutOfMemory,
-}
-
-/// Debug msg implementation for AllocError.
-impl Debug for AllocError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            AllocError::InvalidAlign => write!(f, "Invalid alignment"),
-            AllocError::InvalidPtr => write!(f, "Invalid pointer"),
-            AllocError::OutOfMemory => write!(f, "Out of memory"),
-        }
-    }
-}
+use crate::{utils, BUG_ON};
 
 /// Allocator trait that provides a way to allocate and free memory.
 /// Normally you don't need to use this directly, rather use the `boxed::Box` type.
-/// 
+///
 /// # Safety
-/// 
+///
 /// Every block returned by `malloc` must be freed by `free` exactly once.
 /// A pointer allocated by one allocator must not be freed by another allocator.
 /// Each range added to the allocator must be valid for the whole lifetime of the allocator and must not overlap with any other range.
 /// The lifetime of any allocation is only valid as long as the allocator is valid. (A pointer must not be used after the allocator is dropped.)
 pub trait Allocator {
-    fn malloc(&mut self, size: usize, align: usize) -> Result<NonNull<u8>, AllocError>;
+    fn malloc(&mut self, size: usize, align: usize) -> Result<NonNull<u8>, utils::KernelError>;
     unsafe fn free(&mut self, ptr: NonNull<u8>, size: usize);
 }
 
@@ -58,24 +38,29 @@ pub struct BestFitAllocator {
 
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
-
     /// Creates a new BestFitAllocator.
+    /// 
+    /// Returns the new BestFitAllocator.
     pub const fn new() -> Self {
         Self { head: None }
     }
 
     /// Adds a range of memory to the allocator.
+    ///
+    /// `range` - The range of memory to add.
+    /// 
+    /// Returns `Ok(())` if the range was added successfully, otherwise an error.
     /// 
     /// # Safety
-    /// 
+    ///
     /// The range must be valid, 128bit aligned and must not overlapping with any other current or future range.
     /// Also the range must stay valid, for the whole lifetime of the allocator. Also the lifetime of any allocation is only valid as long as the allocator is valid.
-    pub unsafe fn add_range(&mut self, range: Range<usize>) -> Result<(), AllocError> {
+    pub unsafe fn add_range(&mut self, range: Range<usize>) -> Result<(), utils::KernelError> {
         let ptr = range.start;
 
         // Check if the pointer is 128bit aligned.
         if ptr % align_of::<u128>() != 0 {
-            return Err(AllocError::InvalidAlign);
+            return Err(utils::KernelError::InvalidAlign);
         }
 
         // The user pointer is the pointer to the user memory. So we need to add the size of the meta data and possibly add padding.
@@ -96,6 +81,8 @@ impl BestFitAllocator {
     }
 
     /// Calculates the padding required to align the block. Note: We only align to 128bit.
+    /// 
+    /// Returns the padding in bytes.
     fn align_up() -> usize {
         let meta = size_of::<BestFitMeta>();
         let align = align_of::<u128>();
@@ -104,8 +91,15 @@ impl BestFitAllocator {
     }
 
     /// Selects the best fit block for the given size.
-    fn select_block(&mut self, size: usize) -> Result<(NonNull<u8>, Option<NonNull<u8>>), AllocError> {
-        let mut best_fit = Err(AllocError::OutOfMemory);
+    /// 
+    /// `size` - The size of the block.
+    /// 
+    /// Returns the control pointer to the block and the control pointer to the previous block.
+    fn select_block(
+        &mut self,
+        size: usize,
+    ) -> Result<(NonNull<u8>, Option<NonNull<u8>>), utils::KernelError> {
+        let mut best_fit = Err(utils::KernelError::OutOfMemory);
         let mut best_fit_size = usize::MAX;
 
         let mut current = self.head;
@@ -131,18 +125,26 @@ impl BestFitAllocator {
     }
 
     /// Calculates the user pointer from the control pointer.
+    ///
+    /// `ptr` - The control pointer.
+    /// 
+    /// Returns the user pointer.
     /// 
     /// # Safety
-    /// 
+    ///
     /// The ptr must be a valid control pointer. Note: After the allocator which allocated the pointer is dropped, the control pointer is always considered invalid.
     unsafe fn user_ptr(ptr: NonNull<u8>) -> NonNull<u8> {
         ptr.byte_add(size_of::<BestFitMeta>() + Self::align_up())
     }
 
     /// Calculates the control pointer from the user pointer.
+    ///
+    /// `ptr` - The user pointer.
+    /// 
+    /// Returns the control pointer.
     /// 
     /// # Safety
-    /// 
+    ///
     /// The ptr must be a valid user pointer. Note: After the allocator which allocated the pointer is dropped, the user pointer is always considered invalid.
     unsafe fn control_ptr(ptr: NonNull<u8>) -> NonNull<u8> {
         ptr.byte_sub(size_of::<BestFitMeta>() + Self::align_up())
@@ -151,13 +153,16 @@ impl BestFitAllocator {
 
 /// Implementation of the Allocator trait for BestFitAllocator.
 impl Allocator for BestFitAllocator {
-
     /// Allocates a block of memory with the given size and alignment. Note: This function will always yield an invalid align for align > 128bit.
-    fn malloc(&mut self, size: usize, align: usize) -> Result<NonNull<u8>, AllocError> {
-
+    /// 
+    /// `size` - The size of the block.
+    /// `align` - The alignment of the block.
+    /// 
+    /// Returns the user pointer to the block if successful, otherwise an error.
+    fn malloc(&mut self, size: usize, align: usize) -> Result<NonNull<u8>, utils::KernelError> {
         // Check if the alignment is valid.
         if align > align_of::<u128>() {
-            return Err(AllocError::InvalidAlign);
+            return Err(utils::KernelError::InvalidAlign);
         }
 
         // Align the size.
@@ -169,12 +174,11 @@ impl Allocator for BestFitAllocator {
         // Get the metadata of the block.
         let meta = unsafe { block.cast::<BestFitMeta>().as_mut() };
 
-        // Calculate the amount of bytes until the beginning of the possibly next metadata. 
+        // Calculate the amount of bytes until the beginning of the possibly next metadata.
         let min = size_of::<BestFitMeta>() + Self::align_up() + size;
 
         // If the block is big enough to split. Then it also needs to be big enough to store the metadata + align of the next block.
         if meta.size > min + size_of::<BestFitMeta>() + Self::align_up() {
-
             // Calculate the remaining size of the block and thus the next metadata.
             let remaining_meta = BestFitMeta {
                 size: meta.size - min,
@@ -217,6 +221,9 @@ impl Allocator for BestFitAllocator {
     }
 
     /// Frees a block of memory.
+    /// 
+    /// `ptr` - The pointer to the block.
+    /// `size` - The size of the block. (This is used to check if the size of the block is correct.)
     unsafe fn free(&mut self, ptr: NonNull<u8>, size: usize) {
         let block = Self::control_ptr(ptr);
         let meta = block.cast::<BestFitMeta>().as_mut();
@@ -235,9 +242,8 @@ impl Allocator for BestFitAllocator {
     }
 }
 
-
 // TESTING ------------------------------------------------------------------------------------------------------------
- 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,7 +326,8 @@ mod tests {
         const CNT: usize = 10;
         const SIZE: usize = 128;
 
-        let range = alloc_range((SIZE + size_of::<BestFitMeta>() + BestFitAllocator::align_up()) * CNT);
+        let range =
+            alloc_range((SIZE + size_of::<BestFitMeta>() + BestFitAllocator::align_up()) * CNT);
         unsafe {
             allocator.add_range(range).unwrap();
         }
@@ -341,20 +348,21 @@ mod tests {
         const CNT: usize = 10;
         const SIZE: usize = 128;
 
-        let range = alloc_range((SIZE + size_of::<BestFitMeta>() + BestFitAllocator::align_up()) * CNT - 1);
+        let range =
+            alloc_range((SIZE + size_of::<BestFitMeta>() + BestFitAllocator::align_up()) * CNT - 1);
         unsafe {
             allocator.add_range(range).unwrap();
         }
 
         let mut ptrs = Vec::new();
-        for _ in 0..CNT-1 {
+        for _ in 0..CNT - 1 {
             let ptr = allocator.malloc(SIZE, 1).unwrap();
             verify_block(ptr, SIZE, None);
             ptrs.push(ptr);
         }
 
         let ptr = allocator.malloc(SIZE, 1);
-        assert!(ptr.is_err_and(|e| e == AllocError::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
     }
 
     #[test]
@@ -404,11 +412,10 @@ mod tests {
     }
 
     #[test]
-    fn multi_range_no_oom_through_free() 
-    {
+    fn multi_range_no_oom_through_free() {
         // This function allocates multiple ranges and then frees one of them randomly. And only then there is no oom.
         let mut allocator = BestFitAllocator::new();
-        
+
         const CNT: usize = 10;
         const SIZE: usize = 128;
 
@@ -425,7 +432,7 @@ mod tests {
 
         let ptr = allocator.malloc(SIZE, 1).unwrap();
 
-        for _ in 0..CNT-1 {
+        for _ in 0..CNT - 1 {
             let ptr = allocator.malloc(SIZE, 1).unwrap();
             verify_block(ptr, SIZE, None);
             ptrs.push((ptr, SIZE));
@@ -442,38 +449,35 @@ mod tests {
     }
 
     #[test]
-    fn multi_range_oom()
-    {
-         // This function allocates multiple ranges and then frees one of them randomly. And only then there is no oom.
-         let mut allocator = BestFitAllocator::new();
-        
-         const CNT: usize = 10;
-         const SIZE: usize = 128;
- 
-         let mut ranges = Vec::new();
-         for _ in 0..CNT {
-             let range = alloc_range(SIZE + size_of::<BestFitMeta>() + BestFitAllocator::align_up());
-             unsafe {
-                 allocator.add_range(range.clone()).unwrap();
-             }
-             ranges.push(range);
-         }
- 
-         let mut ptrs = Vec::new();
- 
-         for _ in 0..CNT {
-             let ptr = allocator.malloc(SIZE, 1).unwrap();
-             verify_block(ptr, SIZE, None);
-             ptrs.push((ptr, SIZE));
-         }
+    fn multi_range_oom() {
+        // This function allocates multiple ranges and then frees one of them randomly. And only then there is no oom.
+        let mut allocator = BestFitAllocator::new();
+
+        const CNT: usize = 10;
+        const SIZE: usize = 128;
+
+        let mut ranges = Vec::new();
+        for _ in 0..CNT {
+            let range = alloc_range(SIZE + size_of::<BestFitMeta>() + BestFitAllocator::align_up());
+            unsafe {
+                allocator.add_range(range.clone()).unwrap();
+            }
+            ranges.push(range);
+        }
+
+        let mut ptrs = Vec::new();
+
+        for _ in 0..CNT {
+            let ptr = allocator.malloc(SIZE, 1).unwrap();
+            verify_block(ptr, SIZE, None);
+            ptrs.push((ptr, SIZE));
+        }
 
         let ptr = allocator.malloc(SIZE, 1);
-        assert!(ptr.is_err_and(|e| e == AllocError::OutOfMemory));
- 
+        assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
+
         verify_ptrs_not_overlaping(ptrs.as_slice());
     }
 }
 
 // END TESTING --------------------------------------------------------------------------------------------------------
-
-
