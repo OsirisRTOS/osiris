@@ -1,0 +1,58 @@
+on:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+name: Code formatting check
+
+jobs:
+  get-manifests:
+    name: Get Cargo manifests
+    runs-on: ubuntu-latest
+    outputs:
+      manifests: ${{ steps.find.outputs.manifests }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # This step is required to generate some Cargo.toml files
+      - name: Run CMake
+        run: cmake -B build
+
+      - name: Find Cargo.toml files
+        id: find
+        run: |
+          files=$(find . \( -path './build*' -o -path '*dep*' -o -path '*verus*' -o -path './target' \) -prune -false -o -name Cargo.toml)
+          echo "Found the following manifests:"
+          echo "$files"
+          json=$(printf '%s\n' $files | jq -R . | jq -s .)
+          echo "manifests=$json" >> $GITHUB_OUTPUT
+
+  fmt:
+    name: rustfmt check for ${{ matrix.manifest }}
+    needs: get-manifests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        manifest: ${{ fromJson(needs.get-manifests.outputs.manifests) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      # This step is required to generate some Cargo.toml files
+      - name: Run CMake
+        run: cmake -B build
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path="${{ matrix.manifest }}" -- --check
