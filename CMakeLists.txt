@@ -1,11 +1,15 @@
 # kernel/CMakeLists.txt
 
+cmake_minimum_required(VERSION 3.23)
+
 include(FetchContent)
 
 # Path to your Cargo.toml file
 set(CARGO_TOML_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml.in")
 
 configure_file(${CARGO_TOML_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml" @ONLY)
+
+set(Rust_CARGO_TARGET thumbv7em-none-eabi)
 
 FetchContent_Declare(
     Corrosion
@@ -22,6 +26,7 @@ target_sources(kernel
         BASE_DIRS include
         FILES
             include/kernel/lib.h
+            include/kernel/syscalls.map.gen.h
 )
 
 set(RUST_KERNEL true PARENT_SCOPE)
