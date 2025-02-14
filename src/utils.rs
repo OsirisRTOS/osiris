@@ -10,7 +10,7 @@ pub(crate) use core::convert::{identity as likely, identity as unlikely};
 pub(crate) use core::intrinsics::{likely, unlikely};
 
 /// This is a macro that is used to panic when a bug is detected.
-/// It is similar to the BUG() macro in the Linux kernel. Link: https://www.kernel.org/
+/// It is similar to the BUG() macro in the Linux kernel. Link: [https://www.kernel.org/]()
 #[macro_export]
 macro_rules! BUG {
     () => {
@@ -22,7 +22,7 @@ macro_rules! BUG {
 }
 
 /// This is a macro that is used to panic when a condition is true.
-/// It is similar to the BUG_ON() macro in the Linux kernel.  Link: https://www.kernel.org/
+/// It is similar to the BUG_ON() macro in the Linux kernel.  Link: [https://www.kernel.org/]()
 #[macro_export]
 macro_rules! BUG_ON {
     ($cond:expr) => {

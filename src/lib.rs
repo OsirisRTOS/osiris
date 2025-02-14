@@ -1,7 +1,7 @@
 //! This is the default kernel of the osiris operating system.
 //! The kernel is organized as a microkernel.
 
-#![cfg_attr(all(not(test), not(doctest)), no_std)]
+#![cfg_attr(all(not(test), not(doctest), not(doc)), no_std)]
 
 mod macros;
 #[macro_use]
@@ -17,7 +17,7 @@ use core::ffi::{c_char, CStr};
 /// The memory map entry type.
 ///
 /// This structure shall be compatible with the multiboot_memory_map_t struct at
-/// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
+/// Link: [https://www.gnu.org/software/grub/manual/multiboot/multiboot.html]()
 #[repr(packed, C)]
 pub struct MemMapEntry {
     /// The size of the entry.
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
 }
 
 /// The panic handler.
-#[cfg(all(not(test), not(doctest)))]
+#[cfg(all(not(test), not(doctest), not(doc)))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     hal::common::panic::panic_handler(info);

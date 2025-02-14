@@ -9,7 +9,7 @@
  * The memory map entry type.
  *
  * This structure shall be compatible with the multiboot_memory_map_t struct at
- * Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
+ * Link: [https://www.gnu.org/software/grub/manual/multiboot/multiboot.html]()
  */
 typedef struct __attribute__((packed)) MemMapEntry {
   /**
