@@ -28,3 +28,5 @@ target_sources(kernel
 )
 
 set(RUST_KERNEL true PARENT_SCOPE)
+
+add_custom_target(syscalls_map DEPENDS cargo-build_kernel)
