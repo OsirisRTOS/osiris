@@ -42,6 +42,7 @@ jobs:
           REPO=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
           CONTAINER_NAME="ghcr.io/${REPO}/devcontainer:${BRANCH//\//-}"
           echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
+          echo "container_without_tag=ghcr.io/${REPO}/devcontainer" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
@@ -50,7 +51,9 @@ jobs:
           file: .devcontainer/Dockerfile
           push: true
           tags: ${{ steps.set_output.outputs.container_name }}
-          cache-from: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
+          cache-from: |
+            type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
+            type=registry,ref=${{ steps.set_output.outputs.container_without_tag }}:main-cache
           cache-to: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache,mode=max
 
   fmt:
