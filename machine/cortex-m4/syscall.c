@@ -11,6 +11,7 @@ extern void _syscall_hndlr(unsigned int *svc_args);
 
 DECLARE_SYSCALLS()
 
+// Handles all syscall requests.
 void _syscall_hndlr(unsigned int *svc_args)
 {
     unsigned int svc_number;
