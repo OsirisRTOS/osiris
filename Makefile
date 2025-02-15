@@ -37,20 +37,20 @@ define ci_check
 	fi
 endef
 
-check_format: cmake
+check_format: $(BUILD_DIR)
 	$(call ci_check,fmt,-- --check)
 
 format: fmt
-fmt: cmake
+fmt: $(BUILD_DIR)
 	$(call ci_check,fmt,)
 
-verify: cmake
+verify: $(BUILD_DIR)
 	$(call ci_check,kani -Z concrete-playback --concrete-playback=print,,kernel/Cargo.toml)
 
-test: cmake
+test: $(BUILD_DIR)
 	cargo tarpaulin --out Lcov --skip-clean --workspace
 
-watch-tests: cmake
+watch-tests: $(BUILD_DIR)
 	cargo watch --why --exec 'tarpaulin --out Lcov --skip-clean --workspace' --ignore lcov.info
 
 clean:
