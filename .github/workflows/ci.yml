@@ -59,8 +59,7 @@ jobs:
   test:
     name: Build Container
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
+    needs: [container]
     outputs:
       container_name: ${{ steps.set_output.outputs.container_name }}
     steps:
