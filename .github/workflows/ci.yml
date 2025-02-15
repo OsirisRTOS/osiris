@@ -78,3 +78,22 @@ jobs:
             echo "Formatting check failed for one or more manifests"
             exit 1
           fi
+
+  build-stm32l4r5zi:
+    name: Build for the STM32L4R5ZI
+    needs: [container]
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.container.outputs.container_name }}
+      options: --user root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run CMake
+        run: cmake -DBOARD=stm32-nucleo-l4r5zi -DCPU=cortex-m4 -B build
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)

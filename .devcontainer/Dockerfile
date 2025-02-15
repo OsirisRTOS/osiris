@@ -66,26 +66,30 @@ RUN git clone --single-branch --depth 1 -b "develop" https://github.com/stlink-o
 # Fix for Fedora not finding libstlink.so.1
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
 
-# Install Rust system-wide (for all users)
+# Set Rust environment variables
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
 ENV PATH="/usr/local/cargo/bin:${PATH}"
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --no-modify-path && \
-    rustup update stable && \
-    rustup component add rust-src llvm-tools-preview && \
-    cargo install cargo-binutils && \
-    rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
+# Create directories with world-writable permissions before switching to non-root user
+RUN mkdir -p ${RUSTUP_HOME} ${CARGO_HOME} && \
+	chmod 1777 ${RUSTUP_HOME} ${CARGO_HOME}
 
-
-# The runs with a non-root user to not mess up file permissions
+# The container now runs with a non-root user to avoid file permission issues
 ARG USERNAME=vscode
 RUN useradd -m -s /bin/bash ${USERNAME} && \
 	echo "${USERNAME} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 WORKDIR /home/${USERNAME}
 USER ${USERNAME}
+
+RUN umask 0002 && \
+	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+	| sh -s -- -y --no-modify-path && \
+	rustup update stable && \
+	rustup component add rust-src llvm-tools-preview && \
+	cargo install cargo-binutils && \
+	rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
 
 COPY --from=qemu-builder /usr/local/ /usr/local/
 
