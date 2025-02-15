@@ -46,53 +46,31 @@ jobs:
           cache-from: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
           cache-to: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache,mode=max
 
-  manifests:
-    name: Get Cargo manifests
-    runs-on: ubuntu-latest
-    needs: container
-    container: ${{ needs.container.outputs.container_name }}
-    outputs:
-      manifests: ${{ steps.find.outputs.manifests }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      # This step is required to generate some Cargo.toml files
-      - name: Run CMake
-        run: cmake -B build
-
-      - name: Find Cargo.toml files
-        id: find
-        run: |
-          files=$(find . \( -path './build*' -o -path '*dep*' -o -path '*verus*' -o -path './target' \) -prune -false -o -name Cargo.toml)
-          echo "Found the following manifests:"
-          echo "$files"
-          json=$(printf '%s\n' $files | jq -R . | jq -s .)
-          echo "manifests=$json" >> $GITHUB_OUTPUT
-
   fmt:
-    name: rustfmt check for ${{ matrix.manifest }}
-    needs: [container, manifests]
+    name: Check formatting
+    needs: [container]
     runs-on: ubuntu-latest
     container: ${{ needs.container.outputs.container_name }}
-    strategy:
-      matrix:
-        manifest: ${{ fromJson(needs.manifests.outputs.manifests) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
       # This step is required to generate some Cargo.toml files
       - name: Run CMake
         run: cmake -B build
 
-      - name: Check formatting
-        run: cargo fmt --manifest-path="${{ matrix.manifest }}" -- --check
+      - name: Check formatting for all Cargo manifests
+        run: |
+          manifests=$(find . \( -path './build*' -o -path '*dep*' -o -path '*verus*' -o -path './target' \) -prune -false -o -name Cargo.toml)
+          failed=0
+          for manifest in $manifests; do
+            echo "::group::Checking formatting for $manifest"
+            cargo fmt --manifest-path="$manifest" -- --check || failed=1
+            echo "::endgroup::"
+          done
+          if [ $failed -ne 0 ]; then
+            echo "Formatting check failed for one or more manifests"
+            exit 1
+          fi
