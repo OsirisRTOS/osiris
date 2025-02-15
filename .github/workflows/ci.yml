@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.container.outputs.container_name }}
-      options: --user root
+    options: --user root --privileged
     steps:
       - name: Checkout
         uses: actions/checkout@v4

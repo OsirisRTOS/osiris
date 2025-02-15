@@ -15,7 +15,7 @@ $(BUILD_DIR):
 
 define ci_check
 	@manifests=$$(if [ -z "$(3)" ]; then \
-		find . \( -path './build*' -o -path '*dep*' -o -path '*verus*' -o -path './target' \) -prune -false -o -name Cargo.toml; \
+		find . \(-path './Cargo.toml' -o -path './build*' -o -path '*dep*' -o -path '*verus*' -o -path './target' \) -prune -false -o -name Cargo.toml; \
 	else \
 		echo $(3); \
 	fi); \
