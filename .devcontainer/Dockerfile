@@ -2,7 +2,7 @@
 FROM fedora:latest AS qemu-builder
 
 RUN dnf update -y && \
-	dnf install -y \
+	dnf install -y --setopt=keepcache=0 \
 	@development-tools \
 	git \
 	clang \
@@ -38,7 +38,7 @@ RUN git clone --depth 1 https://github.com/thomasw04/qemu.git /tmp/qemu && \
 FROM fedora:latest AS devcontainer
 
 RUN dnf update -y && \
-	dnf install -y \
+	dnf install -y --setopt=keepcache=0 \
 	@development-tools \
 	direnv \
 	arm-none-eabi-gcc-cs \
@@ -51,7 +51,7 @@ RUN dnf update -y && \
 	libusb1-devel \
 	'dnf-command(copr)' && \
 	dnf copr enable -y rleh/arm-none-eabi-gdb && \
-	dnf install -y arm-none-eabi-gdb && \
+	dnf install -y --setopt=keepcache=0 arm-none-eabi-gdb && \
 	dnf clean all && \
 	ln -sf /usr/bin/clang /usr/bin/cc && \
 	ln -sf /usr/bin/clang++ /usr/bin/c++
