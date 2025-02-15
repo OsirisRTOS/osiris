@@ -28,19 +28,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set container name as output
+        id: set_output
+        run: |
+          BRANCH_NAME=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||')
+          # Replaces / with - in branch name
+          CONTAINER_NAME="ghcr.io/${GITHUB_REPOSITORY}/devcontainer:${BRANCH_NAME//\//-}"
+          echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
         with:
           context: .devcontainer
           file: .devcontainer/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/devcontainer:${{ github.ref_name.replace('/', '-') }}
-
-      - name: Set container name as output
-        id: set_output
-        run: |
-          container_name="ghcr.io/${{ github.repository }}/devcontainer:${{ github.ref_name.replace('/', '-') }}"
-          echo "container_name=$container_name" >> $GITHUB_OUTPUT
+          tags: ${{ steps.set_output.outputs.container_name }}
 
   manifests:
     name: Get Cargo manifests
@@ -69,8 +71,9 @@ jobs:
 
   fmt:
     name: rustfmt check for ${{ matrix.manifest }}
-    needs: manifests
+    needs: [container, manifests]
     runs-on: ubuntu-latest
+    container: ${{ needs.container.outputs.container_name }}
     strategy:
       matrix:
         manifest: ${{ fromJson(needs.manifests.outputs.manifests) }}
