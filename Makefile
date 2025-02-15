@@ -5,7 +5,7 @@ endif
 
 BUILD_DIR := build
 SHELL := /bin/bash
-.PHONY: check_format format fmt verify clean hooks
+.PHONY: check-format format fmt verify clean hooks
 
 osiris: $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --parallel $(shell nproc)
@@ -43,7 +43,7 @@ define ci_check
 	fi
 endef
 
-check_format: $(BUILD_DIR)
+check-format: $(BUILD_DIR)
 	$(call ci_check,fmt,-- --check)
 
 format: fmt
@@ -64,3 +64,6 @@ clean:
 
 hooks:
 	ln -sf $(CURDIR)/.devcontainer/pre-commit.sh $(CURDIR)/.git/hooks/pre-commit
+
+check: check-format test verify
+	echo "All checks passed"

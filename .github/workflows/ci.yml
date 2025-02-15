@@ -98,7 +98,7 @@ jobs:
           submodules: recursive
 
       - name: Check formatting for all Cargo manifests
-        run: make check_format
+        run: make check-format
 
   kani:
     name: Kani verification
