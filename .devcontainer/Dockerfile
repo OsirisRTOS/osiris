@@ -49,6 +49,7 @@ RUN dnf update -y && \
 	make \
 	clang \
 	libusb1-devel \
+	openssl-devel \
 	'dnf-command(copr)' && \
 	dnf copr enable -y rleh/arm-none-eabi-gdb && \
 	dnf install -y --setopt=keepcache=0 arm-none-eabi-gdb && \
@@ -69,11 +70,12 @@ ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
 # Set Rust environment variables
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
+ENV KANI_HOME=/usr/local/kani
 ENV PATH="/usr/local/cargo/bin:${PATH}"
 
 # Create directories with world-writable permissions before switching to non-root user
-RUN mkdir -p ${RUSTUP_HOME} ${CARGO_HOME} && \
-	chmod 1777 ${RUSTUP_HOME} ${CARGO_HOME}
+RUN mkdir -p ${RUSTUP_HOME} ${CARGO_HOME} ${KANI_HOME} && \
+	chmod 1777 ${RUSTUP_HOME} ${CARGO_HOME} ${KANI_HOME}
 
 # The container now runs with a non-root user to avoid file permission issues
 ARG USERNAME=vscode
@@ -90,6 +92,11 @@ RUN umask 0002 && \
 	rustup component add rust-src llvm-tools-preview && \
 	cargo install cargo-binutils && \
 	rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
+
+RUN cargo install --locked kani-verifier && \
+	cargo kani setup
+RUN cargo install --locked cargo-tarpaulin
+RUN cargo install --locked cargo-watch
 
 COPY --from=qemu-builder /usr/local/ /usr/local/
 

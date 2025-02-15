@@ -3,7 +3,8 @@
 	"name": "Osiris Dev Container",
 	"build": {
 		"dockerfile": "Dockerfile",
-		"context": ".."
+		"context": "..",
+		"cacheFrom": "ghcr.io/osirisrtos/osiris/devcontainer:main-cache"
 	},
 	"remoteUser": "vscode",
 	"privileged": false,
