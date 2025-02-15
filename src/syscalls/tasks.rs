@@ -7,7 +7,7 @@ use macros::syscall_handler;
 
 /// Syscall handler: reschedule.
 /// This syscall is used to request a reschedule.
-/// 
+///
 /// No arguments are passed to this syscall.
 #[no_mangle]
 #[syscall_handler(args = 0, num = 1)]
