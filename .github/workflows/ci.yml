@@ -116,8 +116,8 @@ jobs:
       - name: Run Kani
         run: make verify
 
-  build-stm32l4r5zi:
-    name: Build for the STM32L4R5ZI
+  build-stm32-nucleo-l4r5zi:
+    name: Build for the STM32 Nucleo L4R5ZI
     needs: [container]
     runs-on: ubuntu-latest
     container:
