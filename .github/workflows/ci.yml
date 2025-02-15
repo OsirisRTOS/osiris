@@ -43,6 +43,8 @@ jobs:
           file: .devcontainer/Dockerfile
           push: true
           tags: ${{ steps.set_output.outputs.container_name }}
+          cache-from: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
+          cache-to: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache,mode=max
 
   manifests:
     name: Get Cargo manifests
