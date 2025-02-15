@@ -92,9 +92,9 @@ pub struct Task {
 
 impl Task {
     /// Create a new task.
-    /// 
+    ///
     /// `memory_size` - The size of the memory that the task requires.
-    /// 
+    ///
     /// Returns a new task if the task was created successfully, or an error if the task could not be created.
     pub fn new(memory_size: usize) -> Result<Self, KernelError> {
         let memory = TaskMemory::new(memory_size)?;
@@ -108,9 +108,9 @@ impl Task {
     }
 
     /// Create a new thread context for the task.
-    /// 
+    ///
     /// `desc` - The descriptor for the thread.
-    /// 
+    ///
     /// Returns the thread context if the thread was created successfully, or an error if the thread could not be created. TODO: Check if stack is sufficient
     pub fn create_thread_ctx(
         &self,
@@ -123,9 +123,9 @@ impl Task {
     }
 
     /// Register a thread with the task.
-    /// 
+    ///
     /// `thread_id` - The id of the thread to register.
-    /// 
+    ///
     /// Returns `Ok(())` if the thread was registered successfully, or an error if the thread could not be registered. TODO: Check if the thread is using the same memory as the task.
     pub fn register_thread(&mut self, thread_id: ThreadId) -> Result<(), KernelError> {
         self.threads.push(thread_id)
@@ -142,9 +142,9 @@ pub struct TaskMemory {
 
 impl TaskMemory {
     /// Create a new task memory.
-    /// 
+    ///
     /// `size` - The size of the memory.
-    /// 
+    ///
     /// Returns a new task memory if the memory was created successfully, or an error if the memory could not be created.
     pub fn new(size: usize) -> Result<Self, KernelError> {
         let begin = mem::malloc(size, align_of::<u128>()).ok_or(KernelError::OutOfMemory)?;
@@ -189,10 +189,10 @@ pub struct Thread {
 
 impl Thread {
     /// Create a new thread.
-    /// 
+    ///
     /// `ctx` - The context of the thread.
     /// `timing` - The timing constraints of the thread.
-    /// 
+    ///
     /// Returns a new thread.
     pub fn new(ctx: common::sched::ThreadContext, timing: Timing) -> Self {
         Self {

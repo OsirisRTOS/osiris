@@ -12,7 +12,7 @@ pub fn service(attr: TokenStream, item: TokenStream) -> proc_macro::TokenStream 
     let item = syn::parse_macro_input!(item as syn::ItemStruct);
 
     let service_name = item.ident.clone();
-    
+
     let mut mem_size: usize = 0;
     let mut stack_size: usize = 0;
 
@@ -31,7 +31,10 @@ pub fn service(attr: TokenStream, item: TokenStream) -> proc_macro::TokenStream 
     parse_macro_input!(attr with parser);
 
     let mem_size_ident = format_ident!("TASK_{}_MEM_SIZE", service_name.to_string().to_uppercase());
-    let stack_size_ident = format_ident!("TASK_{}_STACK_SIZE", service_name.to_string().to_uppercase());
+    let stack_size_ident = format_ident!(
+        "TASK_{}_STACK_SIZE",
+        service_name.to_string().to_uppercase()
+    );
 
     let expanded = quote::quote! {
         const #mem_size_ident: usize = #mem_size;
@@ -50,7 +53,6 @@ pub fn service(attr: TokenStream, item: TokenStream) -> proc_macro::TokenStream 
 
     expanded.into()
 }
-
 
 #[proc_macro_attribute]
 pub fn syscall_handler(attr: TokenStream, item: TokenStream) -> proc_macro::TokenStream {

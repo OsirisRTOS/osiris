@@ -33,9 +33,9 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
     SpinLocked::new(alloc::BestFitAllocator::new());
 
 /// Initialize the memory allocator.
-/// 
+///
 /// `boot_info` - The boot information. This contains the memory map.
-/// 
+///
 /// Returns an error if the memory allocator could not be initialized.
 pub fn init_memory(boot_info: &BootInfo) -> Result<(), utils::KernelError> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
@@ -54,10 +54,10 @@ pub fn init_memory(boot_info: &BootInfo) -> Result<(), utils::KernelError> {
 }
 
 /// Allocate a memory block. Normally Box<T> or SizedPool<T> should be used instead of this function.
-/// 
+///
 /// `size` - The size of the memory block to allocate.
 /// `align` - The alignment of the memory block.
-/// 
+///
 /// Returns a pointer to the allocated memory block if the allocation was successful, or `None` if the allocation failed.
 pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
@@ -65,12 +65,12 @@ pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
 }
 
 /// Free a memory block.
-/// 
+///
 /// `ptr` - The pointer to the memory block.
 /// `size` - The size of the memory block.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The caller must ensure that the pointer is from a previous call to `malloc` and that the size is still the same.
 pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
@@ -78,9 +78,9 @@ pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
 }
 
 /// Aligns a size to be a multiple of the u128 alignment.
-/// 
+///
 /// `size` - The size to align.
-/// 
+///
 /// Returns the aligned size.
 pub fn align_up(size: usize) -> usize {
     let align = align_of::<u128>();

@@ -8,7 +8,6 @@ use macros::service;
 pub struct Init {}
 
 impl Init {
-
     /// The entry point of the init service. TODO: Currently, this is a dummy implementation.
     pub extern "C" fn main(argc: usize, argv: *const *const u8) {
         let args = args_from_raw!(argc, argv);
@@ -28,7 +27,6 @@ impl Init {
 pub struct Dummy {}
 
 impl Dummy {
-
     /// The entry point of the dummy service. TODO: Currently, this is a dummy implementation.
     pub extern "C" fn main(argc: usize, argv: *const *const u8) {
         let args = args_from_raw!(argc, argv);
@@ -48,7 +46,6 @@ impl Dummy {
 pub struct Dummy2 {}
 
 impl Dummy2 {
-
     /// The entry point of the second dummy service. TODO: Currently, this is a dummy implementation.
     pub extern "C" fn main(argc: usize, argv: *const *const u8) {
         let args = args_from_raw!(argc, argv);

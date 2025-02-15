@@ -21,9 +21,9 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     }
 
     /// Push a value onto the back of the queue.
-    /// 
+    ///
     /// `value` - The value to push onto the back of the queue.
-    /// 
+    ///
     /// Returns `Ok(())` if the value was pushed onto the back of the queue, or an error if the queue is full.
     pub fn push_back(&mut self, value: T) -> Result<(), KernelError> {
         if self.len == N {
@@ -38,7 +38,7 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     }
 
     /// Pop a value from the front of the queue.
-    /// 
+    ///
     /// Returns the value at the front of the queue, or `None` if the queue is empty.
     pub fn pop_front(&mut self) -> Option<T> {
         if self.len == 0 {
@@ -53,10 +53,10 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     }
 
     /// Insert a value at the given index in the queue.
-    /// 
+    ///
     /// `index` - The index to insert the value at.
     /// `value` - The value to insert.
-    /// 
+    ///
     /// Returns `Ok(())` if the value was inserted at the given index, or an error if the index is out of bounds.
     pub fn insert(&mut self, index: usize, value: T) -> Result<(), KernelError> {
         self.data.insert((self.front + index) % N, value)

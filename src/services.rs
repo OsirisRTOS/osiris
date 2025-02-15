@@ -1,13 +1,14 @@
 //! This module initializes and manages the microkernel services.
 
-use hal::common::sched::ThreadDesc;
 use crate::{
     sched::{self, task::Timing},
-    uspace, utils::KernelError,
+    uspace,
+    utils::KernelError,
 };
+use hal::common::sched::ThreadDesc;
 
 /// Initialize the microkernel services.
-/// 
+///
 /// This function creates the init task and other services.
 pub fn init_services() -> Result<(), KernelError> {
     // Create the init task.

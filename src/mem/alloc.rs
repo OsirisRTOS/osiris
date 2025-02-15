@@ -39,7 +39,7 @@ pub struct BestFitAllocator {
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
     /// Creates a new BestFitAllocator.
-    /// 
+    ///
     /// Returns the new BestFitAllocator.
     pub const fn new() -> Self {
         Self { head: None }
@@ -48,9 +48,9 @@ impl BestFitAllocator {
     /// Adds a range of memory to the allocator.
     ///
     /// `range` - The range of memory to add.
-    /// 
+    ///
     /// Returns `Ok(())` if the range was added successfully, otherwise an error.
-    /// 
+    ///
     /// # Safety
     ///
     /// The range must be valid, 128bit aligned and must not overlapping with any other current or future range.
@@ -81,7 +81,7 @@ impl BestFitAllocator {
     }
 
     /// Calculates the padding required to align the block. Note: We only align to 128bit.
-    /// 
+    ///
     /// Returns the padding in bytes.
     fn align_up() -> usize {
         let meta = size_of::<BestFitMeta>();
@@ -91,9 +91,9 @@ impl BestFitAllocator {
     }
 
     /// Selects the best fit block for the given size.
-    /// 
+    ///
     /// `size` - The size of the block.
-    /// 
+    ///
     /// Returns the control pointer to the block and the control pointer to the previous block.
     fn select_block(
         &mut self,
@@ -127,9 +127,9 @@ impl BestFitAllocator {
     /// Calculates the user pointer from the control pointer.
     ///
     /// `ptr` - The control pointer.
-    /// 
+    ///
     /// Returns the user pointer.
-    /// 
+    ///
     /// # Safety
     ///
     /// The ptr must be a valid control pointer. Note: After the allocator which allocated the pointer is dropped, the control pointer is always considered invalid.
@@ -140,9 +140,9 @@ impl BestFitAllocator {
     /// Calculates the control pointer from the user pointer.
     ///
     /// `ptr` - The user pointer.
-    /// 
+    ///
     /// Returns the control pointer.
-    /// 
+    ///
     /// # Safety
     ///
     /// The ptr must be a valid user pointer. Note: After the allocator which allocated the pointer is dropped, the user pointer is always considered invalid.
@@ -154,10 +154,10 @@ impl BestFitAllocator {
 /// Implementation of the Allocator trait for BestFitAllocator.
 impl Allocator for BestFitAllocator {
     /// Allocates a block of memory with the given size and alignment. Note: This function will always yield an invalid align for align > 128bit.
-    /// 
+    ///
     /// `size` - The size of the block.
     /// `align` - The alignment of the block.
-    /// 
+    ///
     /// Returns the user pointer to the block if successful, otherwise an error.
     fn malloc(&mut self, size: usize, align: usize) -> Result<NonNull<u8>, utils::KernelError> {
         // Check if the alignment is valid.
@@ -221,7 +221,7 @@ impl Allocator for BestFitAllocator {
     }
 
     /// Frees a block of memory.
-    /// 
+    ///
     /// `ptr` - The pointer to the block.
     /// `size` - The size of the block. (This is used to check if the size of the block is correct.)
     unsafe fn free(&mut self, ptr: NonNull<u8>, size: usize) {

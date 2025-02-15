@@ -34,7 +34,6 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-
     /// Create a new scheduler instance.
     pub const fn new() -> Self {
         Self {
@@ -49,11 +48,11 @@ impl Scheduler {
     }
 
     /// Create a new task in the system.
-    /// 
+    ///
     /// `desc` - The task descriptor.
     /// `main_desc` - The main thread descriptor.
     /// `main_timing` - The timing information for the main thread.
-    /// 
+    ///
     /// Returns the task ID if the task was created successfully, or an error if the task could not be created.
     pub fn create_task(
         &mut self,
@@ -85,7 +84,7 @@ impl Scheduler {
     }
 
     /// Updates the current thread context with the given context.
-    /// 
+    ///
     /// `ctx` - The new context to update the current thread with.
     fn update_current_ctx(&mut self, ctx: CtxPtr) {
         if let Some(id) = self.current {
@@ -98,7 +97,7 @@ impl Scheduler {
     /// Selects a new thread to run, sets the previous thread as ready, and sets the new thread as runs.
     /// The old thread will be added to the queue to be fired in the next period.
     /// The new thread will be selected based on the priority queue.
-    /// 
+    ///
     /// Returns the context of the new thread to run, or `None` if no thread is available.
     fn select_new_thread(&mut self) -> Option<CtxPtr> {
         if let Some(id) = self.queue.pop().map(|(_, id)| id) {
@@ -111,7 +110,8 @@ impl Scheduler {
                     // Check if the period is already passed.
                     if thread.timing.period > (self.time + delay) {
                         // Add the callback to the queue. If it fails, we can't do much.
-                        let _ = self.callbacks
+                        let _ = self
+                            .callbacks
                             .push_back((id, thread.timing.period - (self.time + delay)));
                     } else {
                         // If the period is already passed, add it to the queue immediately.
@@ -136,7 +136,7 @@ impl Scheduler {
     }
 
     /// Fires the thread if necessary.
-    /// 
+    ///
     /// Returns `true` if a thread was fired, otherwise `false`.
     fn fire_thread_if_necessary(&mut self) -> bool {
         let mut found = false;

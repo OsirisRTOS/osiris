@@ -44,7 +44,7 @@ pub struct BootInfo {
 }
 
 /// The kernel initialization function.
-/// 
+///
 /// `boot_info` - The boot information.
 #[no_mangle]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
