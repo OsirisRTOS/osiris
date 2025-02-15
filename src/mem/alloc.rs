@@ -509,7 +509,9 @@ mod verification {
 
         let size: usize = kani::any();
         kani::assume(size < usize::MAX - size_of::<BestFitMeta>() - BestFitAllocator::align_up());
-        let larger_size: usize = kani::any_where(|&x| x > size + size_of::<BestFitMeta>() + BestFitAllocator::align_up());
+        let larger_size: usize = kani::any_where(|&x| {
+            x > size + size_of::<BestFitMeta>() + BestFitAllocator::align_up()
+        });
 
         let range = alloc_range(larger_size);
         unsafe {
