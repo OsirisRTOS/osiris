@@ -87,6 +87,37 @@ jobs:
             exit 1
           fi
 
+  kani:
+    name: Kani verification
+    needs: [container]
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.container.outputs.container_name }}
+      options: --user root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # This step is required to generate some Cargo.toml files
+      - name: Run CMake
+        run: cmake -B build
+
+      - name: Run Kani
+        run: |
+          manifests=$(find . \( -path './build*' -o -path '*dep*' -o -path '*verus*' -o -path './target' \) -prune -false -o -name Cargo.toml)
+          failed=0
+          for manifest in $manifests; do
+            echo "::group::Running kani for $manifest"
+            cargo kani --manifest-path="$manifest" || failed=1
+            echo "::endgroup::"
+          done
+          if [ $failed -ne 0 ]; then
+            echo "Verification check failed for one or more manifests"
+            exit 1
+          fi
+
   build-stm32l4r5zi:
     name: Build for the STM32L4R5ZI
     needs: [container]
