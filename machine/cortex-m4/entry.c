@@ -39,10 +39,20 @@ void call_destructors(void)
 void _main(void)
 {
     // zero bss section
-    memset(&__bss_start, 0, &__bss_end - &__bss_start);
+    size_t bss_len = (uintptr_t)&__bss_end - (uintptr_t)&__bss_start;
+
+    if (bss_len > 0)
+    {
+        memset(&__bss_start, 0, bss_len);
+    }
 
     // copy data section
-    memcpy(&__data_start, &__data, &__data_end - &__data_start);
+    size_t data_len = (uintptr_t)&__data_end - (uintptr_t)&__data_start;
+
+    if (data_len > 0)
+    {
+        memcpy(&__data_start, &__data, data_len);
+    }
 
     call_constructors();
 

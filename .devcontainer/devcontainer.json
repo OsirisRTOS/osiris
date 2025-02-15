@@ -1,0 +1,33 @@
+// For format details, see https://aka.ms/devcontainer.json.
+{
+	"name": "Osiris Dev Container",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": ".."
+	},
+	"remoteUser": "vscode",
+	"privileged": false,
+	"capAdd": [
+		// Permissions for accessing host USB devices
+		"SYS_RAWIO", "CAP_MKNOD"
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"rust-lang.rust-analyzer",
+				"vadimcn.vscode-lldb",
+				"ms-vscode.cmake-tools",
+				"llvm-vs-code-extensions.vscode-clangd"
+			]
+		}
+	},
+	"runArgs": [
+		// Mount USB devices under Linux
+		"--device",
+		"/dev/bus/usb:/dev/bus/usb"
+	],
+	"mounts": [
+		// Make ssh keys available
+		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+	]
+}

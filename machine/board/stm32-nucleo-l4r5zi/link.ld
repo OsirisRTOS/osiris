@@ -6,7 +6,10 @@ MEMORY
   RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 640K
 }
 
-__stack_top = ORIGIN(RAM) + LENGTH(RAM);
+__stack_size = 0x1000;
+
+__ram_start = ORIGIN(RAM);
+__ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
 SECTIONS
 {
@@ -17,6 +20,15 @@ SECTIONS
         KEEP(*(.ivt.core));
         KEEP(*(.ivt.ext));
     } > FLASH
+
+    .stack (NOLOAD) :
+    {
+        . = ALIGN(4);
+        __stack_start = .;
+        . = . + __stack_size;
+        . = ALIGN(4);
+        __stack_top = .;
+    } > RAM
 
     .text :
     {
@@ -72,6 +84,7 @@ SECTIONS
 
     .bss (NOLOAD):
     {
+        . = ALIGN(4);
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)
@@ -85,93 +98,99 @@ SECTIONS
     /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
 }
 
-PROVIDE(wwdg_hndlr = default_hndlr);
-PROVIDE(pvd_pvm_hndlr = default_hndlr);
-PROVIDE(tamp_stamp_hndlr = default_hndlr);
-PROVIDE(rtc_wkup_hndlr = default_hndlr);
-PROVIDE(flash_hndlr = default_hndlr);
-PROVIDE(rcc_hndlr = default_hndlr);
-PROVIDE(exti0_hndlr = default_hndlr);
-PROVIDE(exti1_hndlr = default_hndlr);
-PROVIDE(exti2_hndlr = default_hndlr);
-PROVIDE(exti3_hndlr = default_hndlr);
-PROVIDE(exti4_hndlr = default_hndlr);
-PROVIDE(dma1_ch1_hndlr = default_hndlr);
-PROVIDE(dma1_ch2_hndlr = default_hndlr);
-PROVIDE(dma1_ch3_hndlr = default_hndlr);
-PROVIDE(dma1_ch4_hndlr = default_hndlr);
-PROVIDE(dma1_ch5_hndlr = default_hndlr);
-PROVIDE(dma1_ch6_hndlr = default_hndlr);
-PROVIDE(dma1_ch7_hndlr = default_hndlr);
-PROVIDE(adc1_hndlr = default_hndlr);
-PROVIDE(can1_tx_hndlr = default_hndlr);
-PROVIDE(can1_rx0_hndlr = default_hndlr);
-PROVIDE(can1_rx1_hndlr = default_hndlr);
-PROVIDE(can1_sce_hndlr = default_hndlr);
-PROVIDE(exti9_5_hndlr = default_hndlr);
-PROVIDE(tim1_brk_tim15_hndlr = default_hndlr);
-PROVIDE(tim1_up_tim16_hndlr = default_hndlr);
-PROVIDE(tim1_trg_com_tim17_hndlr = default_hndlr);
-PROVIDE(tim1_cc_hndlr = default_hndlr);
-PROVIDE(tim2_hndlr = default_hndlr);
-PROVIDE(tim3_hndlr = default_hndlr);
-PROVIDE(tim4_hndlr = default_hndlr);
-PROVIDE(i2c1_ev_hndlr = default_hndlr);
-PROVIDE(i2c1_er_hndlr = default_hndlr);
-PROVIDE(i2c2_ev_hndlr = default_hndlr);
-PROVIDE(i2c2_er_hndlr = default_hndlr);
-PROVIDE(spi1_hndlr = default_hndlr);
-PROVIDE(spi2_hndlr = default_hndlr);
-PROVIDE(usart1_hndlr = default_hndlr);
-PROVIDE(usart2_hndlr = default_hndlr);
-PROVIDE(usart3_hndlr = default_hndlr);
-PROVIDE(exti15_10_hndlr = default_hndlr);
-PROVIDE(rtc_alarm_hndlr = default_hndlr);
-PROVIDE(dfsdm1_flt3_hndlr = default_hndlr);
-PROVIDE(tim8_brk_hndlr = default_hndlr);
-PROVIDE(tim8_up_hndlr = default_hndlr);
-PROVIDE(tim8_trg_com_hndlr = default_hndlr);
-PROVIDE(tim8_cc_hndlr = default_hndlr);
-PROVIDE(fmc_hndlr = default_hndlr);
-PROVIDE(sdmmc1_hndlr = default_hndlr);
-PROVIDE(tim5_hndlr = default_hndlr);
-PROVIDE(spi3_hndlr = default_hndlr);
-PROVIDE(uart4_hndlr = default_hndlr);
-PROVIDE(uart5_hndlr = default_hndlr);
-PROVIDE(tim6_dac_under_hndlr = default_hndlr);
-PROVIDE(tim7_hndlr = default_hndlr);
-PROVIDE(dma2_ch1_hndlr = default_hndlr);
-PROVIDE(dma2_ch2_hndlr = default_hndlr);
-PROVIDE(dma2_ch3_hndlr = default_hndlr);
-PROVIDE(dma2_ch4_hndlr = default_hndlr);
-PROVIDE(dma2_ch5_hndlr = default_hndlr);
-PROVIDE(dfsdm1_flt0_hndlr = default_hndlr);
-PROVIDE(dfsdm1_flt1_hndlr = default_hndlr);
-PROVIDE(dfsdm1_flt2_hndlr = default_hndlr);
-PROVIDE(comp_hndlr = default_hndlr);
-PROVIDE(lptim1_hndlr = default_hndlr);
-PROVIDE(lptim2_hndlr = default_hndlr);
-PROVIDE(otg_fs_hndlr = default_hndlr);
-PROVIDE(dma2_ch6_hndlr = default_hndlr);
-PROVIDE(dma2_ch7_hndlr = default_hndlr);
-PROVIDE(lpuart1_hndlr = default_hndlr);
-PROVIDE(octospi1_hndlr = default_hndlr);
-PROVIDE(i2c3_ev_hndlr = default_hndlr);
-PROVIDE(i2c3_er_hndlr = default_hndlr);
-PROVIDE(sai1_hndlr = default_hndlr);
-PROVIDE(sai2_hndlr = default_hndlr);
-PROVIDE(octospi2_hndlr = default_hndlr);
-PROVIDE(tsc_hndlr = default_hndlr);
-PROVIDE(dsihot_hndlr = default_hndlr);
-PROVIDE(aes_hndlr = default_hndlr);
-PROVIDE(rng_hndlr = default_hndlr);
-PROVIDE(fpu_hndlr = default_hndlr);
-PROVIDE(hash_crs_hndlr = default_hndlr);
-PROVIDE(i2c4_ev_hndlr = default_hndlr);
-PROVIDE(i2c4_er_hndlr = default_hndlr);
-PROVIDE(dcmi_hndlr = default_hndlr);
-PROVIDE(dma2d_hndlr = default_hndlr);
-PROVIDE(lcd_tft_hndlr = default_hndlr);
-PROVIDE(lcd_tft_er_hndlr = default_hndlr);
-PROVIDE(gfxmmu_hndlr = default_hndlr);
-PROVIDE(dmamux1_ovr_hndlr = default_hndlr);
+PROVIDE(irq_hndlr = default_hndlr);
+
+PROVIDE(pend_sv_hndlr = pend_sv);
+PROVIDE(sys_tick_hndlr = systick);
+PROVIDE(svc_hndlr = syscall_enter);
+
+PROVIDE(wwdg_hndlr = irq_enter_no_switch_fp);
+PROVIDE(pvd_pvm_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tamp_stamp_hndlr = irq_enter_no_switch_fp);
+PROVIDE(rtc_wkup_hndlr = irq_enter_no_switch_fp);
+PROVIDE(flash_hndlr = irq_enter_no_switch_fp);
+PROVIDE(rcc_hndlr = irq_enter_no_switch_fp);
+PROVIDE(exti0_hndlr = irq_enter_no_switch_fp);
+PROVIDE(exti1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(exti2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(exti3_hndlr = irq_enter_no_switch_fp);
+PROVIDE(exti4_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma1_ch1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma1_ch2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma1_ch3_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma1_ch4_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma1_ch5_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma1_ch6_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma1_ch7_hndlr = irq_enter_no_switch_fp);
+PROVIDE(adc1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(can1_tx_hndlr = irq_enter_no_switch_fp);
+PROVIDE(can1_rx0_hndlr = irq_enter_no_switch_fp);
+PROVIDE(can1_rx1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(can1_sce_hndlr = irq_enter_no_switch_fp);
+PROVIDE(exti9_5_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim1_brk_tim15_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim1_up_tim16_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim1_trg_com_tim17_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim1_cc_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim3_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim4_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c1_ev_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c1_er_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c2_ev_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c2_er_hndlr = irq_enter_no_switch_fp);
+PROVIDE(spi1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(spi2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(usart1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(usart2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(usart3_hndlr = irq_enter_no_switch_fp);
+PROVIDE(exti15_10_hndlr = irq_enter_no_switch_fp);
+PROVIDE(rtc_alarm_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dfsdm1_flt3_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim8_brk_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim8_up_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim8_trg_com_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim8_cc_hndlr = irq_enter_no_switch_fp);
+PROVIDE(fmc_hndlr = irq_enter_no_switch_fp);
+PROVIDE(sdmmc1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim5_hndlr = irq_enter_no_switch_fp);
+PROVIDE(spi3_hndlr = irq_enter_no_switch_fp);
+PROVIDE(uart4_hndlr = irq_enter_no_switch_fp);
+PROVIDE(uart5_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim6_dac_under_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tim7_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2_ch1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2_ch2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2_ch3_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2_ch4_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2_ch5_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dfsdm1_flt0_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dfsdm1_flt1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dfsdm1_flt2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(comp_hndlr = irq_enter_no_switch_fp);
+PROVIDE(lptim1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(lptim2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(otg_fs_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2_ch6_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2_ch7_hndlr = irq_enter_no_switch_fp);
+PROVIDE(lpuart1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(octospi1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c3_ev_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c3_er_hndlr = irq_enter_no_switch_fp);
+PROVIDE(sai1_hndlr = irq_enter_no_switch_fp);
+PROVIDE(sai2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(octospi2_hndlr = irq_enter_no_switch_fp);
+PROVIDE(tsc_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dsihot_hndlr = irq_enter_no_switch_fp);
+PROVIDE(aes_hndlr = irq_enter_no_switch_fp);
+PROVIDE(rng_hndlr = irq_enter_no_switch_fp);
+PROVIDE(fpu_hndlr = irq_enter_no_switch_fp);
+PROVIDE(hash_crs_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c4_ev_hndlr = irq_enter_no_switch_fp);
+PROVIDE(i2c4_er_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dcmi_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dma2d_hndlr = irq_enter_no_switch_fp);
+PROVIDE(lcd_tft_hndlr = irq_enter_no_switch_fp);
+PROVIDE(lcd_tft_er_hndlr = irq_enter_no_switch_fp);
+PROVIDE(gfxmmu_hndlr = irq_enter_no_switch_fp);
+PROVIDE(dmamux1_ovr_hndlr = irq_enter_no_switch_fp);
