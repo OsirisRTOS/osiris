@@ -34,12 +34,12 @@ jobs:
           context: .devcontainer
           file: .devcontainer/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/devcontainer:${{ github.ref_name | replace('/', '-') }}
+          tags: ghcr.io/${{ github.repository }}/devcontainer:${{ github.ref_name.replace('/', '-') }}
 
       - name: Set container name as output
         id: set_output
         run: |
-          container_name="ghcr.io/${{ github.repository }}/devcontainer:${{ github.ref_name | replace('/', '-') }}"
+          container_name="ghcr.io/${{ github.repository }}/devcontainer:${{ github.ref_name.replace('/', '-') }}"
           echo "container_name=$container_name" >> $GITHUB_OUTPUT
 
   manifests:
