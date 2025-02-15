@@ -52,7 +52,9 @@ jobs:
     name: Check formatting
     needs: [container]
     runs-on: ubuntu-latest
-    container: ${{ needs.container.outputs.container_name }}
+    container:
+      image: ${{ needs.container.outputs.container_name }}
+      options: --user vscode
     steps:
       - name: Checkout
         uses: actions/checkout@v4

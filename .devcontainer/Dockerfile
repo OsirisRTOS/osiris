@@ -66,6 +66,19 @@ RUN git clone --single-branch --depth 1 -b "develop" https://github.com/stlink-o
 # Fix for Fedora not finding libstlink.so.1
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
 
+# Install Rust system-wide (for all users)
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/cargo/bin:${PATH}"
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path && \
+    rustup update stable && \
+    rustup component add rust-src llvm-tools-preview && \
+    cargo install cargo-binutils && \
+    rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
+
+
 # The runs with a non-root user to not mess up file permissions
 ARG USERNAME=vscode
 RUN useradd -m -s /bin/bash ${USERNAME} && \
@@ -73,14 +86,6 @@ RUN useradd -m -s /bin/bash ${USERNAME} && \
 
 WORKDIR /home/${USERNAME}
 USER ${USERNAME}
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-	. $HOME/.cargo/env && \
-	rustup component add rust-src llvm-tools-preview && \
-	cargo install cargo-binutils && \
-	rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
-
 
 COPY --from=qemu-builder /usr/local/ /usr/local/
 
