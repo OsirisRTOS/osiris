@@ -70,32 +70,32 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/kernel/Cargo.toml" OR EXISTS "${CMAKE_SOURCE_DIR}
 endif()
 
 add_subdirectory(hal)
-add_subdirectory(kernel)
 
 # Now add our startup code and the nlib.
 # This will also set the compiler and linker flags.
 add_subdirectory(machine/${CPU})
 
+add_subdirectory(kernel)
+
 # Add the nlib and the board-specific code.
 add_subdirectory(nlib)
 add_subdirectory(machine/board/${BOARD})
 
-# Ensure that the syscalls map gets generated before our startup code is linked.
-add_dependencies(startup_${BOARD} kernel)
-
 add_executable(${PROJECT_NAME} 
     bootstrap.c
 )
+
+add_dependencies(startup_${CPU} syscalls_map)
 
 if (RUST_KERNEL)
     message(STATUS "Linking Rust kernel.")
     # A rust kernel does only support rust HALs and links it themselves.
     target_link_libraries(${PROJECT_NAME}
         PRIVATE
+            kernel
             $<TARGET_OBJECTS:startup_${CPU}>
             $<TARGET_OBJECTS:startup_${BOARD}>
             nlib
-            kernel
     )
 else()
     message(STATUS "Linking C kernel.")
