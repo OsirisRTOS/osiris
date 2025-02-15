@@ -31,9 +31,9 @@ jobs:
       - name: Set container name as output
         id: set_output
         run: |
-          BRANCH_NAME=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||')
-          # Replaces / with - in branch name
-          CONTAINER_NAME="ghcr.io/${GITHUB_REPOSITORY}/devcontainer:${BRANCH_NAME//\//-}"
+          BRANCH=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||' | tr '[:upper:]' '[:lower:]')
+          REPO=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          CONTAINER_NAME="ghcr.io/${REPO}/devcontainer:${BRANCH//\//-}"
           echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
