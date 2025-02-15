@@ -59,8 +59,8 @@ RUN dnf update -y && \
 RUN git clone --single-branch --depth 1 -b "develop" https://github.com/stlink-org/stlink.git /tmp/stlink && \
 	cd /tmp/stlink && \
 	make -j release && \
-	sudo make install && \
-	sudo ldconfig && \
+	make install && \
+	ldconfig && \
 	rm -rf /tmp/stlink
 
 # Fix for Fedora not finding libstlink.so.1
