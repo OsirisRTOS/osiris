@@ -481,3 +481,44 @@ mod tests {
 }
 
 // END TESTING --------------------------------------------------------------------------------------------------------
+
+// VERIFICATION -------------------------------------------------------------------------------------------------------
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use core::alloc::Layout;
+
+    fn verify_block(user_ptr: NonNull<u8>, size: usize, next: Option<NonNull<u8>>) {
+        let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
+        let meta = unsafe { control_ptr.cast::<BestFitMeta>().as_ref() };
+
+        assert_eq!(meta.size, size);
+        assert_eq!(meta.next, next);
+    }
+
+    fn alloc_range(length: usize) -> Range<usize> {
+        let alloc_range = std::alloc::Layout::from_size_align(length, 1).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+        ptr as usize..ptr as usize + length
+    }
+
+    #[kani::proof]
+    #[kani::unwind(2)]
+    fn allocate_one() {
+        let mut allocator = BestFitAllocator::new();
+
+        let size: usize = kani::any();
+        kani::assume(size < usize::MAX - size_of::<BestFitMeta>() - BestFitAllocator::align_up());
+        let larger_size: usize = kani::any_where(|&x| x > size + size_of::<BestFitMeta>() + BestFitAllocator::align_up());
+
+        let range = alloc_range(larger_size);
+        unsafe {
+            allocator.add_range(range).unwrap();
+        }
+
+        let ptr = allocator.malloc(size, 1).unwrap();
+
+        verify_block(ptr, size, None);
+    }
+}
+// END VERIFICATION ---------------------------------------------------------------------------------------------------
