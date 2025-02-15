@@ -11,7 +11,13 @@ osiris: $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --parallel $(shell nproc)
 
 $(BUILD_DIR):
+	@if [ -n "$$CI" ]; then \
+		echo "::group::Generating build dir $(BUILD_DIR)"; \
+	fi
 	cmake -DBOARD=stm32-nucleo-l4r5zi -DCPU=cortex-m4 -B $(BUILD_DIR)
+	@if [ -n "$$CI" ]; then \
+		echo "::endgroup::"; \
+	fi
 
 define ci_check
 	@manifests=$$(if [ -z "$(3)" ]; then \
