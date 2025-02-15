@@ -80,6 +80,9 @@ add_subdirectory(machine/${CPU})
 add_subdirectory(nlib)
 add_subdirectory(machine/board/${BOARD})
 
+# Ensure that the syscalls map gets generated before our startup code is linked.
+add_dependencies(startup_${BOARD} kernel)
+
 add_executable(${PROJECT_NAME} 
     bootstrap.c
 )
