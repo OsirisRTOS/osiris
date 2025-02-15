@@ -63,6 +63,9 @@ jobs:
     container:
       image: ${{ needs.container.outputs.container_name }}
       options: --user root --privileged
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
