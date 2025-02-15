@@ -1,0 +1,104 @@
+on:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+name: Osiris CI
+
+env:
+  CARGO_TERM_COLOR: always
+  TERM: xterm-256color
+
+
+jobs:
+  container:
+    name: Build Container
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    outputs:
+      container_name: ${{ steps.set_output.outputs.container_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set container name as output
+        id: set_output
+        run: |
+          BRANCH=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||' | tr '[:upper:]' '[:lower:]')
+          REPO=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          CONTAINER_NAME="ghcr.io/${REPO}/devcontainer:${BRANCH//\//-}"
+          echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .devcontainer
+          file: .devcontainer/Dockerfile
+          push: true
+          tags: ${{ steps.set_output.outputs.container_name }}
+          cache-from: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
+          cache-to: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache,mode=max
+
+  fmt:
+    name: Check formatting
+    needs: [container]
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.container.outputs.container_name }}
+      options: --user root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # This step is required to generate some Cargo.toml files
+      - name: Run CMake
+        run: cmake -B build
+
+      - name: Check formatting for all Cargo manifests
+        run: |
+          manifests=$(find . \( -path './build*' -o -path '*dep*' -o -path '*verus*' -o -path './target' \) -prune -false -o -name Cargo.toml)
+          failed=0
+          for manifest in $manifests; do
+            echo "::group::Checking formatting for $manifest"
+            cargo fmt --manifest-path="$manifest" -- --check || failed=1
+            echo "::endgroup::"
+          done
+          if [ $failed -ne 0 ]; then
+            echo "Formatting check failed for one or more manifests"
+            exit 1
+          fi
+
+  build-stm32l4r5zi:
+    name: Build for the STM32L4R5ZI
+    needs: [container]
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.container.outputs.container_name }}
+      options: --user root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run CMake
+        run: cmake -DBOARD=stm32-nucleo-l4r5zi -DCPU=cortex-m4 -B build
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
