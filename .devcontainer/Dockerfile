@@ -50,6 +50,7 @@ RUN dnf update -y && \
 	clang \
 	libusb1-devel \
 	openssl-devel \
+	lcov \
 	'dnf-command(copr)' && \
 	dnf copr enable -y rleh/arm-none-eabi-gdb && \
 	dnf install -y --setopt=keepcache=0 arm-none-eabi-gdb && \
