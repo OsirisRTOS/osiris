@@ -1,86 +1,87 @@
-FROM fedora:latest
+# We build qemu in a separate stage to avoid installing a bunch of build dependencies in the final image
+FROM fedora:latest AS qemu-builder
 
-# Install Development Tools and required packages
 RUN dnf update -y && \
-	dnf install -y @development-tools && \
 	dnf install -y \
-	direnv \
-	arm-none-eabi-gcc-cs \
-	arm-none-eabi-gcc-c++ \
-	arm-none-eabi-newlib \
-	cmake \
+	@development-tools \
 	git \
+	clang \
 	python3 \
-	python3-virtualenv \
 	python3-pip \
+	python3-setuptools \
+	python3-wheel \
 	ninja-build \
-	pkgconf \
+	clang \
 	glib2-devel \
 	flex \
 	bison \
-	clang \
 	zlib-devel \
 	meson \
 	pixman-devel \
-	alsa-lib-devel \
-	texinfo \
-	lzo-devel \
-	snappy-devel \
-	libaio-devel \
-	libtasn1-devel \
-	gnutls-devel \
-	nettle-devel \
-	curl \
-	dtc \
-	libcap-devel \
-	libcap-ng-devel \
-	socat \
-	libslirp-devel \
-	libffi-devel \
-	libusb1-devel \
-	ncurses-devel && \
-	dnf clean all
+	dtc && \
+	ln -sf /usr/bin/clang /usr/bin/cc && \
+	ln -sf /usr/bin/clang++ /usr/bin/c++
 
-RUN dnf install -y 'dnf-command(copr)' && \
-	dnf copr enable -y rleh/arm-none-eabi-gdb && \
-	dnf install -y arm-none-eabi-gdb
-
-ARG USERNAME=vscode
-RUN useradd -m -s /bin/bash ${USERNAME} && \
-	echo "${USERNAME} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-# Set working directory and switch to non-root user
-WORKDIR /home/${USERNAME}
-USER ${USERNAME}
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-	. $HOME/.cargo/env && \
-	rustup component add rust-src && \
-	rustup component add llvm-tools-preview && \
-	cargo install cargo-binutils && \
-	rustup target add thumbv7em-none-eabihf && \
-	rustup target add thumbv7em-none-eabi
-
-# Clone, build, and install QEMU
 RUN git clone --depth 1 https://github.com/thomasw04/qemu.git /tmp/qemu && \
 	cd /tmp/qemu && \
 	python3 -m venv .venv && \
 	. .venv/bin/activate && \
 	pip install --no-cache-dir tomli sphinx && \
 	mkdir build && cd build && \
-	../configure --disable-werror --cc=clang --cxx=clang++ --extra-cflags="-Wno-error -fdeclspec" --target-list=arm-softmmu,arm-linux-user --enable-kvm && \
+	../configure --disable-werror --extra-cflags="-Wno-error -fdeclspec" --target-list=arm-softmmu,arm-linux-user --enable-kvm && \
 	make -j$(nproc) && \
-	sudo make install && \
+	make install && \
 	cd / && \
 	rm -rf /tmp/qemu
 
-RUN git clone --single-branch --depth 1 -b "develop" \
-	https://github.com/stlink-org/stlink.git /tmp/stlink && \
+# This is the final image
+FROM fedora:latest AS devcontainer
+
+RUN dnf update -y && \
+	dnf install -y \
+	@development-tools \
+	direnv \
+	arm-none-eabi-gcc-cs \
+	arm-none-eabi-gcc-c++ \
+	arm-none-eabi-newlib \
+	cmake \
+	git \
+	make \
+	clang \
+	libusb1-devel \
+	'dnf-command(copr)' && \
+	dnf copr enable -y rleh/arm-none-eabi-gdb && \
+	dnf install -y arm-none-eabi-gdb && \
+	dnf clean all && \
+	ln -sf /usr/bin/clang /usr/bin/cc && \
+	ln -sf /usr/bin/clang++ /usr/bin/c++
+
+RUN git clone --single-branch --depth 1 -b "develop" https://github.com/stlink-org/stlink.git /tmp/stlink && \
 	cd /tmp/stlink && \
 	make -j release && \
 	sudo make install && \
-	sudo ldconfig
+	sudo ldconfig && \
+	rm -rf /tmp/stlink
 
-# Fix for fedora not finding libstlink.so.1
+# Fix for Fedora not finding libstlink.so.1
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
+
+# The runs with a non-root user to not mess up file permissions
+ARG USERNAME=vscode
+RUN useradd -m -s /bin/bash ${USERNAME} && \
+	echo "${USERNAME} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+WORKDIR /home/${USERNAME}
+USER ${USERNAME}
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+	. $HOME/.cargo/env && \
+	rustup component add rust-src llvm-tools-preview && \
+	cargo install cargo-binutils && \
+	rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
+
+
+COPY --from=qemu-builder /usr/local/ /usr/local/
+
+ENTRYPOINT ["/bin/bash"]
