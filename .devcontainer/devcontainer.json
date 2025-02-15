@@ -18,8 +18,18 @@
 				"rust-lang.rust-analyzer",
 				"vadimcn.vscode-lldb",
 				"ms-vscode.cmake-tools",
-				"llvm-vs-code-extensions.vscode-clangd"
-			]
+				"llvm-vs-code-extensions.vscode-clangd",
+				"ryanluker.vscode-coverage-gutters"
+			],
+			"settings": {
+				"rust-analyzer.cargo.cfgs": [
+					"kani"
+				],
+				"coverage-gutters.coverageBaseDir": "${workspaceFolder}",
+				"coverage-gutters.coverageFileNames": [
+					"lcov.info"
+				]
+			}
 		}
 	},
 	"runArgs": [
