@@ -5,7 +5,7 @@ endif
 
 BUILD_DIR := build
 SHELL := /bin/bash
-.PHONY: check_format format fmt verify clean
+.PHONY: check_format format fmt verify clean hooks
 
 osiris: $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --parallel $(shell nproc)
@@ -61,3 +61,6 @@ watch-tests: $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+hooks:
+	ln -sf $(CURDIR)/.devcontainer/pre-commit.sh $(CURDIR)/.git/hooks/pre-commit
