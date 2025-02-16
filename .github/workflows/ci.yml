@@ -145,8 +145,10 @@ jobs:
       - name: Run hardware test
         # See https://github.com/OsirisRTOS/hardware-ci for more information
         run: |
-          SERIAL_ID="$(board_serial stm32l4r5zi)"
+          SERIAL_ID="$(board_info serial stm32l4r5zi)"
           echo "Working with chip $SERIAL_ID"
-          st-info --probe
+
           st-flash --serial "$SERIAL_ID" reset
+
+          board_info --serial "$SERIAL_ID" --flash-size
 
