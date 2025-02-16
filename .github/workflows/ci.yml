@@ -131,3 +131,22 @@ jobs:
 
       - name: Build
         run: make osiris
+
+  hardware-test-stm32-nucleo-l4r5zi:
+    name: Hardware test for the STM32 Nucleo L4R5ZI
+    # needs: [build-stm32-nucleo-l4r5zi]
+    runs-on: stm32l4r5zi
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run hardware test
+        # See https://github.com/OsirisRTOS/hardware-ci for more information
+        run: |
+          SERIAL_ID="$(board_serial stm32l4r5zi)"
+          echo "Working with chip $SERIAL_ID"
+          st-info --probe
+          st-flash --serial "$SERIAL_ID" reset
+
