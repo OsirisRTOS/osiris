@@ -150,5 +150,5 @@ jobs:
 
           st-flash --serial "$SERIAL_ID" reset
 
-          board_info --serial "$SERIAL_ID" --flash-size
+          board_info print --serial "$SERIAL_ID" --flash-size
 
