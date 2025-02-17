@@ -9,7 +9,7 @@ use crate::{utils, BUG_ON};
 const MAX_ADDR: usize = 2_usize.pow(48);
 
 #[cfg(target_pointer_width = "32")]
-const MAX_ADDR: usize = 2_usize.pow(32);
+const MAX_ADDR: usize = usize::MAX;
 
 /// Allocator trait that provides a way to allocate and free memory.
 /// Normally you don't need to use this directly, rather use the `boxed::Box` type.
