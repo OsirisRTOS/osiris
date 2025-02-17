@@ -83,6 +83,30 @@ pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
 ///
 /// Returns the aligned size.
 pub fn align_up(size: usize) -> usize {
+    if size >= (usize::MAX - align_of::<u128>()) {
+        return usize::MAX;
+    }
+
     let align = align_of::<u128>();
     (size + align - 1) & !(align - 1)
 }
+
+// VERIFICATION -------------------------------------------------------------------------------------------------------
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    #[kani::proof]
+    fn check_align_up() {
+        let size = kani::any();
+        kani::assume(size > 0);
+        let align = align_up(size);
+        assert_ne!(align, 0);
+
+        if align != usize::MAX {
+            assert_eq!(align % align_of::<u128>(), 0);
+            assert!(align >= size);
+        }
+    }
+}
+// END VERIFICATION

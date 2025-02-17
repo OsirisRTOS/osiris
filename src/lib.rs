@@ -1,7 +1,7 @@
 //! This is the default kernel of the osiris operating system.
 //! The kernel is organized as a microkernel.
 
-#![cfg_attr(all(not(test), not(doctest), not(doc)), no_std)]
+#![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
 
 mod macros;
 #[macro_use]
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
 }
 
 /// The panic handler.
-#[cfg(all(not(test), not(doctest), not(doc)))]
+#[cfg(all(not(test), not(doctest), not(doc), target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     hal::common::panic::panic_handler(info);

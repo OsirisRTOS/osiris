@@ -5,6 +5,12 @@ use core::{ops::Range, ptr::NonNull};
 
 use crate::{utils, BUG_ON};
 
+#[cfg(target_pointer_width = "64")]
+const MAX_ADDR: usize = 2_usize.pow(48);
+
+#[cfg(target_pointer_width = "32")]
+const MAX_ADDR: usize = usize::MAX;
+
 /// Allocator trait that provides a way to allocate and free memory.
 /// Normally you don't need to use this directly, rather use the `boxed::Box` type.
 ///
@@ -63,6 +69,14 @@ impl BestFitAllocator {
             return Err(utils::KernelError::InvalidAlign);
         }
 
+        if ptr == 0 {
+            return Err(utils::KernelError::InvalidAddress);
+        }
+
+        debug_assert!(range.end > range.start);
+        debug_assert!(range.end - range.start > size_of::<BestFitMeta>() + Self::align_up());
+        debug_assert!(range.end <= isize::MAX as usize);
+
         // The user pointer is the pointer to the user memory. So we need to add the size of the meta data and possibly add padding.
         let user_pointer = ptr + size_of::<BestFitMeta>() + Self::align_up();
 
@@ -111,7 +125,7 @@ impl BestFitAllocator {
             let meta = unsafe { ptr.cast::<BestFitMeta>().as_ref() };
 
             // Check if the block is big enough and smaller than the current best fit.
-            if meta.size >= size && meta.size < best_fit_size {
+            if meta.size >= size && meta.size <= best_fit_size {
                 best_fit = Ok((ptr, prev));
                 best_fit_size = meta.size;
             }
@@ -134,6 +148,10 @@ impl BestFitAllocator {
     ///
     /// The ptr must be a valid control pointer. Note: After the allocator which allocated the pointer is dropped, the control pointer is always considered invalid.
     unsafe fn user_ptr(ptr: NonNull<u8>) -> NonNull<u8> {
+        debug_assert!(
+            (ptr.as_ptr() as usize)
+                <= isize::MAX as usize - size_of::<BestFitMeta>() - Self::align_up()
+        );
         ptr.byte_add(size_of::<BestFitMeta>() + Self::align_up())
     }
 
@@ -147,6 +165,7 @@ impl BestFitAllocator {
     ///
     /// The ptr must be a valid user pointer. Note: After the allocator which allocated the pointer is dropped, the user pointer is always considered invalid.
     unsafe fn control_ptr(ptr: NonNull<u8>) -> NonNull<u8> {
+        debug_assert!((ptr.as_ptr() as usize) > size_of::<BestFitMeta>() + Self::align_up());
         ptr.byte_sub(size_of::<BestFitMeta>() + Self::align_up())
     }
 }
@@ -165,56 +184,98 @@ impl Allocator for BestFitAllocator {
             return Err(utils::KernelError::InvalidAlign);
         }
 
-        // Align the size.
-        let size = super::align_up(size);
-
-        // Find the best fit block.
-        let (block, prev) = self.select_block(size)?;
-
-        // Get the metadata of the block.
-        let meta = unsafe { block.cast::<BestFitMeta>().as_mut() };
-
-        // Calculate the amount of bytes until the beginning of the possibly next metadata.
-        let min = size_of::<BestFitMeta>() + Self::align_up() + size;
-
-        // If the block is big enough to split. Then it also needs to be big enough to store the metadata + align of the next block.
-        if meta.size > min + size_of::<BestFitMeta>() + Self::align_up() {
-            // Calculate the remaining size of the block and thus the next metadata.
-            let remaining_meta = BestFitMeta {
-                size: meta.size - min,
-                next: meta.next,
-            };
-
-            // Shrink the current block to the requested size + padding (which is not available to the user).
-            meta.size = size;
-
-            // Calculate the pointer to the next metadata.
-            let ptr = unsafe { block.byte_add(min) };
-
-            unsafe {
-                // Write the new metadata to the memory.
-                ptr.cast::<BestFitMeta>().write(remaining_meta);
-            }
-
-            // If there is a previous block, we insert the new block after it. Otherwise we set it as the new head.
-            if let Some(prev) = prev {
-                let prev_meta = unsafe { prev.cast::<BestFitMeta>().as_mut() };
-                prev_meta.next = Some(ptr);
-            } else {
-                self.head = Some(ptr);
-            }
-        } else if let Some(prev) = prev {
-            let prev_meta = unsafe { prev.cast::<BestFitMeta>().as_mut() };
-
-            // If there is a previous block, we remove the current block from the list. Ie. we set the next block of the previous block to the next block of the current block.
-            prev_meta.next = meta.next;
-        } else {
-            // If there is no previous block, we set the next block as the new head.
-            self.head = meta.next;
+        // Check if the size is valid.
+        if size == 0 {
+            return Err(utils::KernelError::InvalidSize);
         }
 
-        // The next block of an allocated block is always None.
-        meta.next = None;
+        if size >= MAX_ADDR {
+            return Err(utils::KernelError::InvalidSize);
+        }
+
+        // Align the size.
+        let aligned_size = super::align_up(size);
+        debug_assert!(aligned_size >= size);
+        debug_assert!(aligned_size <= isize::MAX as usize);
+
+        // Find the best fit block.
+        let (split, block, prev) = match self.select_block(aligned_size) {
+            Ok((block, prev)) => {
+                // Get the metadata of the block.
+                let meta = unsafe { block.cast::<BestFitMeta>().as_mut() };
+
+                // Calculate the amount of bytes until the beginning of the possibly next metadata.
+                let min = aligned_size.saturating_add(size_of::<BestFitMeta>() + Self::align_up());
+
+                debug_assert!(
+                    (block.as_ptr() as usize)
+                        <= isize::MAX as usize
+                            - meta.size
+                            - size_of::<BestFitMeta>()
+                            - Self::align_up()
+                );
+
+                debug_assert!(
+                    meta.size < isize::MAX as usize - size_of::<BestFitMeta>() - Self::align_up()
+                );
+
+                // If the block is big enough to split. Then it also needs to be big enough to store the metadata + align of the next block.
+                if meta.size > min {
+                    // Calculate the remaining size of the block and thus the next metadata.
+                    let remaining_meta = BestFitMeta {
+                        size: meta.size - min,
+                        next: meta.next,
+                    };
+
+                    // Shrink the current block to the requested aligned_size + padding (which is not available to the user).
+                    meta.size = aligned_size;
+
+                    // Calculate the pointer to the next metadata.
+                    let ptr = unsafe { Self::user_ptr(block).byte_add(aligned_size) };
+
+                    unsafe {
+                        // Write the new metadata to the memory.
+                        ptr.cast::<BestFitMeta>().write(remaining_meta);
+                    }
+
+                    // If there is a previous block, we insert the new block after it. Otherwise we set it as the new head.
+                    if let Some(prev) = prev {
+                        let prev_meta = unsafe { prev.cast::<BestFitMeta>().as_mut() };
+                        prev_meta.next = Some(ptr);
+                    } else {
+                        self.head = Some(ptr);
+                    }
+
+                    // The next block of an allocated block is always None.
+                    meta.next = None;
+
+                    (true, block, prev)
+                } else {
+                    (false, block, prev)
+                }
+            }
+            Err(_) => {
+                let (block, prev) = self.select_block(size)?;
+                (false, block, prev)
+            }
+        };
+
+        if !split {
+            // Get the metadata of the block.
+            let meta = unsafe { block.cast::<BestFitMeta>().as_mut() };
+
+            if let Some(prev) = prev {
+                let prev_meta = unsafe { prev.cast::<BestFitMeta>().as_mut() };
+                // If there is a previous block, we remove the current block from the list. Ie. we set the next block of the previous block to the next block of the current block.
+                prev_meta.next = meta.next;
+            } else {
+                // If there is no previous block, we set the next block as the new head.
+                self.head = meta.next;
+            }
+
+            // The next block of an allocated block is always None.
+            meta.next = None;
+        }
 
         // Return the user pointer.
         Ok(unsafe { Self::user_ptr(block) })
@@ -252,7 +313,7 @@ mod tests {
         let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
         let meta = unsafe { control_ptr.cast::<BestFitMeta>().as_ref() };
 
-        assert_eq!(meta.size, size);
+        assert!(meta.size >= size);
         assert_eq!(meta.next, next);
     }
 
@@ -280,7 +341,7 @@ mod tests {
     }
 
     fn alloc_range(length: usize) -> Range<usize> {
-        let alloc_range = std::alloc::Layout::from_size_align(length, 1).unwrap();
+        let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
         let ptr = unsafe { std::alloc::alloc(alloc_range) };
         ptr as usize..ptr as usize + length
     }
@@ -481,3 +542,53 @@ mod tests {
 }
 
 // END TESTING --------------------------------------------------------------------------------------------------------
+
+// VERIFICATION -------------------------------------------------------------------------------------------------------
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use core::{alloc::Layout, ptr};
+
+    fn verify_block(user_ptr: NonNull<u8>, size: usize, next: Option<NonNull<u8>>) {
+        let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
+        let meta = unsafe { control_ptr.cast::<BestFitMeta>().as_ref() };
+
+        assert!(meta.size >= size);
+        assert_eq!(meta.next, next);
+    }
+
+    fn alloc_range(length: usize) -> Option<Range<usize>> {
+        let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+
+        if ptr.is_null() || ((ptr as usize) >= isize::MAX as usize - length) {
+            None
+        } else {
+            Some(ptr as usize..ptr as usize + length)
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(2)]
+    fn allocate_one() {
+        let mut allocator = BestFitAllocator::new();
+
+        let size: usize = kani::any();
+        kani::assume(size < MAX_ADDR - size_of::<BestFitMeta>() - BestFitAllocator::align_up());
+        kani::assume(size > 0);
+        let larger_size: usize = kani::any_where(|&x| {
+            x > size + size_of::<BestFitMeta>() + BestFitAllocator::align_up() && x < MAX_ADDR
+        });
+
+        if let Some(range) = alloc_range(larger_size) {
+            unsafe {
+                assert_eq!(allocator.add_range(range), Ok(()));
+            }
+
+            let ptr = allocator.malloc(size, 1).unwrap();
+
+            verify_block(ptr, size, None);
+        }
+    }
+}
+// END VERIFICATION ---------------------------------------------------------------------------------------------------
