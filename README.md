@@ -21,8 +21,14 @@ $ cmake -DBOARD=stm32-nucleo-l4r5zi -DCPU=cortex-m4 ..
 $ make
 ```
 
+### Set up pre-commit hooks
+
+```sh
+$ make hooks
+```
+
 ## Boot
 
-1. Install @thomasw04 qemu fork: https://github.com/thomasw04/qemu  
+1. Install @thomasw04 qemu fork: https://github.com/thomasw04/qemu
 2. Run ```./boot.sh```
 3. Now you should see a: "Hello World!".

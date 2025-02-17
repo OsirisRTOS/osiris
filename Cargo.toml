@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+	"kernel",
+	"kernel/macros",
+	"hal/ocortex-m",
+	"hal/stm32l4/stm32-nucleo-l4r5zi"
+]

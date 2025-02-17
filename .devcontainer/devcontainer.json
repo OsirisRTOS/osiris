@@ -3,13 +3,16 @@
 	"name": "Osiris Dev Container",
 	"build": {
 		"dockerfile": "Dockerfile",
-		"context": ".."
+		"context": "..",
+		"cacheFrom": "ghcr.io/osirisrtos/osiris/devcontainer:main-cache"
 	},
 	"remoteUser": "vscode",
 	"privileged": false,
 	"capAdd": [
 		// Permissions for accessing host USB devices
-		"SYS_RAWIO", "CAP_MKNOD"
+		"SYS_RAWIO", "CAP_MKNOD",
+		// Allow debugging
+		"SYS_PTRACE"
 	],
 	"customizations": {
 		"vscode": {
@@ -17,8 +20,18 @@
 				"rust-lang.rust-analyzer",
 				"vadimcn.vscode-lldb",
 				"ms-vscode.cmake-tools",
-				"llvm-vs-code-extensions.vscode-clangd"
-			]
+				"llvm-vs-code-extensions.vscode-clangd",
+				"ryanluker.vscode-coverage-gutters"
+			],
+			"settings": {
+				"rust-analyzer.cargo.cfgs": [
+					"kani"
+				],
+				"coverage-gutters.coverageBaseDir": "${workspaceFolder}",
+				"coverage-gutters.coverageFileNames": [
+					"lcov.info"
+				]
+			}
 		}
 	},
 	"runArgs": [
