@@ -44,6 +44,8 @@ pub enum KernelError {
     InvalidAlign,
     /// The kernel is out of memory.
     OutOfMemory,
+    InvalidSize,
+    InvalidAddress,
 }
 
 /// Debug msg implementation for KernelError.
@@ -52,6 +54,8 @@ impl Debug for KernelError {
         match self {
             KernelError::InvalidAlign => write!(f, "Invalid alignment"),
             KernelError::OutOfMemory => write!(f, "Out of memory"),
+            KernelError::InvalidSize => write!(f, "Invalid size"),
+            KernelError::InvalidAddress => write!(f, "Invalid address"),
         }
     }
 }
