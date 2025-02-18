@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 build*/
 .vscode/
 qemu/
@@ -5,3 +6,8 @@ qemu/
 *.gen.*
 target
 **.info
+=======
+target/
+Cargo.toml
+Cargo.lock
+>>>>>>> kernel/feature/kernel-merge
