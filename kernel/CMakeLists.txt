@@ -27,6 +27,4 @@ target_sources(kernel
             include/kernel/syscalls.map.gen.h
 )
 
-set(RUST_KERNEL true PARENT_SCOPE)
-
 add_custom_target(syscalls_map DEPENDS cargo-build_kernel)
