@@ -1,0 +1,26 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+hal = { path = "@HAL_DIR@", features = ["panic-semih", "panic-exit"] }
+macros = { path = "macros" }
+
+[build-dependencies]
+cbindgen = "0.26.0"
+bindgen = "0.69.5"
+walkdir = "2.5.0"
+syn = "2.0.90"
+quote = "1.0.37"
+rand = "0.8.5"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
