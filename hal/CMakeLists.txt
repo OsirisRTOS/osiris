@@ -15,10 +15,3 @@ endif()
 
 set(HAL_DIR ${HAL_SOURCE_DIR} PARENT_SCOPE)
 
-if (RUST_KERNEL)
-    message(STATUS "Detected Rust kernel. Skipping HAL.")
-else()
-    # Add our HAL.
-    add_subdirectory(${HAL_SOURCE_DIR})
-endif()
-

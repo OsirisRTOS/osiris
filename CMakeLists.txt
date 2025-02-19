@@ -64,11 +64,6 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# Check if the kernel is a rust kernel.
-if(EXISTS "${CMAKE_SOURCE_DIR}/kernel/Cargo.toml" OR EXISTS "${CMAKE_SOURCE_DIR}/kernel/Cargo.toml.in")
-    set(RUST_KERNEL true)
-endif()
-
 add_subdirectory(hal)
 
 # Now add our startup code and the nlib.
@@ -87,28 +82,13 @@ add_executable(${PROJECT_NAME}
 
 add_dependencies(startup_${CPU} syscalls_map)
 
-if (RUST_KERNEL)
-    message(STATUS "Linking Rust kernel.")
-    # A rust kernel does only support rust HALs and links it themselves.
-    target_link_libraries(${PROJECT_NAME}
-        PRIVATE
-            kernel
-            $<TARGET_OBJECTS:startup_${CPU}>
-            $<TARGET_OBJECTS:startup_${BOARD}>
-            nlib
-    )
-else()
-    message(STATUS "Linking C kernel.")
-
-    target_link_libraries(${PROJECT_NAME}
-        PRIVATE
-            $<TARGET_OBJECTS:startup_${CPU}>
-            $<TARGET_OBJECTS:startup_${BOARD}>
-            nlib
-            hal
-            kernel
-    )
-endif()
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        kernel
+        $<TARGET_OBJECTS:startup_${CPU}>
+        $<TARGET_OBJECTS:startup_${BOARD}>
+        nlib
+)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     LINK_DEPENDS "${LINKER_SCRIPT}"
