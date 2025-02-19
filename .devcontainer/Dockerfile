@@ -51,6 +51,10 @@ RUN dnf update -y && \
 	libusb1-devel \
 	openssl-devel \
 	lcov \
+	python3 \
+	python3-pip \
+	python3-setuptools \
+	python3-wheel \
 	'dnf-command(copr)' && \
 	dnf copr enable -y rleh/arm-none-eabi-gdb && \
 	dnf install -y --setopt=keepcache=0 arm-none-eabi-gdb && \
