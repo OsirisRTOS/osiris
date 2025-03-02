@@ -27,13 +27,15 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     ///
     /// Returns `Ok(())` if the value was pushed onto the back of the queue, or an error if the queue is full.
     pub fn push_back(&mut self, value: T) -> Result<(), KernelError> {
-        if self.len == self.data.len() {
+        if self.len == self.data.capacity() {
             return Err(KernelError::OutOfMemory);
         }
 
-        let back = (self.front + self.len) % self.data.len();
-        let insertion_point = self.data.at_mut(back).ok_or(KernelError::InvalidAddress)?;
-        *insertion_point = value;
+        if self.data.len() != self.data.capacity() {
+            self.data.push(value)?;
+        } else {
+            self.insert((self.front + self.len) % self.data.capacity(), value)?;
+        }
 
         self.len += 1;
         Ok(())
@@ -49,7 +51,7 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
 
         let value = self.data.at(self.front).cloned();
 
-        self.front = (self.front + 1) % self.data.len();
+        self.front = (self.front + 1) % self.data.capacity();
         self.len -= 1;
         value
     }
@@ -61,8 +63,11 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     ///
     /// Returns `Ok(())` if the value was inserted at the given index, or an error if the index is out of bounds.
     pub fn insert(&mut self, index: usize, value: T) -> Result<(), KernelError> {
+        if index >= self.len() {
+            return Err(KernelError::InvalidAddress);
+        }
         self.data
-            .at_mut((self.front + index) % N)
+            .at_mut((self.front + index) % self.data.capacity())
             .map(|insertion_point| *insertion_point = value)
             .ok_or(KernelError::InvalidAddress)
     }
@@ -82,7 +87,7 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
             return None;
         }
 
-        let back = (self.front + self.len - 1) % self.data.len();
+        let back = (self.front + self.len - 1) % self.data.capacity();
         self.data.at(back)
     }
 
@@ -97,16 +102,17 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     }
 
     pub fn grow_capacity(&mut self, new_size: usize) -> Result<(), KernelError> {
-        if new_size < self.data.len() {
+        if new_size < self.data.capacity() {
             return Ok(());
         }
         // if the queue wraps
-        if self.front + self.len >= self.data.len() {
+        if self.front + self.len >= self.data.capacity() {
             // copy the queue to the front to make further logic straighforward
             // When the queue wraps around the end, the wrapping would not happen anymore with the new size
 
             // we could do some complicated in-place swapping here instead of using a potentially expensive temporary storage
-            let mut swap_helper = Box::new_slice_uninit(self.data.len() - self.front)?;
+            let mut swap_helper = Box::new_slice_uninit(self.data.capacity() - self.front)?;
+
             for i in 0..swap_helper.len() {
                 // Returning an error here should never happen if the queue is in a consistant state prior. If not no guarantees about contents are made.
                 swap_helper[i].write(
@@ -116,9 +122,9 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
                         .ok_or(KernelError::InvalidAddress)?,
                 );
             }
-            let end = (self.front + self.len) % self.data.len();
+            let end = (self.front + self.len) % self.data.capacity();
             for i in 0..end {
-                BUG_ON!(i + swap_helper.len() >= self.data.len());
+                BUG_ON!(i + swap_helper.len() >= self.data.capacity());
                 self.data.swap(i, i + swap_helper.len());
             }
             // now copy the data back from the temp helper
@@ -130,6 +136,26 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
             }
             self.front = 0;
         }
-        self.data.reserve(new_size - self.data.len())
+        self.data.reserve(new_size - self.data.capacity())
     }
 }
+
+// TESTING ------------------------------------------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn growing_retains_queue_state_without_wrapping() {
+        let mut queue = Queue::<usize, 10>::new();
+        for i in 0..10 {
+            queue.push_back(i).unwrap();
+        }
+        queue.grow_capacity(20).unwrap();
+        for i in 0..10 {
+            assert_eq!(queue.pop_front().unwrap(), i);
+        }
+    }
+}
+// END TESTING

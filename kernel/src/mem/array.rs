@@ -382,6 +382,10 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+
+    pub fn capacity(&self) -> usize {
+        N + self.extra.len()
+    }
 }
 
 impl<T, const N: usize> Drop for Vec<T, N> {
