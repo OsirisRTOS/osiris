@@ -330,6 +330,27 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
     }
 
+    /// Get a mutable reference to the value at the given index.
+    ///
+    /// `index` - The index to get the value from.
+    ///
+    /// Returns `Some(&mut T)` if the index is in-bounds, otherwise `None`.
+    pub fn at_mut(&mut self, index: usize) -> Option<&mut T> {
+        // Check if the index is in-bounds.
+        if index > self.len - 1 {
+            return None;
+        }
+
+        if index < N {
+            // Safety: the elements until self.len are initialized.
+            unsafe { Some(self.data[index].assume_init_mut()) }
+        } else {
+            let index = index - N;
+            // Safety: the elements until self.len - N are initialized.
+            unsafe { Some(self.extra[index].assume_init_mut()) }
+        }
+    }
+
     /// Swap the values at the given indices.
     ///
     /// `a` - The first index.
