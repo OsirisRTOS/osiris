@@ -3,9 +3,9 @@
 use super::{free, malloc};
 use crate::utils::KernelError;
 use core::{
-    mem::{forget, MaybeUninit},
+    mem::{MaybeUninit, forget},
     ops::{Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeTo},
-    ptr::{drop_in_place, slice_from_raw_parts_mut, write, NonNull},
+    ptr::{NonNull, drop_in_place, slice_from_raw_parts_mut, write},
 };
 
 /// A heap-allocated memory block.

@@ -12,7 +12,7 @@ mod services;
 mod syscalls;
 mod uspace;
 
-use core::ffi::{c_char, CStr};
+use core::ffi::{CStr, c_char};
 
 /// The memory map entry type.
 ///
@@ -46,9 +46,9 @@ pub struct BootInfo {
 /// The kernel initialization function.
 ///
 /// `boot_info` - The boot information.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
-    let boot_info = &*boot_info;
+    let boot_info = unsafe { &*boot_info };
 
     let implementer = unsafe { CStr::from_ptr(boot_info.implementer) };
     let variant = unsafe { CStr::from_ptr(boot_info.variant) };

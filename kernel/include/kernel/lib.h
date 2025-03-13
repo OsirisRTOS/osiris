@@ -69,4 +69,4 @@ void syscall_dummy(const void *svc_args);
  */
 void syscall_reschedule(const void *_svc_args);
 
-#endif /* KERNEL_H */
+#endif  /* KERNEL_H */
