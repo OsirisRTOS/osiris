@@ -170,6 +170,28 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         Ok(())
     }
 
+    pub fn reserve_total_capacity(&mut self, total_capacity: usize) -> Result<(), KernelError> {
+        // Check if we already have enough space 
+        if self.capacity() >= total_capacity {
+            return Ok(());
+        }
+
+        // If we don't have enough space, we need to grow the extra storage.
+        let new_out_of_line_cap = total_capacity - N;
+        let mut new_extra = Box::new_slice_uninit(new_out_of_line_cap)?;
+
+        // Check that the new extra storage has the requested length.
+        BUG_ON!(new_extra.len() != new_out_of_line_cap);
+        
+        let curr_out_of_line_size = self.extra.len();
+        // Copy the old extra storage into the new one.
+        new_extra[..curr_out_of_line_size].copy_from_slice(&self.extra);
+
+        // Replace the old extra storage with the new one. The old one will be dropped.
+        self.extra = new_extra;
+        Ok(())
+    }
+
     /// Create a new Vec with the given length and value.
     ///
     /// `length` - The length of the Vec.

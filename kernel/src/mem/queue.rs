@@ -34,7 +34,7 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
         if self.data.len() != self.data.capacity() {
             self.data.push(value)?;
         } else {
-            self.insert((self.front + self.len) % self.data.capacity(), value)?;
+            self.insert(self.len - 1, value)?;
         }
 
         self.len += 1;
@@ -66,8 +66,9 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
         if index >= self.len() {
             return Err(KernelError::InvalidAddress);
         }
+        let real_idx = (self.front + index) % self.data.capacity();
         self.data
-            .at_mut((self.front + index) % self.data.capacity())
+            .at_mut(real_idx)
             .map(|insertion_point| *insertion_point = value)
             .ok_or(KernelError::InvalidAddress)
     }
@@ -102,7 +103,7 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     }
 
     pub fn grow_capacity(&mut self, new_size: usize) -> Result<(), KernelError> {
-        if new_size < self.data.capacity() {
+        if new_size <= self.data.capacity() {
             return Ok(());
         }
         // if the queue wraps
@@ -111,8 +112,11 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
             // When the queue wraps around the end, the wrapping would not happen anymore with the new size
 
             // we could do some complicated in-place swapping here instead of using a potentially expensive temporary storage
-            let mut swap_helper = Box::new_slice_uninit(self.data.capacity() - self.front)?;
+            let non_wrapping_queue_start_len = self.data.capacity() - self.front;
+            let mut swap_helper = Box::new_slice_uninit(non_wrapping_queue_start_len)?;
+            BUG_ON!(swap_helper.len() != non_wrapping_queue_start_len);
 
+            // we take the start of the queue (which is located at the end of the curr memory region) and copy it to temp storage
             for i in 0..swap_helper.len() {
                 // Returning an error here should never happen if the queue is in a consistant state prior. If not no guarantees about contents are made.
                 swap_helper[i].write(
@@ -122,21 +126,23 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
                         .ok_or(KernelError::InvalidAddress)?,
                 );
             }
+            // One past the logically last element of the queue
             let end = (self.front + self.len) % self.data.capacity();
+            // now move the logical end of the queue further back to make space for the logical start
             for i in 0..end {
-                BUG_ON!(i + swap_helper.len() >= self.data.capacity());
-                self.data.swap(i, i + swap_helper.len());
+                BUG_ON!(i + non_wrapping_queue_start_len >= self.data.capacity());
+                self.data.swap(i, i + non_wrapping_queue_start_len);
             }
             // now copy the data back from the temp helper
-            for i in 0..swap_helper.len() {
-                // Safety: values copied into our helper are part of the active queue, must therefore be initedF
+            for i in 0..non_wrapping_queue_start_len {
+                // Safety: values copied into our helper are part of the active queue, must therefore be inited
                 self.data
                     .at_mut(i)
                     .map(|el| *el = unsafe { swap_helper[i].assume_init() });
             }
             self.front = 0;
         }
-        self.data.reserve(new_size - self.data.capacity())
+        self.data.reserve_total_capacity(new_size)
     }
 }
 
@@ -145,16 +151,68 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mem::GLOBAL_ALLOCATOR;
+    use core::ops::Range;
+
+    fn alloc_range(length: usize) -> Range<usize> {
+        let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+        ptr as usize..ptr as usize + length
+    }
+
+    fn setup_memory(mem_size: usize) {
+        unsafe {
+            GLOBAL_ALLOCATOR
+                .lock()
+                .add_range(alloc_range(mem_size))
+                .unwrap()
+        };
+    }
 
     #[test]
     fn growing_retains_queue_state_without_wrapping() {
+        setup_memory(1000);
+        let mut queue = Queue::<usize, 10>::new();
+        for i in 0..10 {
+            assert_eq!(queue.push_back(i), Ok(()));
+        }
+
+        assert_eq!(queue.grow_capacity(20), Ok(()));
+        for i in 0..10 {
+            assert_eq!(queue.pop_front(), Some(i));
+        }
+    }
+
+    #[test]
+    fn growing_retains_queue_state_with_wrapping() {
+        setup_memory(1000);
         let mut queue = Queue::<usize, 10>::new();
         for i in 0..10 {
             queue.push_back(i).unwrap();
         }
-        queue.grow_capacity(20).unwrap();
-        for i in 0..10 {
-            assert_eq!(queue.pop_front().unwrap(), i);
+        // sanity check that queue really is full
+        assert_eq!(queue.push_back(1), Err(KernelError::OutOfMemory));
+        assert_eq!(queue.len(), 10);
+
+        // pop and subsequently push more elements to make queue wrap
+        for i in 0..5 {
+            assert_eq!(queue.pop_front(), Some(i));
+        }
+
+        assert_eq!(*queue.front().unwrap(), 5);
+        assert_eq!(*queue.back().unwrap(), 9);
+        assert_eq!(queue.len(), 5);
+
+        for i in 10..15 {
+            assert_eq!(queue.push_back(i), Ok(()));
+        }
+
+        assert_eq!(queue.len(), 10);
+        assert_eq!(*queue.front().unwrap(), 5);
+        assert_eq!(*queue.back().unwrap(), 14);
+        assert_eq!(queue.grow_capacity(20), Ok(()));
+        for i in 5..15 {
+            assert_eq!(queue.pop_front(), Some(i));
         }
     }
 }
