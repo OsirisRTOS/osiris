@@ -186,7 +186,7 @@ mod tests {
         setup_memory(1000);
         let mut queue = Queue::<usize, 10>::new();
         for i in 0..10 {
-            queue.push_back(i).unwrap();
+            assert_eq!(queue.push_back(i), Ok(()));
         }
         // sanity check that queue really is full
         assert_eq!(queue.push_back(1), Err(KernelError::OutOfMemory));
@@ -209,6 +209,50 @@ mod tests {
         assert_eq!(*queue.front().unwrap(), 5);
         assert_eq!(*queue.back().unwrap(), 14);
         assert_eq!(queue.grow_capacity(20), Ok(()));
+        for i in 5..15 {
+            assert_eq!(queue.pop_front(), Some(i));
+        }
+    }
+
+    #[test]
+    fn growing_to_smaller_size_has_no_effect() {
+        setup_memory(1000);
+        let mut queue = Queue::<usize, 10>::new();
+        for i in 0..10 {
+            assert_eq!(queue.push_back(i), Ok(()));
+        }
+        assert_eq!(queue.len(), 10);
+        queue.grow_capacity(1).unwrap();
+        assert_eq!(queue.len(), 10);
+        assert_eq!(queue.push_back(1), Err(KernelError::OutOfMemory));
+    }
+
+    #[test]
+    fn growing_multiple_times_consecutively_retains_state() {
+        setup_memory(10000);
+        let mut queue = Queue::<usize, 10>::new();
+        for i in 0..10 {
+            assert_eq!(queue.push_back(i), Ok(()));
+        }
+        assert_eq!(queue.len(), 10);
+
+        // pop and subsequently push more elements to make queue wrap
+        for i in 0..5 {
+            assert_eq!(queue.pop_front(), Some(i));
+        }
+        assert_eq!(queue.len(), 5);
+
+        for i in 10..15 {
+            assert_eq!(queue.push_back(i), Ok(()));
+        }
+
+        assert_eq!(queue.len(), 10);
+        assert_eq!(*queue.front().unwrap(), 5);
+        assert_eq!(*queue.back().unwrap(), 14);
+        assert_eq!(queue.grow_capacity(20), Ok(()));
+        assert_eq!(queue.grow_capacity(40), Ok(()));
+        assert_eq!(queue.grow_capacity(100), Ok(()));
+        assert_eq!(queue.grow_capacity(200), Ok(()));
         for i in 5..15 {
             assert_eq!(queue.pop_front(), Some(i));
         }
