@@ -30,14 +30,13 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
         if self.len == self.data.capacity() {
             return Err(KernelError::OutOfMemory);
         }
-
+        self.len += 1;
         if self.data.len() != self.data.capacity() {
             self.data.push(value)?;
         } else {
             self.insert(self.len - 1, value)?;
         }
 
-        self.len += 1;
         Ok(())
     }
 
@@ -87,7 +86,6 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
         if self.is_empty() {
             return None;
         }
-
         let back = (self.front + self.len - 1) % self.data.capacity();
         self.data.at(back)
     }
