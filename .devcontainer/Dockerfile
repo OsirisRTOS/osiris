@@ -98,6 +98,7 @@ RUN cargo install --locked kani-verifier && \
 	cargo kani setup
 RUN cargo install --locked cargo-tarpaulin
 RUN cargo install --locked cargo-watch
+RUN cargo install --force cbindgen
 
 COPY --from=qemu-builder /usr/local/ /usr/local/
 
