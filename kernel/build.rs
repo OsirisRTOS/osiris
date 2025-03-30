@@ -30,14 +30,21 @@ fn main() {
         ..Default::default()
     };
 
-    cbindgen::Builder::new()
+    let bindings = cbindgen::Builder::new()
         .with_crate(crate_dir)
         .with_config(config)
         .with_language(cbindgen::Language::C)
         .with_include_guard("KERNEL_H")
-        .generate()
-        .expect("Unable to generate bindings")
-        .write_to_file("include/kernel/lib.h");
+        .generate();
+
+    match bindings {
+        Ok(bindings) => {
+            bindings.write_to_file("include/kernel/lib.h");
+        }
+        Err(e) => {
+            eprintln!("Error generating bindings: {}", e);
+        }
+    }
 
     generate_syscall_map("src").expect("Failed to generate syscall map.");
 }
