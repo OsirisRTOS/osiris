@@ -38,13 +38,10 @@ fn main() {
         .generate();
 
     match bindings {
-        Ok(bindings) => {
-            bindings.write_to_file("include/kernel/lib.h");
-        }
-        Err(e) => {
-            panic!("Error generating bindings: {}", e);
-        }
-    }
+        Ok(bindings) => bindings.write_to_file("include/kernel/lib.h"),
+        Err(cbindgen::Error::ParseSyntaxError { .. }) => return, // ignore in favor of cargo's syntax check
+        Err(err) => panic!("{:?}", err),
+    };
 
     generate_syscall_map("src").expect("Failed to generate syscall map.");
 }
