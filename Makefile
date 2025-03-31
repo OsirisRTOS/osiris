@@ -8,7 +8,7 @@ SHELL := /bin/bash
 .PHONY: check-format format fmt verify clean hooks
 
 osiris: $(BUILD_DIR)
-	cmake --build $(BUILD_DIR) --parallel $(shell nproc)
+	cmake --build $(BUILD_DIR)
 
 $(BUILD_DIR):
 	@if [ -n "$$CI" ]; then \
