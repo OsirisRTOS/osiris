@@ -293,7 +293,7 @@ impl Allocator for BestFitAllocator {
         meta.next = self.head;
 
         // Check if the size of the block is correct.
-        BUG_ON!(meta.size != size, "Invalid size in free()");
+        BUG_ON!(meta.size != super::align_up(size), "Invalid size in free()");
 
         // Set the size of the block.
         meta.size = size;
