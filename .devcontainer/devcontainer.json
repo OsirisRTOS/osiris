@@ -37,9 +37,7 @@
 	"runArgs": [
 		// Mount USB devices under Linux
 		"--device",
-		"/dev/bus/usb:/dev/bus/usb",
-		"--security-opt",
-		"seccomp=unconfined"
+		"/dev/bus/usb:/dev/bus/usb"
 	],
 	"mounts": [
 		// Make ssh keys available
