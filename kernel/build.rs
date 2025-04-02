@@ -15,34 +15,6 @@ fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=build.rs");
 
-    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-
-    let mut config: cbindgen::Config = Default::default();
-
-    config.no_includes = true;
-    config.includes = vec![
-        "stdint.h".to_string(),
-        "stdbool.h".to_string(),
-        "stdarg.h".to_string(),
-    ];
-    config.layout = LayoutConfig {
-        packed: Some("__attribute__((packed))".to_string()),
-        ..Default::default()
-    };
-
-    let bindings = cbindgen::Builder::new()
-        .with_crate(crate_dir)
-        .with_config(config)
-        .with_language(cbindgen::Language::C)
-        .with_include_guard("KERNEL_H")
-        .generate();
-
-    match bindings {
-        Ok(bindings) => bindings.write_to_file("include/kernel/lib.h"),
-        Err(cbindgen::Error::ParseSyntaxError { .. }) => return, // ignore in favor of cargo's syntax check
-        Err(err) => panic!("{:?}", err),
-    };
-
     generate_syscall_map("src").expect("Failed to generate syscall map.");
 }
 
