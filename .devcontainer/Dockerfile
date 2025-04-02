@@ -89,7 +89,7 @@ USER ${USERNAME}
 RUN umask 0002 && \
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 	| sh -s -- -y --no-modify-path && \
-	rustup update stable && \
+	rustup install 1.85.0 && \
 	rustup component add rust-src llvm-tools-preview && \
 	cargo install cargo-binutils && \
 	rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
@@ -98,6 +98,7 @@ RUN cargo install --locked kani-verifier && \
 	cargo kani setup
 RUN cargo install --locked cargo-tarpaulin
 RUN cargo install --locked cargo-watch
+RUN cargo install --force cbindgen
 
 COPY --from=qemu-builder /usr/local/ /usr/local/
 

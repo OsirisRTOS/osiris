@@ -180,7 +180,7 @@ impl Scheduler {
 
 /// cbindgen:ignore
 /// cbindgen:no-export
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
     {
         let mut scheduler = SCHEDULER.lock();
@@ -195,7 +195,7 @@ pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
 
 /// cbindgen:ignore
 /// cbindgen:no-export
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn systick() {
     let resched = {
         let mut scheduler = SCHEDULER.lock();
