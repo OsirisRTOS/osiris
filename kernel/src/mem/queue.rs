@@ -100,6 +100,12 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
         self.len == 0
     }
 
+    /// Increases total space in the queue preserving queue-integrity, potentially reallocating and copying existing contents
+    ///
+    /// `new_size` - The total amount of space in the queue afterwards
+    ///
+    /// Returns `Ok(())` if the queue was successfully enlargened or the requested size was smaller than the current capacity.
+    /// Returns An error if the queue could not be grown
     pub fn grow_capacity(&mut self, new_size: usize) -> Result<(), KernelError> {
         if new_size <= self.data.capacity() {
             return Ok(());

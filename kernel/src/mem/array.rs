@@ -170,6 +170,11 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         Ok(())
     }
 
+    /// Reserve a fixed amount of space in the Vec. Does nothing if enough space is present already.
+    ///
+    /// `total_capacity` - The total space to be reserved.
+    ///
+    /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::OutOfMemory)`.
     pub fn reserve_total_capacity(&mut self, total_capacity: usize) -> Result<(), KernelError> {
         // Check if we already have enough space
         if self.capacity() >= total_capacity {
@@ -405,6 +410,9 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         self.len == 0
     }
 
+    /// Get total amount of space in Vec (in- and out-of-line)
+    ///
+    /// Returns total amount of  reserved space in the vec
     pub fn capacity(&self) -> usize {
         N + self.extra.len()
     }
