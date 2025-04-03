@@ -265,3 +265,79 @@ mod tests {
     }
 }
 // END TESTING
+
+// VERIFICATION -------------------------------------------------------------------------------------------------------
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use core::cmp::max;
+    use std::cmp::min;
+    use std::vec::Vec;
+
+    #[test]
+    fn kani_concrete_playback_growing_retains_queue_state_with_wrapping_7154119071478699851() {
+        let concrete_vals: Vec<Vec<u8>> = vec![
+            // 99968ul
+            vec![128, 134, 1, 0, 0, 0, 0, 0],
+        ];
+        kani::concrete_playback_run(concrete_vals, growing_retains_queue_state_with_wrapping);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(30)]
+    fn growing_retains_queue_state_with_wrapping() {
+        let mut queue = Queue::<usize, 10>::new();
+        for i in 0..10 {
+            assert_eq!(queue.push_back(i), Ok(()));
+        }
+        // sanity check that queue really is full
+        assert_eq!(queue.push_back(1), Err(KernelError::OutOfMemory));
+        assert_eq!(queue.len(), 10);
+
+        // pop and subsequently push more elements to make queue wrap
+        for i in 0..5 {
+            assert_eq!(queue.pop_front(), Some(i));
+        }
+
+        assert_eq!(*queue.front().unwrap(), 5);
+        assert_eq!(*queue.back().unwrap(), 9);
+        assert_eq!(queue.len(), 5);
+
+        for i in 10..15 {
+            assert_eq!(queue.push_back(i), Ok(()));
+        }
+
+        assert_eq!(queue.len(), 10);
+        assert_eq!(*queue.front().unwrap(), 5);
+        assert_eq!(*queue.back().unwrap(), 14);
+        let new_cap = kani::any();
+        let res = queue.grow_capacity(new_cap);
+
+        if res == Ok(()) && new_cap > 10 {
+            for i in 0..(new_cap - 10) {
+                // add some more elements for good measure
+                assert_eq!(queue.push_back(i), Ok(()));
+            }
+        }
+
+        for i in 5..15 {
+            assert_eq!(queue.pop_front(), Some(i));
+        }
+
+        while !queue.is_empty() {
+            let _ = queue.pop_front();
+        }
+
+        // now add and remove elements again to show queue still works as expected
+        if res == Ok(()) && new_cap > 10 {
+            for i in 0..new_cap {
+                assert_eq!(queue.push_back(i), Ok(()));
+            }
+
+            for i in 0..new_cap {
+                assert_eq!(queue.pop_front(), Some(i));
+            }
+        }
+    }
+}
+// END VERIFICATION
