@@ -170,6 +170,33 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         Ok(())
     }
 
+    /// Reserve a fixed amount of space in the Vec. Does nothing if enough space is present already.
+    ///
+    /// `total_capacity` - The total space to be reserved.
+    ///
+    /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::OutOfMemory)`.
+    pub fn reserve_total_capacity(&mut self, total_capacity: usize) -> Result<(), KernelError> {
+        // Check if we already have enough space
+        if self.capacity() >= total_capacity {
+            return Ok(());
+        }
+
+        // If we don't have enough space, we need to grow the extra storage.
+        let new_out_of_line_cap = total_capacity - N;
+        let mut new_extra = Box::new_slice_uninit(new_out_of_line_cap)?;
+
+        // Check that the new extra storage has the requested length.
+        BUG_ON!(new_extra.len() != new_out_of_line_cap);
+
+        let curr_out_of_line_size = self.extra.len();
+        // Copy the old extra storage into the new one.
+        new_extra[..curr_out_of_line_size].copy_from_slice(&self.extra);
+
+        // Replace the old extra storage with the new one. The old one will be dropped.
+        self.extra = new_extra;
+        Ok(())
+    }
+
     /// Create a new Vec with the given length and value.
     ///
     /// `length` - The length of the Vec.
@@ -330,6 +357,27 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
     }
 
+    /// Get a mutable reference to the value at the given index.
+    ///
+    /// `index` - The index to get the value from.
+    ///
+    /// Returns `Some(&mut T)` if the index is in-bounds, otherwise `None`.
+    pub fn at_mut(&mut self, index: usize) -> Option<&mut T> {
+        // Check if the index is in-bounds.
+        if index > self.len - 1 {
+            return None;
+        }
+
+        if index < N {
+            // Safety: the elements until self.len are initialized.
+            unsafe { Some(self.data[index].assume_init_mut()) }
+        } else {
+            let index = index - N;
+            // Safety: the elements until self.len - N are initialized.
+            unsafe { Some(self.extra[index].assume_init_mut()) }
+        }
+    }
+
     /// Swap the values at the given indices.
     ///
     /// `a` - The first index.
@@ -360,6 +408,13 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// Returns `true` if the Vec is empty, otherwise `false`.
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+
+    /// Get total amount of space in Vec (in- and out-of-line)
+    ///
+    /// Returns total amount of  reserved space in the vec
+    pub fn capacity(&self) -> usize {
+        N + self.extra.len()
     }
 }
 
