@@ -2,7 +2,7 @@ use core::ffi::c_void;
 
 use macros::syscall_handler;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[syscall_handler(args = 1, num = 1)]
 extern "C" fn syscall_dummy(svc_args: *const c_void) {
     let num = unsafe { *(svc_args as *const i32) };

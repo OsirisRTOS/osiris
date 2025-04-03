@@ -1,6 +1,6 @@
 //! This module provides access to the global memory allocator.
 
-use crate::{utils, BootInfo};
+use crate::{BootInfo, utils};
 use alloc::Allocator;
 use core::ptr::NonNull;
 use hal::common::sync::SpinLocked;
@@ -74,7 +74,7 @@ pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
 /// The caller must ensure that the pointer is from a previous call to `malloc` and that the size is still the same.
 pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
-    allocator.free(ptr, size);
+    unsafe { allocator.free(ptr, size) };
 }
 
 /// Aligns a size to be a multiple of the u128 alignment.
