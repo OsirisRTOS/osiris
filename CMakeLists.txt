@@ -1,6 +1,8 @@
 # ./CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.28)
+set( CMAKE_VERBOSE_MAKEFILE on )
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(BOARD "stm32-nucleo-l4r5zi" CACHE STRING "target board")

@@ -8,18 +8,24 @@ MEMORY
 
 __stack_size = 0x1000;
 
+__flash_start = ORIGIN(FLASH);
+__flash_end = ORIGIN(FLASH) + LENGTH(FLASH);
+
 __ram_start = ORIGIN(RAM);
 __ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
 SECTIONS
 {
-    .ivt ORIGIN(FLASH) :
+    __ivt = LOADADDR(.ivt);
+    .ivt ORIGIN(RAM) :
     {
-        __vector_table = .;
+        __ivt_start = .;
 
         KEEP(*(.ivt.core));
         KEEP(*(.ivt.ext));
-    } > FLASH
+
+        __ivt_end = .;
+    } > RAM AT > FLASH
 
     .stack (NOLOAD) :
     {
@@ -29,6 +35,15 @@ SECTIONS
         . = ALIGN(4);
         __stack_top = .;
     } > RAM
+
+    __got = LOADADDR(.got);
+    .got :
+    {
+        . = ALIGN(4);
+        __got_start = .;
+        KEEP(*(.got));
+        __got_end = .;
+    } > RAM AT > FLASH
 
     .text :
     {

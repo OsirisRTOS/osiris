@@ -47,8 +47,32 @@ hndl_weak_endl debug_mon_hndlr
 .thumb_func
 .global reset_hndlr
 reset_hndlr:
-    ldr r1,=__stack_top
-    mov sp, r1
+    // Check if sp is equal to __stack_top - 4. If yes, we got an offset from the bootloader.
+    // If not, we are booting without a bootloader.
+    ldr r0, =__stack_top
+    sub r0, r0, #4
+    cmp sp, r0
+    bne no_bootloader
+
+    //bl relocate_got
+
+    ldr r0, [sp]
+    ldr r9, =__data_start
     bl _main
+
+    b loop
+
+no_bootloader:
+    // If we are here, we are booting without a bootloader.
+    // We need to set the stack pointer to the top of the stack.
+    ldr r0,=__stack_top
+    mov sp, r0
+
+    // Call the main function.
+    mov r0, #0
+    bl _main
+
+loop:
+    b loop
 
 

@@ -27,4 +27,7 @@ target_sources(kernel
             include/kernel/syscalls.map.gen.h
 )
 
+# See https://doc.rust-lang.org/rustc/codegen-options/index.html
+corrosion_add_target_rustflags(kernel "-Crelocation-model=ropi-rwpi" "-Crelro-level=off")
+
 add_custom_target(syscalls_map DEPENDS cargo-build_kernel)

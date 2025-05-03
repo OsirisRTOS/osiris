@@ -4,6 +4,9 @@ set(CPU_COMPILE_FLAGS
     -mcpu=${CPU}
     -mthumb
     -z noexecstack
+    -fpic
+    -msingle-pic-base
+    -mpic-register=r9
 )
 
 set(CPU_LINK_FLAGS
@@ -15,6 +18,7 @@ set_property(SOURCE crt0.s APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-
 
 add_library(startup_${CPU} OBJECT
     crt0.S
+    reloc.S
     entry.c
     syscall.c
     irq.S
