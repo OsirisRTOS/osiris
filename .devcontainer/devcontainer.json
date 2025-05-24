@@ -4,9 +4,11 @@
 	"build": {
 		"dockerfile": "Dockerfile",
 		"context": "..",
-		"cacheFrom": "ghcr.io/osirisrtos/osiris/devcontainer:main-cache"
+		"cacheFrom": [
+			"ghcr.io/osirisrtos/osiris/devcontainer:main",
+			"ghcr.io/osirisrtos/osiris/devcontainer:main-cache"
+		]
 	},
-	"remoteUser": "vscode",
 	"privileged": false,
 	"capAdd": [
 		// Permissions for accessing host USB devices
