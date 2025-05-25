@@ -72,7 +72,7 @@ impl<T: Default> SizedPool<T> {
             write(ptr as *mut SizedPoolMeta, meta);
         }
 
-        self.head = Some(NonZeroUsize::new_unchecked(ptr));
+        self.head = Some(unsafe { NonZeroUsize::new_unchecked(ptr) });
     }
 
     /// Allocate a block from the pool.

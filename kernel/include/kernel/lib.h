@@ -59,14 +59,4 @@ typedef struct BootInfo {
  */
 void kernel_init(const struct BootInfo *boot_info);
 
-void syscall_dummy(const void *svc_args);
-
-/**
- * Syscall handler: reschedule.
- * This syscall is used to request a reschedule.
- *
- * No arguments are passed to this syscall.
- */
-void syscall_reschedule(const void *_svc_args);
-
-#endif /* KERNEL_H */
+#endif  /* KERNEL_H */

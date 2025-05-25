@@ -35,6 +35,7 @@ mkShell {
     glibc
     libffi
     ncurses
+    neovim
   ];
   NIX_ENFORCE_PURITY=0;
 

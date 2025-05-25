@@ -3,7 +3,7 @@
 
 use core::{ops::Range, ptr::NonNull};
 
-use crate::{utils, BUG_ON};
+use crate::{BUG_ON, utils};
 
 #[cfg(target_pointer_width = "64")]
 const MAX_ADDR: usize = 2_usize.pow(48);
@@ -87,7 +87,7 @@ impl BestFitAllocator {
         };
 
         // Write the header to the memory.
-        core::ptr::write(ptr as *mut BestFitMeta, meta);
+        unsafe { core::ptr::write(ptr as *mut BestFitMeta, meta) };
 
         // Set the head to the new block.
         self.head = Some(unsafe { NonNull::new_unchecked(ptr as *mut u8) });
@@ -152,7 +152,7 @@ impl BestFitAllocator {
             (ptr.as_ptr() as usize)
                 <= isize::MAX as usize - size_of::<BestFitMeta>() - Self::align_up()
         );
-        ptr.byte_add(size_of::<BestFitMeta>() + Self::align_up())
+        unsafe { ptr.byte_add(size_of::<BestFitMeta>() + Self::align_up()) }
     }
 
     /// Calculates the control pointer from the user pointer.
@@ -166,7 +166,7 @@ impl BestFitAllocator {
     /// The ptr must be a valid user pointer. Note: After the allocator which allocated the pointer is dropped, the user pointer is always considered invalid.
     unsafe fn control_ptr(ptr: NonNull<u8>) -> NonNull<u8> {
         debug_assert!((ptr.as_ptr() as usize) > size_of::<BestFitMeta>() + Self::align_up());
-        ptr.byte_sub(size_of::<BestFitMeta>() + Self::align_up())
+        unsafe { ptr.byte_sub(size_of::<BestFitMeta>() + Self::align_up()) }
     }
 }
 
@@ -286,14 +286,14 @@ impl Allocator for BestFitAllocator {
     /// `ptr` - The pointer to the block.
     /// `size` - The size of the block. (This is used to check if the size of the block is correct.)
     unsafe fn free(&mut self, ptr: NonNull<u8>, size: usize) {
-        let block = Self::control_ptr(ptr);
-        let meta = block.cast::<BestFitMeta>().as_mut();
+        let block = unsafe { Self::control_ptr(ptr) };
+        let meta = unsafe { block.cast::<BestFitMeta>().as_mut() };
 
         // The next block of a free block is always the current head. We essentially insert the block at the beginning of the list.
         meta.next = self.head;
 
         // Check if the size of the block is correct.
-        BUG_ON!(meta.size != size, "Invalid size in free()");
+        BUG_ON!(meta.size != super::align_up(size), "Invalid size in free()");
 
         // Set the size of the block.
         meta.size = size;
