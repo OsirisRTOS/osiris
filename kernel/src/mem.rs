@@ -1,9 +1,9 @@
 //! This module provides access to the global memory allocator.
 
+use crate::sync::spinlock::SpinLocked;
 use crate::{BootInfo, utils};
 use alloc::Allocator;
 use core::ptr::NonNull;
-use hal::common::sync::SpinLocked;
 
 pub mod alloc;
 pub mod array;

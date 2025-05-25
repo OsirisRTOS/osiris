@@ -1,0 +1,17 @@
+[package]
+name = "hal"
+version = "0.1.0"
+authors = ["Thomas Wachter"]
+edition = "2024"
+build = "build.rs"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.71.1"
+
+[features]
+panic-exit = []

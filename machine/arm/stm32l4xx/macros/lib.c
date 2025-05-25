@@ -1,0 +1,42 @@
+
+#include <stm32l4xx_hal_rcc.h>
+
+void HAL_RCC_SYSCFG_CLK_ENABLE(void)
+{
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+}
+
+void HAL_RCC_PWR_CLK_ENABLE(void)
+{
+    __HAL_RCC_PWR_CLK_ENABLE();
+}
+
+void HAL_RCC_LPUART1_CLK_ENABLE(void)
+{
+    __HAL_RCC_LPUART1_CLK_ENABLE();
+}
+
+void HAL_RCC_GPIOC_CLK_ENABLE(void)
+{
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+}
+
+void HAL_RCC_GPIOH_CLK_ENABLE(void)
+{
+    __HAL_RCC_GPIOH_CLK_ENABLE();
+}
+
+void HAL_RCC_GPIOB_CLK_ENABLE(void)
+{
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+}
+
+void HAL_RCC_GPIOD_CLK_ENABLE(void)
+{
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+}
+
+void HAL_RCC_GPIOG_CLK_ENABLE(void)
+{
+    __HAL_RCC_GPIOG_CLK_ENABLE();
+}

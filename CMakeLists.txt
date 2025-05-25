@@ -1,12 +1,11 @@
 # ./CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.28)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS OFF)
 
+set(MCU "stm32l4r5xx" CACHE STRING "target mcu")
+#set(CPU "cortex-m4" CACHE STRING "target cpu")
 set(BOARD "stm32-nucleo-l4r5zi" CACHE STRING "target board")
-set(CPU "cortex-m4" CACHE STRING "target cpu")
-
-set(COMBO_IS_VALID FALSE)
 
 # The layout is "board cpu1,cpu2,...,cpuN"
 set(BOARD_CPU_MAP 
@@ -14,46 +13,49 @@ set(BOARD_CPU_MAP
     ""
 )
 
-# Build a list of valid boards and CPUs
-foreach(entry ${BOARD_CPU_MAP})
-    string(REPLACE " " ";" entry_parts ${entry})
-    list(GET entry_parts 0 board)
+set(MCU_CPU_ARCH_HAL_MAP
+    "stm32l4r5xx cortex-m4 arm stm32l4xx"
+    ""
+)
 
-    if(NOT board STREQUAL BOARD)
+# Extract MCU, CPU, HAL and ARCH from the MCU_CPU_ARCH_HAL_MAP
+foreach(entry ${MCU_CPU_ARCH_HAL_MAP})
+    string(REPLACE " " ";" entry_parts ${entry})
+    list(GET entry_parts 0 mcu)
+
+    if(NOT mcu STREQUAL MCU)
         continue()
     endif()
 
-    list(GET entry_parts 1 cpu_list)
-    string(REPLACE "," ";" cpus ${cpu_list})
+    list(GET entry_parts 1 cpu)
+    list(GET entry_parts 2 arch)
+    list(GET entry_parts 3 hal)
 
-    foreach(cpu ${cpus})
-        if(cpu STREQUAL CPU)
-            set(COMBO_IS_VALID TRUE)
-        endif()
-    endforeach()
+    set(CPU ${cpu})
+    set(ARCH ${arch})
+    set(HAL ${hal})
 
-    if (NOT COMBO_IS_VALID)
-        message(FATAL_ERROR "Invalid combination of BOARD='${BOARD}' and CPU='${CPU}'. Compatible CPUs for '${BOARD}' are: ${cpus}")
-    else ()
-        message(STATUS "Detected board '${BOARD}' with CPU '${CPU}'")
-    endif()
+    message(STATUS "Build for MCU '${MCU}' with CPU '${CPU}', ARCH '${ARCH}' and HAL '${HAL}'")
 endforeach()
 
-if (NOT COMBO_IS_VALID)
-    message(FATAL_ERROR "Board '${BOARD}' not supported.")
+# Check if CPU is set
+if(CPU STREQUAL "cortex-m4")
+    set(Rust_CARGO_TARGET thumbv7em-none-eabi)
+else()
+    message(FATAL_ERROR "Invalid MCU '${MCU}' specified. Please check the MCU_CPU_ARCH_HAL_MAP.")
 endif()
 
-if(CPU MATCHES "cortex-m[0-9]+")
+if (ARCH STREQUAL "arm")
     set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/cmake/arm-none-eabi.cmake")
 else()
-    message(FATAL_ERROR "Unsupported CPU: ${CPU}")
+    message(FATAL_ERROR "Unsupported architecture '${ARCH}'.")
 endif()
 
 project(Osiris LANGUAGES C CXX ASM)
 
 # Define the necessary scripts.
-set(STARTUP_DIR "${CMAKE_SOURCE_DIR}/machine/${CPU}")
-set(LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/machine/board/${BOARD}/link.ld")
+set(STARTUP_DIR "${CMAKE_SOURCE_DIR}/machine/startup/${CPU}")
+set(LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/machine/startup/mcu/${MCU}/link.ld")
 
 # Check if the linker script exists.
 if(NOT EXISTS "${LINKER_SCRIPT}")
@@ -64,17 +66,21 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
 )
 
-add_subdirectory(hal)
-
 # Now add our startup code and the nlib.
 # This will also set the compiler and linker flags.
-add_subdirectory(machine/${CPU})
+add_subdirectory(machine/startup/${CPU})
+
+# This sets the HAL for the kernel.
+set(HAL_DIR "${CMAKE_SOURCE_DIR}/machine/${ARCH}/${HAL}")
+
+# Add the C hal
+add_subdirectory(${HAL_DIR})
 
 add_subdirectory(kernel)
 
 # Add the nlib and the board-specific code.
 add_subdirectory(nlib)
-add_subdirectory(machine/board/${BOARD})
+add_subdirectory(machine/startup/mcu/${MCU})
 
 add_executable(${PROJECT_NAME} 
     bootstrap.c
@@ -82,12 +88,16 @@ add_executable(${PROJECT_NAME}
 
 add_dependencies(startup_${CPU} syscalls_map)
 
+target_link_libraries(kernel INTERFACE 
+    hal_${HAL}
+)
+
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         kernel
-        $<TARGET_OBJECTS:startup_${CPU}>
-        $<TARGET_OBJECTS:startup_${BOARD}>
         nlib
+        $<TARGET_OBJECTS:startup_${CPU}>
+        $<TARGET_OBJECTS:startup_${MCU}>
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

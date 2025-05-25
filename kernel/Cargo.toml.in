@@ -7,8 +7,13 @@ edition = "2024"
 crate-type = ["staticlib"]
 
 [dependencies]
-hal = { path = "@HAL_DIR@", features = ["panic-semih", "panic-exit"] }
+hal = { path = "@HAL_DIR@", features = ["panic-exit"] }
 macros = { path = "macros" }
+
+[features]
+unstable = []
+atomic-cas = []
+multi-core = ["atomic-cas"]
 
 [build-dependencies]
 cbindgen = "0.28.0"
@@ -20,7 +25,9 @@ rand = "0.8.5"
 
 [profile.dev]
 panic = "abort"
+opt-level = "z"
 
 [profile.release]
 panic = "abort"
+opt-level = "z"
 

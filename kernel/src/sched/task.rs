@@ -2,8 +2,7 @@
 
 use core::{cmp::Ordering, ptr::NonNull};
 
-use crate::mem;
-use hal::common;
+use crate::{kprint, kprintln, mem};
 
 use crate::utils::KernelError;
 
@@ -114,11 +113,12 @@ impl Task {
     /// Returns the thread context if the thread was created successfully, or an error if the thread could not be created. TODO: Check if stack is sufficient
     pub fn create_thread_ctx(
         &self,
-        desc: common::sched::ThreadDesc,
-    ) -> Result<common::sched::ThreadContext, KernelError> {
+        desc: hal::sched::ThreadDesc,
+    ) -> Result<hal::sched::ThreadContext, KernelError> {
         let stack = self.memory.stack();
+
         // TODO: Check if stack is sufficient
-        let ctx = unsafe { common::sched::ThreadContext::from_empty(stack.as_ptr(), desc) };
+        let ctx = unsafe { hal::sched::ThreadContext::from_empty(stack.as_ptr(), desc) };
         Ok(ctx)
     }
 
@@ -182,7 +182,7 @@ pub struct Thread {
     /// The state of the thread.
     pub state: ThreadState,
     /// The context of the thread.
-    pub context: common::sched::ThreadContext,
+    pub context: hal::sched::ThreadContext,
     /// The timing constraints of the thread.
     pub timing: Timing,
 }
@@ -194,7 +194,7 @@ impl Thread {
     /// `timing` - The timing constraints of the thread.
     ///
     /// Returns a new thread.
-    pub fn new(ctx: common::sched::ThreadContext, timing: Timing) -> Self {
+    pub fn new(ctx: hal::sched::ThreadContext, timing: Timing) -> Self {
         Self {
             state: ThreadState::Ready,
             context: ctx,

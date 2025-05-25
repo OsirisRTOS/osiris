@@ -1,11 +1,12 @@
 //! This module initializes and manages the microkernel services.
 
 use crate::{
+    kprintln,
     sched::{self, task::Timing},
     uspace,
     utils::KernelError,
 };
-use hal::common::sched::ThreadDesc;
+use hal::sched::ThreadDesc;
 
 /// Initialize the microkernel services.
 ///

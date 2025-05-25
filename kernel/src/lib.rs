@@ -7,12 +7,15 @@ mod macros;
 #[macro_use]
 mod utils;
 mod mem;
+mod print;
 mod sched;
 mod services;
+mod sync;
 mod syscalls;
+mod time;
 mod uspace;
 
-use core::ffi::{CStr, c_char};
+use core::ffi::c_char;
 
 /// The memory map entry type.
 ///
@@ -47,30 +50,28 @@ pub struct BootInfo {
 ///
 /// `boot_info` - The boot information.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
+pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
+    // Initialize basic hardware and the logging system.
+    hal::init_hw();
+
     let boot_info = unsafe { &*boot_info };
 
-    let implementer = unsafe { CStr::from_ptr(boot_info.implementer) };
-    let variant = unsafe { CStr::from_ptr(boot_info.variant) };
+    print::print_header();
+    print::print_boot_info(boot_info);
 
-    if let (Ok(implementer), Ok(variant)) = (implementer.to_str(), variant.to_str()) {
-        //let _ = hal::hprintln!("[Kernel] Detected Processor:");
-        //let _ = hal::hprintln!("[Kernel] Manufacturer    : {}", implementer);
-        //let _ = hal::hprintln!("[Kernel] Name            : {}", variant);
-    }
+    kprintln!("Current time: {} ms", time::time());
 
     // Initialize the memory allocator.
-    if let Err(e) = mem::init_memory(boot_info) {
-        panic!("[Kernel] Failed to initialize memory allocator.");
+    if let Err(_e) = mem::init_memory(boot_info) {
+        panic!("[Kernel] Error: failed to initialize memory allocator.");
     }
 
     // Initialize the services.
-    services::init_services();
+    if let Err(_e) = services::init_services() {
+        panic!("[Kernel] Error: failed to initialize services.");
+    }
 
-    hal::hal_hw_init();
-
-    // Start the scheduling.
-    sched::reschedule();
+    sched::enable_scheduler();
 
     loop {}
 }
@@ -79,5 +80,13 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) {
 #[cfg(all(not(test), not(doctest), not(doc), target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    hal::common::panic::panic_handler(info);
+    // Print the panic message.
+    if let Some(location) = info.location() {
+        kprintln!("[Kernel] Panic at {}:{}", location.file(), location.line());
+    } else {
+        kprintln!("[Kernel] Panic: {}", info);
+    }
+    kprintln!("[Kernel] Halting CPU...");
+
+    hal::panic::panic_handler(info);
 }

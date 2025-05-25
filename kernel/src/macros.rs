@@ -14,3 +14,24 @@ macro_rules! args_from_raw {
         }
     }};
 }
+
+#[macro_export]
+macro_rules! kprint {
+    ($($arg:tt)*) => ({
+        use core::fmt::Write;
+        use $crate::print::Printer;
+        let mut printer = Printer;
+        printer.write_fmt(format_args!($($arg)*)).unwrap();
+    });
+}
+
+#[macro_export]
+macro_rules! kprintln {
+    ($($arg:tt)*) => ({
+        use core::fmt::Write;
+        use $crate::print::Printer;
+        let mut printer = Printer;
+        printer.write_fmt(format_args!($($arg)*)).unwrap();
+        printer.write_str("\n").unwrap();
+    });
+}

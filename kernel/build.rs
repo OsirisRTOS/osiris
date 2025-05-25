@@ -1,10 +1,10 @@
+use std::process::exit;
 use std::{collections::HashMap, fs::File, path::Path};
 
 extern crate rand;
 extern crate syn;
 extern crate walkdir;
 
-use cbindgen::LayoutConfig;
 use std::io::Write;
 use syn::{Attribute, LitInt};
 use walkdir::WalkDir;
@@ -14,6 +14,7 @@ extern crate cbindgen;
 fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=../include/syscalls.map.gen.h");
 
     generate_syscall_map("src").expect("Failed to generate syscall map.");
 }
@@ -48,7 +49,7 @@ fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
 
     writeln!(file, "#define IMPLEMENT_SYSCALLS()     \\")?;
     for (name, (number, _argc)) in syscalls {
-        writeln!(file, "    DECLARE_SYSCALL({}, {})", name, number)?;
+        writeln!(file, "    DECLARE_SYSCALL({}, {})      \\", name, number)?;
     }
 
     writeln!(file)?;
@@ -58,20 +59,21 @@ fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn is_syscall(attrs: &[Attribute]) -> Option<(u8, u8)> {
+fn is_syscall(attrs: &[Attribute], name: &str) -> Option<(u8, u8)> {
     let mut args = 0;
     let mut num = 0;
 
     for attr in attrs {
         if attr.path().is_ident("syscall_handler") {
-            attr.parse_nested_meta(|meta| {
+            let result = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("args") {
                     let raw = meta.value()?;
                     let value: LitInt = raw.parse()?;
-                    args = value.base10_parse()?;
+
+                    args = value.base10_parse::<u8>()?;
 
                     if !(0..=4).contains(&args) {
-                        return Err(meta.error("invalid number of arguments"));
+                        return Err(meta.error(format!("invalid number of arguments: {}", args)));
                     }
 
                     return Ok(());
@@ -80,26 +82,31 @@ fn is_syscall(attrs: &[Attribute]) -> Option<(u8, u8)> {
                 if meta.path.is_ident("num") {
                     let raw = meta.value()?;
                     let value: LitInt = raw.parse()?;
-                    num = value.base10_parse()?;
+                    num = value.base10_parse::<u8>()?;
 
                     if !(0..=255).contains(&num) {
-                        return Err(meta.error("invalid syscall number"));
+                        return Err(meta.error(format!("invalid syscall number: {}", num)));
                     }
 
                     return Ok(());
                 }
 
-                Err(meta.error("unknown attribute"))
-            })
-            .expect("failed to parse attribute");
+                Err(meta.error(format!("unknown attribute: {}", name)))
+            });
+
+            if let Err(e) = result {
+                println!(
+                    "cargo:warning=Failed to parse syscall arguments for: `{}`. message: {}",
+                    name, e
+                );
+                return None;
+            }
+
+            return Some((num, args));
         }
     }
 
-    if args == 0 || num == 0 {
-        return None;
-    }
-
-    Some((num, args))
+    None
 }
 
 type SyscallData = (u8, u8);
@@ -108,7 +115,7 @@ fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallData> {
     let mut syscalls = HashMap::new();
     let mut numbers = HashMap::new();
 
-    for entry in WalkDir::new(root) {
+    for entry in WalkDir::new(&root) {
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => continue,
@@ -116,6 +123,8 @@ fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallData> {
 
         if entry.file_type().is_file() {
             let path = entry.path();
+
+            println!("Processing file: {}", path.display());
 
             let contents = match std::fs::read_to_string(path) {
                 Ok(contents) => contents,
@@ -133,19 +142,27 @@ fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallData> {
                     _ => continue,
                 };
 
-                if !item
+                if item
                     .sig
                     .abi
-                    .is_some_and(|abi| abi.name.is_some_and(|name| name.value() == "C"))
+                    .is_none_or(|abi| abi.name.is_none_or(|name| name.value() != "C"))
                 {
                     continue;
                 }
 
-                if let Some((num, argc)) = is_syscall(&item.attrs) {
-                    let name = item.sig.ident.to_string();
+                let name = item.sig.ident.to_string();
 
+                if let Some((num, argc)) = is_syscall(&item.attrs, &name) {
                     if syscalls.contains_key(&name) {
-                        eprintln!("Duplicate syscall handler: {}", name);
+                        println!("cargo:warning=Duplicate syscall handler: {}", name);
+                        continue;
+                    }
+
+                    if numbers.contains_key(&num) {
+                        println!(
+                            "cargo:warning=Duplicate syscall number: {} for {}",
+                            num, name
+                        );
                         continue;
                     }
 
