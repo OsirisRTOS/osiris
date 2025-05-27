@@ -16,23 +16,21 @@ fn tick() {
  *
  */
 pub fn time() -> u64 {
-    let mut time = 0;
-
-    if !hal::are_interrupts_enabled() {
+    if !hal::asm::are_interrupts_enabled() {
         // If interrupts are disabled, we can just read the time.
         return *TIME.lock();
     } else {
+        let time;
         // We need to disable interrupts to ensure that systick is always able to lock the time.
-        hal::disable_interrupts();
+        hal::asm::disable_interrupts();
         // Return the current time.
         {
             time = *TIME.lock();
         }
-        hal::enable_interrupts();
+        hal::asm::enable_interrupts();
         // Now systick can be called again.
+        return time;
     }
-
-    return time;
 }
 
 /// cbindgen:ignore

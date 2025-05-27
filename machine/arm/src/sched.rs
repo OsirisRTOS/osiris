@@ -130,17 +130,7 @@ impl From<ThreadContext> for CtxPtr {
     }
 }
 
-use core::arch::asm;
-
 /// Reschedule the tasks.
 pub fn reschedule() {
-    // Call PendSV to reschedule the tasks.
-    const SCB: *mut bindings::SCB_Type = bindings::SCB_BASE as *mut _;
-
-    unsafe {
-        (*SCB).ICSR |= bindings::SCB_ICSR_PENDSVSET_Msk;
-    }
-
-    unsafe { asm!("isb", options(nomem, nostack, preserves_flags)) };
-    unsafe { asm!("dsb", options(nomem, nostack, preserves_flags)) };
+    unsafe { bindings::reschedule() };
 }

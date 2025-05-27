@@ -6,10 +6,10 @@ file(GLOB_RECURSE SRC_FILES
 )
 
 # Add the library target
-add_library(macros_stm32l4xx STATIC ${SRC_FILES})
+add_library(nucleo_stm32l4xx STATIC ${SRC_FILES})
 
 # Set the include directories so the cmake src root machine/arm/cmsis machine/arm/device/stm32l4xx
-target_include_directories(macros_stm32l4xx PUBLIC
+target_include_directories(nucleo_stm32l4xx PUBLIC
     ${CMAKE_SOURCE_DIR}/machine/arm/cmsis
     ${CMAKE_SOURCE_DIR}/machine/arm/stm32l4xx/device
     ${CMAKE_SOURCE_DIR}/machine/arm/stm32l4xx/hal
@@ -25,11 +25,11 @@ string(SUBSTRING ${MCU_DEFINE} 0 ${MCU_DEFINE_LENGTH} MCU_DEFINE)
 # Append "xx" to the MCU_DEFINE
 string(CONCAT MCU_DEFINE "${MCU_DEFINE}xx")
 
-target_compile_definitions(macros_stm32l4xx PUBLIC
+target_compile_definitions(nucleo_stm32l4xx PUBLIC
     ${MCU_DEFINE}
 )
 
-target_compile_options(macros_stm32l4xx
+target_compile_options(nucleo_stm32l4xx
     PRIVATE
         ${COMPILE_FLAGS_${CPU}}
 )

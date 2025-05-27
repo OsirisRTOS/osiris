@@ -1,7 +1,3 @@
-extern crate proc_macro;
-extern crate quote;
-extern crate syn;
-
 use quote::{ToTokens, format_ident};
 use syn::parse_macro_input;
 
@@ -60,7 +56,9 @@ pub fn service(
 
 const SYSCALL_MAX_ARGS: usize = 4;
 
-fn is_return_type_register_sized_check(item: &syn::ItemFn) -> Result<proc_macro2::TokenStream, syn::Error> {
+fn is_return_type_register_sized_check(
+    item: &syn::ItemFn,
+) -> Result<proc_macro2::TokenStream, syn::Error> {
     let ret_ty = match &item.sig.output {
         syn::ReturnType::Default => {
             // no "-> Type" present
@@ -76,7 +74,7 @@ fn is_return_type_register_sized_check(item: &syn::ItemFn) -> Result<proc_macro2
         const _: () = {
             if core::mem::size_of::<#ret_ty>() > core::mem::size_of::<usize>() {
                 panic!("syscall_handler: return type {} is bigger than usize. Return type must fit in a register.", stringify!(#ret_ty));
-            }   
+            }
         };
     })
 }

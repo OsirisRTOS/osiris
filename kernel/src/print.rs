@@ -7,7 +7,7 @@ pub struct Printer;
 
 impl Write for Printer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        hal::uart::lpuart1_write(s.as_bytes()).map_err(|_| fmt::Error)?;
+        hal::print(s).map_err(|_| fmt::Error)?;
         Ok(())
     }
 }

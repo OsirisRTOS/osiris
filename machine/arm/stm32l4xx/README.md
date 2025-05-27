@@ -4,7 +4,7 @@ This is the hardware abstraction layer used for the stm32l4 family of microcontr
 
 ## Project structure
 
-### Third-Party
+### Third-Party HAL libraries
 
 | Directory              | Autor              | License                                      | Description                                                                       |
 |------------------------|--------------------|----------------------------------------------|-----------------------------------------------------------------------------------|
@@ -12,13 +12,11 @@ This is the hardware abstraction layer used for the stm32l4 family of microcontr
 | [hal/](hal/)           | STMicroelectronics | [hal/LICENSE.md](hal/LICENSE.md)             | These are source/header files of the [STM32CubeL4 HAL Driver MCU Component](https://github.com/STMicroelectronics/stm32l4xx-hal-driver) repository. |
 | [../cmsis/](../cmsis/) | ARM                | [../cmsis/LICENSE.txt](../cmsis/LICENSE.txt) | These are the core cmsis header files of the [CMSIS Version 5](https://github.com/ARM-software/CMSIS_5) repository.                                 |
 
-
-### Osiris
+### Board specific instantiations
 
 | Directory          | Description                                                                                                                                                |
 |--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [macros/](macros/) | This contains wrapper function for function like C macros of the underlying hal ([hal/](hal/)), so that we can call them from rust.                        |
-| [src/](src/)       | This is the rust library which provides the HAL abstractions to the kernel. It uses bindings to the hal ([hal/](hal/), [device/](device/)) under the hood. |
+| [nucleo/](nucleo/) | This uses bindings to the hal ([hal/](hal/) to define board specific instantiations of common functions used by the kernel for the nucleo dev boards by STM. |
 
 ## How to update the third-party repositories?
 
@@ -44,7 +42,7 @@ Open the third-party repository.
 
 ## How does the build process of this HAL work?
 
-First each component with C source files so [hal/](hal/), [device/](device/), [macros/](macros/) will get compiled into a static library.
+First each component with C source files so [hal/](hal/), [device/](device/) and the board folders will get compiled into a static library.
 Then the ```build.rs``` file runs which generates bindings to these C source files based on the headers provided by the respective libraries.
 This will generate two files ```bindings.rs``` and ```macros.rs``` (they will be placed in ```//build```), which get included in our ```lib.rs``` file.
 Then the actual crate will be build as an rlib which then get's included in the kernel.

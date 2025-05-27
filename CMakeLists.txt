@@ -3,9 +3,10 @@
 cmake_minimum_required(VERSION 3.28)
 set(CMAKE_EXPORT_COMPILE_COMMANDS OFF)
 
+set(CMAKE_VERBOSE_MAKEFILE OFF)
+
 set(MCU "stm32l4r5xx" CACHE STRING "target mcu")
-#set(CPU "cortex-m4" CACHE STRING "target cpu")
-set(BOARD "stm32-nucleo-l4r5zi" CACHE STRING "target board")
+set(BOARD "nucleo" CACHE STRING "target board")
 
 # The layout is "board cpu1,cpu2,...,cpuN"
 set(BOARD_CPU_MAP 
@@ -35,7 +36,7 @@ foreach(entry ${MCU_CPU_ARCH_HAL_MAP})
     set(ARCH ${arch})
     set(HAL ${hal})
 
-    message(STATUS "Build for MCU '${MCU}' with CPU '${CPU}', ARCH '${ARCH}' and HAL '${HAL}'")
+    message(STATUS "Build for MCU '${MCU}' with CPU '${CPU}', ARCH '${ARCH}', HAL '${HAL}' and BOARD '${BOARD}'")
 endforeach()
 
 # Check if CPU is set
@@ -71,7 +72,7 @@ include_directories(
 add_subdirectory(machine/startup/${CPU})
 
 # This sets the HAL for the kernel.
-set(HAL_DIR "${CMAKE_SOURCE_DIR}/machine/${ARCH}/${HAL}")
+set(HAL_DIR "${CMAKE_SOURCE_DIR}/machine/${ARCH}")
 
 # Add the C hal
 add_subdirectory(${HAL_DIR})
@@ -89,7 +90,7 @@ add_executable(${PROJECT_NAME}
 add_dependencies(startup_${CPU} syscalls_map)
 
 target_link_libraries(kernel INTERFACE 
-    hal_${HAL}
+    ${BOARD}_${HAL}
 )
 
 target_link_libraries(${PROJECT_NAME}

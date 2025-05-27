@@ -48,7 +48,11 @@ fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
 
     writeln!(file, "#define IMPLEMENT_SYSCALLS()     \\")?;
     for (name, number) in syscalls {
-        writeln!(file, "    DECLARE_SYSCALL(entry_{}, {})      \\", name, number)?;
+        writeln!(
+            file,
+            "    DECLARE_SYSCALL(entry_{}, {})      \\",
+            name, number
+        )?;
     }
 
     writeln!(file)?;

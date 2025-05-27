@@ -52,7 +52,7 @@ pub struct BootInfo {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize basic hardware and the logging system.
-    hal::init_hw();
+    hal::init();
 
     let boot_info = unsafe { &*boot_info };
 

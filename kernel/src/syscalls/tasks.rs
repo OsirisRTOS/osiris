@@ -2,7 +2,7 @@
 
 use core::{ffi::c_void, str};
 
-use crate::{sched};
+use crate::sched;
 use macros::syscall_handler;
 
 /// Syscall handler: reschedule.

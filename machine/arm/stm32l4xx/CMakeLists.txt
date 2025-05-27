@@ -1,7 +1,9 @@
-
-
+# HAL
 add_subdirectory(hal)
 add_subdirectory(device)
-add_subdirectory(macros)
 
-target_link_libraries(hal_${HAL} PUBLIC device_${HAL} macros_${HAL})
+target_link_libraries(hal_${HAL} PUBLIC device_${HAL})
+
+# Boards
+add_subdirectory(nucleo)
+target_link_libraries(nucleo_${HAL} PUBLIC hal_${HAL})

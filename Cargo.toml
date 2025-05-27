@@ -3,5 +3,5 @@ resolver = "2"
 members = [
 	"kernel",
 	"kernel/macros",
-	"machine/arm/stm32l4xx"
+	"machine/arm/"
 ]

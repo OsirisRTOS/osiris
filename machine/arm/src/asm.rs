@@ -45,3 +45,27 @@ macro_rules! __macro_syscall {
 }
 
 pub use crate::__macro_syscall as syscall;
+
+use core::arch::asm;
+use core::sync::atomic::compiler_fence;
+
+#[inline(always)]
+pub fn disable_interrupts() {
+    unsafe { asm!("cpsid f", options(nomem, nostack, preserves_flags)) };
+    compiler_fence(core::sync::atomic::Ordering::SeqCst);
+}
+
+#[inline(always)]
+pub fn are_interrupts_enabled() -> bool {
+    let primask: u32;
+    unsafe {
+        asm!("mrs {}, primask", out(reg) primask, options(nomem, nostack, preserves_flags));
+    }
+    primask == 0
+}
+
+#[inline(always)]
+pub fn enable_interrupts() {
+    unsafe { asm!("cpsie f", options(nomem, nostack, preserves_flags)) };
+    compiler_fence(core::sync::atomic::Ordering::SeqCst);
+}

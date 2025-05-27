@@ -1,7 +1,7 @@
 # machine/arm
 
-This folder provides hardware abstraction layers (HAL) for each ARM based machine that is supported.
-Additionally there is common code for ARM based machines in this folder:
+This folder provides a hardware abstraction layers (HAL) for each ARM based machine that is supported.
+There are folders for each family of machines with the underlying HALs.
 
 ## Third-Party Common Code
 | Directory | Autor | License | Description |

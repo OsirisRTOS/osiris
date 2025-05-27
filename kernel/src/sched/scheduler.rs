@@ -3,7 +3,6 @@
 
 use super::task::{Task, TaskDesc, TaskId, Thread, ThreadId, ThreadState, Timing};
 use crate::{
-    kprintln,
     mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue},
     sync::spinlock::SpinLocked,
     utils,
@@ -50,9 +49,9 @@ impl Scheduler {
     }
 
     pub fn enable(&mut self) {
-        hal::disable_interrupts();
+        hal::asm::disable_interrupts();
         self.enabled = true;
-        hal::enable_interrupts();
+        hal::asm::enable_interrupts();
     }
 
     /// Create a new task in the system.
