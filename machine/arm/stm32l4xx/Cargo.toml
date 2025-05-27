@@ -15,3 +15,6 @@ bindgen = "0.71.1"
 
 [features]
 panic-exit = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

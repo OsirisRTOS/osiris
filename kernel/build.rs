@@ -1,4 +1,3 @@
-use std::process::exit;
 use std::{collections::HashMap, fs::File, path::Path};
 
 extern crate rand;
@@ -42,14 +41,14 @@ fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
 
     writeln!(file, "#define DECLARE_SYSCALLS() \\")?;
     for (name, _) in syscalls.clone() {
-        writeln!(file, "extern void {}(void *svc_args); \\", name)?;
+        writeln!(file, "extern void entry_{}(void *svc_args); \\", name)?;
     }
 
     writeln!(file)?;
 
     writeln!(file, "#define IMPLEMENT_SYSCALLS()     \\")?;
-    for (name, (number, _argc)) in syscalls {
-        writeln!(file, "    DECLARE_SYSCALL({}, {})      \\", name, number)?;
+    for (name, number) in syscalls {
+        writeln!(file, "    DECLARE_SYSCALL(entry_{}, {})      \\", name, number)?;
     }
 
     writeln!(file)?;
@@ -59,30 +58,16 @@ fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn is_syscall(attrs: &[Attribute], name: &str) -> Option<(u8, u8)> {
-    let mut args = 0;
+fn is_syscall(attrs: &[Attribute], name: &str) -> Option<u16> {
     let mut num = 0;
 
     for attr in attrs {
         if attr.path().is_ident("syscall_handler") {
             let result = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("args") {
-                    let raw = meta.value()?;
-                    let value: LitInt = raw.parse()?;
-
-                    args = value.base10_parse::<u8>()?;
-
-                    if !(0..=4).contains(&args) {
-                        return Err(meta.error(format!("invalid number of arguments: {}", args)));
-                    }
-
-                    return Ok(());
-                }
-
                 if meta.path.is_ident("num") {
                     let raw = meta.value()?;
                     let value: LitInt = raw.parse()?;
-                    num = value.base10_parse::<u8>()?;
+                    num = value.base10_parse::<u16>()?;
 
                     if !(0..=255).contains(&num) {
                         return Err(meta.error(format!("invalid syscall number: {}", num)));
@@ -102,14 +87,14 @@ fn is_syscall(attrs: &[Attribute], name: &str) -> Option<(u8, u8)> {
                 return None;
             }
 
-            return Some((num, args));
+            return Some(num);
         }
     }
 
     None
 }
 
-type SyscallData = (u8, u8);
+type SyscallData = u16;
 
 fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallData> {
     let mut syscalls = HashMap::new();
@@ -142,17 +127,9 @@ fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallData> {
                     _ => continue,
                 };
 
-                if item
-                    .sig
-                    .abi
-                    .is_none_or(|abi| abi.name.is_none_or(|name| name.value() != "C"))
-                {
-                    continue;
-                }
-
                 let name = item.sig.ident.to_string();
 
-                if let Some((num, argc)) = is_syscall(&item.attrs, &name) {
+                if let Some(num) = is_syscall(&item.attrs, &name) {
                     if syscalls.contains_key(&name) {
                         println!("cargo:warning=Duplicate syscall handler: {}", name);
                         continue;
@@ -166,7 +143,7 @@ fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallData> {
                         continue;
                     }
 
-                    syscalls.insert(name.clone(), (num, argc));
+                    syscalls.insert(name.clone(), num);
                     numbers.insert(num, name);
                 }
             }

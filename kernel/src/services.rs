@@ -1,7 +1,6 @@
 //! This module initializes and manages the microkernel services.
 
 use crate::{
-    kprintln,
     sched::{self, task::Timing},
     uspace,
     utils::KernelError,

@@ -11,7 +11,7 @@ impl Init {
     /// The entry point of the init service. TODO: Currently, this is a dummy implementation.
     pub extern "C" fn main(argc: usize, argv: *const *const u8) {
         loop {
-            hal::asm::syscall!(2, "Hello from Init!".as_bytes().as_ptr(), 16);
+            hal::asm::syscall!(0, 0, "Hello from Init!".as_bytes().as_ptr(), 16);
 
             for _ in 0..1_000 {
                 unsafe { core::arch::asm!("nop") }
@@ -29,7 +29,7 @@ impl Dummy {
     pub extern "C" fn main(argc: usize, argv: *const *const u8) {
         loop {
             // The first argument is a pointer to a string.
-            hal::asm::syscall!(2, "Hello from Dummy!".as_bytes().as_ptr(), 17);
+            hal::asm::syscall!(0, 0, "Hello from Dummy!".as_bytes().as_ptr(), 17);
 
             for _ in 0..1_000 {
                 unsafe { core::arch::asm!("nop") }
@@ -46,7 +46,7 @@ impl Dummy2 {
     /// The entry point of the second dummy service. TODO: Currently, this is a dummy implementation.
     pub extern "C" fn main(argc: usize, argv: *const *const u8) {
         loop {
-            hal::asm::syscall!(2, "Hello from Dummy2!".as_bytes().as_ptr(), 18);
+            hal::asm::syscall!(0, 0, "Hello from Dummy2!".as_bytes().as_ptr(), 18);
 
             for _ in 0..1_000 {
                 unsafe { core::arch::asm!("nop") }

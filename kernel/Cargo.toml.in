@@ -12,8 +12,8 @@ macros = { path = "macros" }
 
 [features]
 unstable = []
-atomic-cas = []
-multi-core = ["atomic-cas"]
+no-atomic-cas = []
+multi-core = []
 
 [build-dependencies]
 cbindgen = "0.28.0"
@@ -30,4 +30,7 @@ opt-level = "z"
 [profile.release]
 panic = "abort"
 opt-level = "z"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 

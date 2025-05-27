@@ -2,7 +2,7 @@
 
 use core::{cmp::Ordering, ptr::NonNull};
 
-use crate::{kprint, kprintln, mem};
+use crate::{mem};
 
 use crate::utils::KernelError;
 

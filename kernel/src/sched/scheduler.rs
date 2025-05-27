@@ -8,7 +8,7 @@ use crate::{
     sync::spinlock::SpinLocked,
     utils,
 };
-use hal::sched::{self, CtxPtr, ThreadDesc};
+use hal::sched::{CtxPtr, ThreadDesc};
 
 /// The global scheduler instance.
 pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
