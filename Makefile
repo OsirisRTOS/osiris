@@ -52,7 +52,7 @@ fmt: $(BUILD_DIR)
 	$(call ci_check,fmt,)
 
 verify: $(BUILD_DIR)
-	$(call ci_check,kani -Z concrete-playback --concrete-playback=print,,kernel/Cargo.toml)
+	$(call ci_check,kani --tests -Z concrete-playback --concrete-playback=print,,kernel/Cargo.toml)
 
 test: $(BUILD_DIR)
 	cargo tarpaulin --out Lcov --skip-clean --workspace
