@@ -1,8 +1,9 @@
 # We build qemu in a separate stage to avoid installing a bunch of build dependencies in the final image
 FROM fedora:latest AS qemu-builder
 
-RUN dnf update -y && \
-	dnf install -y --setopt=keepcache=0 \
+RUN --mount=type=cache,target=/var/cache/dnf,id=qemu-dnf \
+	dnf update -y && \
+	dnf install -y \
 	@development-tools \
 	git \
 	clang \
@@ -22,23 +23,26 @@ RUN dnf update -y && \
 	ln -sf /usr/bin/clang /usr/bin/cc && \
 	ln -sf /usr/bin/clang++ /usr/bin/c++
 
-RUN git clone --depth 1 https://github.com/thomasw04/qemu.git /tmp/qemu && \
+RUN	git clone --depth 1 https://github.com/thomasw04/qemu.git /tmp/qemu
+
+RUN --mount=type=cache,target=/tmp/qemu/build \
+	--mount=type=cache,target=/tmp/.cache/pip \
+	export PIP_CACHE_DIR=/tmp/.cache/pip && \
 	cd /tmp/qemu && \
 	python3 -m venv .venv && \
 	. .venv/bin/activate && \
 	pip install --no-cache-dir tomli sphinx && \
-	mkdir build && cd build && \
+	mkdir -p build && cd build && \
 	../configure --disable-werror --extra-cflags="-Wno-error -fdeclspec" --target-list=arm-softmmu,arm-linux-user --enable-kvm && \
 	make -j$(nproc) && \
-	make install && \
-	cd / && \
-	rm -rf /tmp/qemu
+	make install
 
 # This is the final image
 FROM fedora:latest AS devcontainer
 
-RUN dnf update -y && \
-	dnf install -y --setopt=keepcache=0 \
+RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
+	dnf update -y && \
+	dnf install -y \
 	@development-tools \
 	direnv \
 	arm-none-eabi-gcc-cs \
@@ -51,19 +55,20 @@ RUN dnf update -y && \
 	libusb1-devel \
 	openssl-devel \
 	lcov \
+	awk \
 	'dnf-command(copr)' && \
 	dnf copr enable -y rleh/arm-none-eabi-gdb && \
-	dnf install -y --setopt=keepcache=0 arm-none-eabi-gdb && \
+	dnf install -y arm-none-eabi-gdb && \
 	dnf clean all && \
 	ln -sf /usr/bin/clang /usr/bin/cc && \
 	ln -sf /usr/bin/clang++ /usr/bin/c++
 
-RUN git clone --single-branch --depth 1 -b "develop" https://github.com/stlink-org/stlink.git /tmp/stlink && \
+RUN git clone --single-branch --depth 1 -b "develop" https://github.com/stlink-org/stlink.git /tmp/stlink
+RUN --mount=type=cache,target=/tmp/stlink/build \
 	cd /tmp/stlink && \
 	make -j release && \
 	make install && \
-	ldconfig && \
-	rm -rf /tmp/stlink
+	ldconfig
 
 # Fix for Fedora not finding libstlink.so.1
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
@@ -74,31 +79,31 @@ ENV CARGO_HOME=/usr/local/cargo
 ENV KANI_HOME=/usr/local/kani
 ENV PATH="/usr/local/cargo/bin:${PATH}"
 
-# Create directories with world-writable permissions before switching to non-root user
-RUN mkdir -p ${RUSTUP_HOME} ${CARGO_HOME} ${KANI_HOME} && \
-	chmod 1777 ${RUSTUP_HOME} ${CARGO_HOME} ${KANI_HOME}
-
-# The container now runs with a non-root user to avoid file permission issues
-ARG USERNAME=vscode
-RUN useradd -m -s /bin/bash ${USERNAME} && \
-	echo "${USERNAME} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-WORKDIR /home/${USERNAME}
-USER ${USERNAME}
-
-RUN umask 0002 && \
+ARG RUST_VERSION=1.85.0
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-	| sh -s -- -y --no-modify-path && \
-	rustup install 1.85.0 && \
+	| sh -s -- -y --no-modify-path --default-toolchain ${RUST_VERSION} && \
 	rustup component add rust-src llvm-tools-preview && \
-	cargo install cargo-binutils && \
 	rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
 
-RUN cargo install --locked kani-verifier && \
+# Note: kani installs an additional toolchain...
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/target \
+	CARGO_TARGET_DIR=/usr/local/cargo/target cargo install --locked kani-verifier && \
 	cargo kani setup
-RUN cargo install --locked cargo-tarpaulin
-RUN cargo install --locked cargo-watch
-RUN cargo install --force cbindgen
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/target \
+	CARGO_TARGET_DIR=/usr/local/cargo/target cargo install --locked cargo-binutils
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/target \
+	CARGO_TARGET_DIR=/usr/local/cargo/target cargo install --locked cargo-tarpaulin
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/target \
+	CARGO_TARGET_DIR=/usr/local/cargo/target cargo install --locked cargo-watch
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/target \
+	CARGO_TARGET_DIR=/usr/local/cargo/target cargo install --locked cbindgen
 
 COPY --from=qemu-builder /usr/local/ /usr/local/
 
