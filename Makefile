@@ -15,7 +15,7 @@ $(BUILD_DIR):
 	@if [ -n "$$CI" ]; then \
 		echo "::group::Generating build dir $(BUILD_DIR)"; \
 	fi
-	cmake -DBOARD=stm32-nucleo-l4r5zi -DCPU=cortex-m4 -B $(BUILD_DIR)
+	cmake -DMCU=stm32l4r5xx -DBOARD=nucleo -B $(BUILD_DIR)
 	@if [ -n "$$CI" ]; then \
 		echo "::endgroup::"; \
 	fi
@@ -55,10 +55,10 @@ verify: $(BUILD_DIR)
 	$(call ci_check,kani --tests -Z concrete-playback --concrete-playback=print,,kernel/Cargo.toml)
 
 test: $(BUILD_DIR)
-	cargo tarpaulin --out Lcov --skip-clean --workspace
+	cargo tarpaulin --out Lcov --skip-clean --manifest-path kernel/Cargo.toml
 
 watch-tests: $(BUILD_DIR)
-	cargo watch --why --exec 'tarpaulin --out Lcov --skip-clean --workspace' --ignore lcov.info
+	cargo watch --why --exec 'tarpaulin --out Lcov --skip-clean --manifest-path kernel/Cargo.toml' --ignore lcov.info
 
 clean:
 	rm -rf $(BUILD_DIR)
