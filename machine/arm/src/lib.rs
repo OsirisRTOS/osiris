@@ -27,7 +27,7 @@ pub fn print(s: &str) -> Result<(), ()> {
     use crate::asm;
     asm::disable_interrupts();
 
-    if (unsafe { bindings::write_debug_uart(s.as_ptr(), s.len() as i32) } != 0) {
+    if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const u8, s.len() as i32) } != 0) {
         asm::enable_interrupts();
         Ok(())
     } else {

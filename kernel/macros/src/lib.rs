@@ -73,7 +73,7 @@ fn is_return_type_register_sized_check(
     Ok(quote::quote! {
         const _: () = {
             if core::mem::size_of::<#ret_ty>() > core::mem::size_of::<usize>() {
-                panic!("syscall_handler: return type {} is bigger than usize. Return type must fit in a register.", stringify!(#ret_ty));
+                panic!("syscall_handler: the return type is bigger than usize. return type must fit in a register.");
             }
         };
     })
@@ -187,7 +187,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
         quote::quote! {
             const _: () = {
                 if core::mem::size_of::<#ty>() > core::mem::size_of::<usize>() {
-                    panic!("syscall_handler: argument type {} is bigger than usize. Arguments must fit in a register.", stringify!(#ty));
+                    panic!("syscall_handler: an argument type is bigger than usize. arguments must fit in a register.");
                 }
             };
         }
