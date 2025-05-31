@@ -16,7 +16,9 @@ mod bindings {
 pub fn init() {
     unsafe { bindings::init_hal() };
     unsafe { bindings::init_debug_uart() };
-    unsafe { bindings::dwt_init(); }
+    unsafe {
+        bindings::dwt_init();
+    }
 }
 
 #[cfg(feature = "host")]
@@ -24,19 +26,17 @@ pub fn init() { /*We do not need to init anything yet. */
 }
 
 #[cfg(not(feature = "host"))]
-pub fn bench_start()
-{
-    unsafe { bindings::dwt_reset(); }
+pub fn bench_start() {
+    unsafe {
+        bindings::dwt_reset();
+    }
 }
 
 #[cfg(feature = "host")]
-pub fn bench_start()
-{
-}
+pub fn bench_start() {}
 
 #[cfg(not(feature = "host"))]
-pub fn bench_end() -> (u32, f32)
-{
+pub fn bench_end() -> (u32, f32) {
     let cycles = unsafe { bindings::dwt_read() as u32 };
     let ns = unsafe { bindings::dwt_cycles_to_ns(cycles as i32) };
 
@@ -44,8 +44,7 @@ pub fn bench_end() -> (u32, f32)
 }
 
 #[cfg(feature = "host")]
-pub fn bench_end() -> (u32, f32)
-{
+pub fn bench_end() -> (u32, f32) {
     (0, 0.0)
 }
 

@@ -72,7 +72,11 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     }
 
     let (cyc, ns) = hal::bench_end();
-    kprintln!("[Osiris] Init took {} cycles taking {} ms", cyc, ns / 1e6f32);
+    kprintln!(
+        "[Osiris] Init took {} cycles taking {} ms",
+        cyc,
+        ns / 1e6f32
+    );
 
     sched::enable_scheduler();
 
