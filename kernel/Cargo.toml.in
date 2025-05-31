@@ -7,10 +7,14 @@ edition = "2024"
 crate-type = ["staticlib"]
 
 [dependencies]
-hal = { path = "@HAL_DIR@", features = ["panic-exit"] }
+hal = { path = "@HAL_DIR@", features = [] }
 macros = { path = "macros" }
 
+[dev-dependencies]
+hal = { path = "@HAL_DIR@", features = ["host"] }
+
 [features]
+
 unstable = []
 no-atomic-cas = []
 multi-core = []

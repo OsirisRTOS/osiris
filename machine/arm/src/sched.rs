@@ -131,6 +131,12 @@ impl From<ThreadContext> for CtxPtr {
 }
 
 /// Reschedule the tasks.
+#[cfg(not(feature = "host"))]
 pub fn reschedule() {
     unsafe { bindings::reschedule() };
+}
+
+#[cfg(feature = "host")]
+pub fn reschedule() {
+    // Do nothing for now. TODO: Actual simulation.
 }

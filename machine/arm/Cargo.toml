@@ -14,7 +14,10 @@ crate-type = ["rlib"]
 bindgen = "0.71.1"
 
 [features]
+# This enables the host implementation of the HAL. Mainly used for testing.
+host = []
 panic-exit = []
+panic-uart = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
