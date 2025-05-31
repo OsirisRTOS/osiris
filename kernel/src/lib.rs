@@ -54,12 +54,12 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize basic hardware and the logging system.
     hal::init();
 
+    hal::bench_start();
+
     let boot_info = unsafe { &*boot_info };
 
     print::print_header();
     print::print_boot_info(boot_info);
-
-    kprintln!("Current time: {} ms", time::time());
 
     // Initialize the memory allocator.
     if let Err(_e) = mem::init_memory(boot_info) {
@@ -70,6 +70,9 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     if let Err(_e) = services::init_services() {
         panic!("[Kernel] Error: failed to initialize services.");
     }
+
+    let (cyc, ns) = hal::bench_end();
+    kprintln!("[Osiris] Init took {} cycles taking {} ms", cyc, ns / 1e6f32);
 
     sched::enable_scheduler();
 
