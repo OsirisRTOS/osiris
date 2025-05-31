@@ -8,6 +8,7 @@ SHELL := /bin/bash
 .PHONY: check-format format fmt verify clean hooks
 
 osiris: $(BUILD_DIR)
+	cd build && cmake -DMCU=stm32l4r5xx -DBOARD=nucleo -DCMAKE_BUILD_TYPE=Release ..
 	cmake --build $(BUILD_DIR) --parallel $(shell nproc)
 
 $(BUILD_DIR):

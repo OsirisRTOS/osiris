@@ -19,7 +19,8 @@ pub fn init() {
 }
 
 #[cfg(feature = "host")]
-pub fn init() { /*We do not need to init anything yet. */ }
+pub fn init() { /*We do not need to init anything yet. */
+}
 
 #[cfg(not(feature = "host"))]
 pub fn print(s: &str) -> Result<(), ()> {

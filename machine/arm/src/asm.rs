@@ -1,4 +1,3 @@
-
 #[cfg(not(feature = "host"))]
 #[macro_export]
 macro_rules! __macro_nop {
@@ -10,9 +9,7 @@ macro_rules! __macro_nop {
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! __macro_nop {
-    () => {
-        {}
-    };
+    () => {{}};
 }
 
 // This prefixing is a little cursed but necessary to avoid name conflicts, because #[macro_export] exports macros at the top level.
@@ -58,21 +55,11 @@ macro_rules! __macro_syscall {
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! __macro_syscall {
-    ($num:expr) => {
-        {}
-    };
-    ($num:expr, $arg0:expr) => {
-        {}
-    };
-    ($num:expr, $arg0:expr, $arg1:expr) => {
-       {}
-    };
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {
-        {}
-    };
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {
-        {}
-    };
+    ($num:expr) => {{}};
+    ($num:expr, $arg0:expr) => {{}};
+    ($num:expr, $arg0:expr, $arg1:expr) => {{}};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{}};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{}};
 }
 
 pub use crate::__macro_syscall as syscall;
