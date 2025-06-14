@@ -80,7 +80,10 @@ fn is_syscall(attrs: &[Attribute], name: &str) -> Option<u16> {
                     return Ok(());
                 }
 
-                Err(meta.error(format!("unknown attribute '{}'", meta.path.get_ident().unwrap())))
+                Err(meta.error(format!(
+                    "unknown attribute '{}'",
+                    meta.path.get_ident().unwrap()
+                )))
             });
 
             if let Err(e) = result {
