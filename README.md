@@ -18,6 +18,9 @@ An RTOS designed and verified to enable reliable software updates and operation 
 
 - cmake 3.28
 - arm-none-eabi-gcc-13 (building with version 10 will fail)
+- python 3.12
+- pip
+- venv
 
 ### Create build dir
 
