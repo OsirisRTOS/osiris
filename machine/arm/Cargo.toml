@@ -10,6 +10,7 @@ build = "build.rs"
 crate-type = ["rlib"]
 
 [dependencies]
+rustc-demangle = "0.1.25"
 
 [build-dependencies]
 bindgen = "0.72.0"
