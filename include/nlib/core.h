@@ -2,6 +2,7 @@
 #define CORE_H
 
 #include <stddef.h>
+#undef unreachable
 
 /* This is a minimal implementation of functions needed to run a C program. */
 
