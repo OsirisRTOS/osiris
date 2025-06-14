@@ -37,16 +37,12 @@ impl AtomicU8 {
 
     /// Loads the value.
     pub fn load(&self, _: Ordering) -> u8 {
-        use crate::interrupt;
-        interrupt::free(|| unsafe { *self.value.get() })
+        todo!("Implement atomic load for u8");
     }
 
     /// Stores a value.
     pub fn store(&self, value: u8, _: Ordering) {
-        use crate::interrupt;
-        interrupt::free(|| unsafe {
-            *self.value.get() = value;
-        });
+        todo!("Implement atomic store for u8");
     }
 
     /// Compares the value and exchanges it.
@@ -57,26 +53,7 @@ impl AtomicU8 {
         _: Ordering,
         _: Ordering,
     ) -> Result<u8, u8> {
-        use crate::interrupt;
-        interrupt::free(|| {
-            // Safety:
-            // 1. This is safe because we are on a single-core system, in an interrupt-free context.
-            // 2. No reference to the value can be acquired outside of this type.
-            let value: u8 = unsafe { *self.value.get() };
-
-            if value == current {
-                // Safety:
-                // 1. This is safe because we are on a single-core system, in an interrupt-free context.
-                // 2. No reference to the value can be acquired outside of this type.
-                // 3. The local `value` has been copied and not referenced.
-                unsafe {
-                    *self.value.get() = new;
-                }
-                Ok(value)
-            } else {
-                Err(value)
-            }
-        })
+        todo!("Implement atomic compare_exchange for u8");
     }
 
     ///fetch a value, apply the function and write back the modified value atomically
@@ -84,22 +61,7 @@ impl AtomicU8 {
     where
         F: FnMut(u8) -> Option<u8>,
     {
-        use crate::interrupt;
-        return interrupt::free(|| {
-            // Safety:
-            // 1. This is safe because we are on a single-core system, in an interrupt-free context.
-            // 2. No reference to the value can be acquired outside of this type.
-            let old = unsafe { *self.value.get() };
-            let mut f = f;
-            let new = f(old);
-            match new {
-                Some(new) => {
-                    unsafe { *self.value.get() = new };
-                    return Ok(old);
-                }
-                None => return Err(old),
-            }
-        });
+        todo!("Implement atomic fetch_update for u8");
     }
 }
 
@@ -123,16 +85,12 @@ impl AtomicBool {
 
     /// Loads the value.
     pub fn load(&self, _: Ordering) -> bool {
-        use crate::interrupt;
-        interrupt::free(|| unsafe { *self.value.get() })
+        todo!("Implement atomic load for bool");
     }
 
     /// Stores a value.
     pub fn store(&self, value: bool, _: Ordering) {
-        use crate::interrupt;
-        interrupt::free(|| unsafe {
-            *self.value.get() = value;
-        });
+        todo!("Implement atomic store for bool");
     }
 
     /// Compares the value and exchanges it.
@@ -143,25 +101,6 @@ impl AtomicBool {
         _: Ordering,
         _: Ordering,
     ) -> Result<bool, bool> {
-        use crate::interrupt;
-        interrupt::free(|| {
-            // Safety:
-            // 1. This is safe because we are on a single-core system, in an interrupt-free context.
-            // 2. No reference to the value can be acquired outside of this type.
-            let value: bool = unsafe { *self.value.get() };
-
-            if value == current {
-                // Safety:
-                // 1. This is safe because we are on a single-core system, in an interrupt-free context.
-                // 2. No reference to the value can be acquired outside of this type.
-                // 3. The local `value` has been copied and not referenced.
-                unsafe {
-                    *self.value.get() = new;
-                }
-                Ok(value)
-            } else {
-                Err(value)
-            }
-        })
+        todo!("Implement atomic compare_exchange for bool");
     }
 }

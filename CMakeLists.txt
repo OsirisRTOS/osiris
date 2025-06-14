@@ -8,15 +8,8 @@ set(CMAKE_VERBOSE_MAKEFILE OFF)
 set(MCU "stm32l4r5xx" CACHE STRING "target mcu")
 set(BOARD "nucleo" CACHE STRING "target board")
 
-# The layout is "board cpu1,cpu2,...,cpuN"
-set(BOARD_CPU_MAP 
-    "stm32-nucleo-l4r5zi cortex-m4"
-    ""
-)
-
 set(MCU_CPU_ARCH_HAL_MAP
     "stm32l4r5xx cortex-m4 arm stm32l4xx"
-    ""
 )
 
 # Extract MCU, CPU, HAL and ARCH from the MCU_CPU_ARCH_HAL_MAP

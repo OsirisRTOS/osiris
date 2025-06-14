@@ -19,7 +19,7 @@ pub fn find_nearest_symbol(addr: usize) -> Option<&'static str> {
     use core::ffi::CStr;
     use core::ffi::c_char;
 
-    let mut syms_start = unsafe { &raw const __syms_area_start as *const usize as usize }; // Skip the first 4 bytes which contain the size of the symbol table.
+    let mut syms_start = &raw const __syms_area_start as *const usize as usize;
 
     // Iterate through the symbol table to find the nearest symbol to the given address.
     let mut nearest_symbol: Option<&'static str> = None;

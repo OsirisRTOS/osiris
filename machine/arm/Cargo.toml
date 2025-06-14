@@ -11,7 +11,7 @@ crate-type = ["rlib"]
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.71.1"
+bindgen = "0.72.0"
 
 [features]
 # This enables the host implementation of the HAL. Mainly used for testing.

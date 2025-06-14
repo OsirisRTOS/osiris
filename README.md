@@ -28,7 +28,7 @@ $ cd build
 
 ### Build the project for the corresponding target
 ```sh
-$ cmake -DBOARD=nucleo -DCPU=cortex-m4 ..
+$ cmake -DBOARD=nucleo -DMCU=stm32l4r5xx ..
 $ make
 ```
 
@@ -37,10 +37,4 @@ $ make
 ```sh
 $ make hooks
 ```
-
-## Boot
-
-1. Install @thomasw04 qemu fork: https://github.com/thomasw04/qemu
-2. Run ```./boot.sh```
-3. Now you should see a: "Hello World!".
 

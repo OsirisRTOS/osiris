@@ -17,6 +17,7 @@ This is the hardware abstraction layer used for the stm32l4 family of microcontr
 | Directory          | Description                                                                                                                                                |
 |--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | [nucleo/](nucleo/) | This uses bindings to the hal ([hal/](hal/) to define board specific instantiations of common functions used by the kernel for the nucleo dev boards by STM. |
+| [config/](config/) | This defines memory maps and configuration options to be applied to the actual linker script. The respective file will be included (through config.ldconf) at the beginning of the linker script (link.ld) defined in the root of this hal. |
 
 ## How to update the third-party repositories?
 
@@ -48,3 +49,4 @@ This will generate two files ```bindings.rs``` and ```macros.rs``` (they will be
 Then the actual crate will be build as an rlib which then get's included in the kernel.
 
 The CMakeLists.txt file serves as the bridge between CMake and Cargo, it will supply build.rs with the correct settings (Which MCU to build etc.) to generate the bindings.
+Furthermore a linker script will be generated, based on [link.ld](link.ld). [link.ld](link.ld) will be processed by a C preprocessor which then generates the actual linker script (in the respective CMake binary directory). Defines like ```CONFIG_RUNTIME_SYMBOLS``` will be automatically supplied to the preprocessor based on the CMake configuration.
