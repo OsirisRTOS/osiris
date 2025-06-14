@@ -17,7 +17,7 @@ An RTOS designed and verified to enable reliable software updates and operation 
 ### Dependencies
 
 - cmake 3.28
-- arm-none-eabi-gcc
+- arm-none-eabi-gcc-13 (building with version 10 will fail)
 
 ### Create build dir
 
@@ -28,7 +28,7 @@ $ cd build
 
 ### Build the project for the corresponding target
 ```sh
-$ cmake -DBOARD=stm32-nucleo-l4r5zi -DCPU=cortex-m4 ..
+$ cmake -DBOARD=nucleo -DCPU=cortex-m4 ..
 $ make
 ```
 
