@@ -8,7 +8,7 @@ An RTOS designed and verified to enable reliable software updates and operation 
 |-----------|-------------|
 | [kernel/](kernel/) | This is the actual kernel of osiris. It is a hardware independent layer providing scheduling, memory management, etc. |
 | [machine/arm](machine/arm) | This provides hardware abstraction layers (HAL) for all ARM based machines. Each folder (exception is common code) is named after the machine or family of machines that it provides the abstraction for. |
-| [machine/startup](machine/startup/) | This provides the startup code for each cpu and board. You can also find the linker script here. |
+| [machine/startup](machine/startup/) | This provides the startup code for each cpu and board. |
 | [nlib](nlib/) | This is a minimum C lib providing memcpy, memcmp and memset. |
 
 
