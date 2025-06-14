@@ -5,7 +5,7 @@ use crate::{
     uspace,
     utils::KernelError,
 };
-use hal::common::sched::ThreadDesc;
+use hal::sched::ThreadDesc;
 
 /// Initialize the microkernel services.
 ///

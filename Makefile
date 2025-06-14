@@ -8,13 +8,14 @@ SHELL := /bin/bash
 .PHONY: check-format format fmt verify clean hooks
 
 osiris: $(BUILD_DIR)
+	cd build && cmake -DMCU=stm32l4r5xx -DBOARD=nucleo -DCMAKE_BUILD_TYPE=Release ..
 	cmake --build $(BUILD_DIR) --parallel $(shell nproc)
 
 $(BUILD_DIR):
 	@if [ -n "$$CI" ]; then \
 		echo "::group::Generating build dir $(BUILD_DIR)"; \
 	fi
-	cmake -DBOARD=stm32-nucleo-l4r5zi -DCPU=cortex-m4 -B $(BUILD_DIR)
+	cmake -DMCU=stm32l4r5xx -DBOARD=nucleo -B $(BUILD_DIR)
 	@if [ -n "$$CI" ]; then \
 		echo "::endgroup::"; \
 	fi
@@ -51,13 +52,13 @@ fmt: $(BUILD_DIR)
 	$(call ci_check,fmt,)
 
 verify: $(BUILD_DIR)
-	$(call ci_check,kani -Z concrete-playback --concrete-playback=print,,kernel/Cargo.toml)
+	$(call ci_check,kani --tests -Z concrete-playback --concrete-playback=print,,kernel/Cargo.toml)
 
 test: $(BUILD_DIR)
-	cargo tarpaulin --out Lcov --skip-clean --workspace
+	cargo tarpaulin --out Lcov --skip-clean --manifest-path kernel/Cargo.toml
 
 watch-tests: $(BUILD_DIR)
-	cargo watch --why --exec 'tarpaulin --out Lcov --skip-clean --workspace' --ignore lcov.info
+	cargo watch --why --exec 'tarpaulin --out Lcov --skip-clean --manifest-path kernel/Cargo.toml' --ignore lcov.info
 
 clean:
 	rm -rf $(BUILD_DIR)

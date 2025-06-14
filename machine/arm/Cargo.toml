@@ -1,0 +1,24 @@
+[package]
+name = "hal"
+version = "0.1.0"
+rust-version = "1.85.0"
+authors = ["Thomas Wachter"]
+edition = "2024"
+build = "build.rs"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.72.0"
+
+[features]
+# This enables the host implementation of the HAL. Mainly used for testing.
+host = []
+panic-exit = []
+panic-uart = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

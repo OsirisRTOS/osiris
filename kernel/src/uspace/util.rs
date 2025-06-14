@@ -13,7 +13,7 @@ macro_rules! DECLARE_TASK {
 
 /// A task finalizer which can be called when a task is finished, it will perform a reschedule.
 pub extern "C" fn thread_finalizer() {
-    let _ = hal::hprintln!("debug: thread finalizer called.");
+    //let _ = hal::hprintln!("debug: thread finalizer called.");
 
     sched::reschedule();
 }

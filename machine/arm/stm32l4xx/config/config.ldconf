@@ -1,0 +1,5 @@
+#ifdef stm32l4r5xx
+#include "stm32l4r5xx.ldconf"
+#else
+#error "Unsupported STM32L4xx series. Please add a ldconf file to //machine/arm/stm32l4xx/config/ for your specific series."
+#endif

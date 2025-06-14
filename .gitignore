@@ -5,3 +5,4 @@ qemu/
 *.gen.*
 target
 **.info
+symbols.map

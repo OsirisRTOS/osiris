@@ -18,6 +18,10 @@ FetchContent_MakeAvailable(Corrosion)
 
 corrosion_import_crate(MANIFEST_PATH Cargo.toml NO_STD)
 
+if (CMAKE_VERBOSE_MAKEFILE)
+    corrosion_set_cargo_flags(kernel -vvv)
+endif()
+
 target_sources(kernel 
     INTERFACE
         FILE_SET HEADERS 

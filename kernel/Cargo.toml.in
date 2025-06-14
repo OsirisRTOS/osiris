@@ -7,8 +7,17 @@ edition = "2024"
 crate-type = ["staticlib"]
 
 [dependencies]
-hal = { path = "@HAL_DIR@", features = ["panic-semih", "panic-exit"] }
+hal = { path = "@HAL_DIR@", features = [] }
 macros = { path = "macros" }
+
+[dev-dependencies]
+hal = { path = "@HAL_DIR@", features = ["host"] }
+
+[features]
+
+unstable = []
+no-atomic-cas = []
+multi-core = []
 
 [build-dependencies]
 cbindgen = "0.28.0"
@@ -20,7 +29,14 @@ rand = "0.8.5"
 
 [profile.dev]
 panic = "abort"
+strip = false
+opt-level = "z"
 
 [profile.release]
 panic = "abort"
+opt-level = "z"
+codegen-units = 1
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 

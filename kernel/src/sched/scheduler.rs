@@ -4,12 +4,10 @@
 use super::task::{Task, TaskDesc, TaskId, Thread, ThreadId, ThreadState, Timing};
 use crate::{
     mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue},
+    sync::spinlock::SpinLocked,
     utils,
 };
-use hal::common::{
-    sched::{CtxPtr, ThreadDesc},
-    sync::SpinLocked,
-};
+use hal::sched::{CtxPtr, ThreadDesc};
 
 /// The global scheduler instance.
 pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
@@ -29,8 +27,10 @@ pub struct Scheduler {
     queue: BinaryHeap<(usize, ThreadId), 32>,
     /// The callbacks queue that stores the threads that need to be fired in the future.
     callbacks: Queue<(ThreadId, usize), 32>,
-    /// The current time in the system.
+    /// The progression of the time interval of the scheduler.
     time: usize,
+    /// Whether the scheduler is enabled or not.
+    enabled: bool,
 }
 
 impl Scheduler {
@@ -44,7 +44,14 @@ impl Scheduler {
             queue: BinaryHeap::new(),
             callbacks: Queue::new(),
             time: 0,
+            enabled: false,
         }
+    }
+
+    pub fn enable(&mut self) {
+        hal::asm::disable_interrupts();
+        self.enabled = true;
+        hal::asm::enable_interrupts();
     }
 
     /// Create a new task in the system.
@@ -160,7 +167,12 @@ impl Scheduler {
     }
 
     /// Ticks the scheduler. This function is called every time the system timer ticks.
-    fn tick(&mut self) -> bool {
+    pub fn tick(&mut self) -> bool {
+        if !self.enabled {
+            // If the scheduler is not enabled, we do nothing.
+            return false;
+        }
+
         self.time += 1;
 
         // If a thread was fired, we need to reschedule.
@@ -190,19 +202,5 @@ pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
 
         // Select a new thread to run, if available.
         scheduler.select_new_thread().unwrap_or(ctx)
-    }
-}
-
-/// cbindgen:ignore
-/// cbindgen:no-export
-#[unsafe(no_mangle)]
-pub extern "C" fn systick() {
-    let resched = {
-        let mut scheduler = SCHEDULER.lock();
-        scheduler.tick()
-    };
-
-    if resched {
-        hal::common::sched::reschedule();
     }
 }

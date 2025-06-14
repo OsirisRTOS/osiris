@@ -1,6 +1,6 @@
 //! This module provides task management related syscalls.
 
-use core::ffi::c_void;
+use core::{ffi::c_void, str};
 
 use crate::sched;
 use macros::syscall_handler;
@@ -9,10 +9,8 @@ use macros::syscall_handler;
 /// This syscall is used to request a reschedule.
 ///
 /// No arguments are passed to this syscall.
-#[unsafe(no_mangle)]
-#[syscall_handler(args = 0, num = 1)]
-extern "C" fn syscall_reschedule(_svc_args: *const c_void) {
-    let _ = hal::hprintln!("debug: reschedule requested.");
-
+#[syscall_handler(num = 1)]
+fn syscall_reschedule() -> usize {
     sched::reschedule();
+    0
 }
