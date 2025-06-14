@@ -6,6 +6,7 @@
 mod macros;
 #[macro_use]
 mod utils;
+mod faults;
 mod mem;
 mod print;
 mod sched;
@@ -14,7 +15,6 @@ mod sync;
 mod syscalls;
 mod time;
 mod uspace;
-mod faults;
 
 use core::ffi::c_char;
 
@@ -94,7 +94,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
     if let Some(location) = info.location() {
         kprintln!("Location: {}:{}", location.file(), location.line());
-    } 
+    }
 
     kprintln!("**************************** PANIC ****************************");
 

@@ -60,15 +60,20 @@ impl ExcepBacktrace {
 
 impl Display for ExcepBacktrace {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "---------------------------------------------------------------\n")?;
+        write!(
+            f,
+            "---------------------------------------------------------------\n"
+        )?;
         write!(f, "{}\n", self.stack_frame)?;
-        write!(f, "---------------------------------------------------------------\n")?;
+        write!(
+            f,
+            "---------------------------------------------------------------\n"
+        )?;
 
         let mut fp = self.initial_fp;
         write!(f, "\nBacktrace:\n")?;
 
-
-        if let Some(symbol) = crate::debug::find_nearest_symbol( self.stack_frame.pc as usize) {
+        if let Some(symbol) = crate::debug::find_nearest_symbol(self.stack_frame.pc as usize) {
             write!(f, "0:     {} (0x{:08x})\n", symbol, self.stack_frame.pc)?;
         } else {
             write!(f, "0:     0x{:08x}\n", self.stack_frame.pc)?;

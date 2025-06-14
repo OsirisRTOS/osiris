@@ -1,10 +1,10 @@
 #![cfg_attr(all(not(test), not(feature = "host")), no_std)]
 
 pub mod asm;
+pub mod debug;
+pub mod excep;
 pub mod panic;
 pub mod sched;
-pub mod excep;
-pub mod debug;
 
 mod bindings {
     #![allow(non_upper_case_globals)]
