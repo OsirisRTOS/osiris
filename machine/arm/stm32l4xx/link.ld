@@ -1,18 +1,21 @@
 ENTRY(reset_hndlr)
 
-MEMORY
-{
-  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 2M
-  RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 640K
-}
-
-__stack_size = 0x8000;
+#include "config/config.ldconf"
 
 __ram_start = ORIGIN(RAM);
 __ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
+#ifdef CONFIG_RUNTIME_SYMBOLS
+/* at least 250kb for the symbol table */
+__syms_size = 0x3e800;
+#else
+/* if we don't want runtime symbols, we have exactly 4 null bytes which represent the size of the section as u32 */
+__syms_size = 4;
+#endif
+
 SECTIONS
 {
+    /* Our vector table. */
     .ivt ORIGIN(FLASH) :
     {
         __vector_table = .;
@@ -36,6 +39,7 @@ SECTIONS
         *(.gnu.warning)
     } > FLASH
 
+    /* Some arm exception stuff */
     .ARM.extab : { *(.ARM.extab* .gnu.linkonce.armextab.*) } > FLASH
     . = ALIGN(4);
     PROVIDE_HIDDEN(__exidx_start = .);
@@ -92,17 +96,23 @@ SECTIONS
         __bss_end = .;
     } > RAM
 
-    . = ALIGN(4);
-    __heap_start = .;
+    /* A section of memory where the runtime symbols will be placed. 
+     * We just make sure that nothing leaks into this memory space.
+    */
+    .syms_area :
+    {
+        . = ALIGN(4);
+        __syms_area_start = .;
+        KEEP(*(.syms_area))
+        BYTE(0x00); /* make sure the section is not empty */
+        . = __syms_size;
+        __syms_area_end = .;
+    } > FLASH
 
     /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
 }
 
 PROVIDE(irq_hndlr = default_hndlr);
-
-PROVIDE(pend_sv_hndlr = pend_sv);
-PROVIDE(sys_tick_hndlr = systick);
-PROVIDE(svc_hndlr = syscall_enter);
 
 PROVIDE(wwdg_hndlr = irq_enter_no_switch_fp);
 PROVIDE(pvd_pvm_hndlr = irq_enter_no_switch_fp);

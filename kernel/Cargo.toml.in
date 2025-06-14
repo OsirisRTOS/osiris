@@ -29,11 +29,13 @@ rand = "0.8.5"
 
 [profile.dev]
 panic = "abort"
+strip = false
 opt-level = "z"
 
 [profile.release]
 panic = "abort"
 opt-level = "z"
+codegen-units = 1
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

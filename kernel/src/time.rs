@@ -29,14 +29,14 @@ pub fn time() -> u64 {
         }
         hal::asm::enable_interrupts();
         // Now systick can be called again.
-        return time;
+        time
     }
 }
 
 /// cbindgen:ignore
 /// cbindgen:no-export
 #[unsafe(no_mangle)]
-pub extern "C" fn systick() {
+pub extern "C" fn systick_hndlr() {
     tick();
 
     let resched = { sched::tick_scheduler() };

@@ -11,7 +11,7 @@ vector_table:
 .word reset_hndlr
 .word nmi_hndlr
 .word hard_fault_hndlr
-.word mem_mngmt_hndlr
+.word mem_manage_fault_hndlr
 .word bus_fault_hndlr
 .word usage_fault_hndlr
 .word 0
@@ -21,8 +21,8 @@ vector_table:
 .word svc_hndlr
 .word debug_mon_hndlr
 .word 0
-.word pend_sv_hndlr
-.word sys_tick_hndlr
+.word pendsv_hndlr
+.word systick_hndlr
 
 .macro hndl_weak_endl fnct
     .thumb_func
@@ -38,10 +38,6 @@ vector_table:
 .align
 
 hndl_weak_endl nmi_hndlr
-hndl_weak_endl hard_fault_hndlr
-hndl_weak_endl mem_mngmt_hndlr
-hndl_weak_endl bus_fault_hndlr
-hndl_weak_endl usage_fault_hndlr
 hndl_weak_endl debug_mon_hndlr
 
 .thumb_func

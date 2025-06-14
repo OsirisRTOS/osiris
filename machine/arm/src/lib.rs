@@ -3,6 +3,8 @@
 pub mod asm;
 pub mod panic;
 pub mod sched;
+pub mod excep;
+pub mod debug;
 
 mod bindings {
     #![allow(non_upper_case_globals)]

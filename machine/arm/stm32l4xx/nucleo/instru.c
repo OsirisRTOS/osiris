@@ -1,4 +1,3 @@
-#define STM32L4R5xx
 #include <stm32l4xx_hal.h>
 
 void dwt_init(void)

@@ -4,15 +4,13 @@ set(CPU_COMPILE_FLAGS
     -mcpu=${CPU}
     -mthumb
     -mfloat-abi=softfp
-    -z noexecstack
-    -Os
 )
 
 set(CPU_LINK_FLAGS
     -mcpu=${CPU}
     -mfloat-abi=softfp
     -mthumb
-    -Os
+    -z noexecstack
 )
 
 set_property(SOURCE crt0.s APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")

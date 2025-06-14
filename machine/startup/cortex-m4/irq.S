@@ -12,10 +12,8 @@
 # -----------------------------------------------------------------------------------------------
 
 .thumb_func
-.global pend_sv
-pend_sv:
-    //cpsid f
-
+.global pendsv_hndlr
+pendsv_hndlr:
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
@@ -44,8 +42,6 @@ pend_sv:
     ite eq
     msreq msp, r0
     msrne psp, r0
-
-    //cpsie f
 
     @ See Cortex-M4 errata.
     isb
@@ -93,8 +89,8 @@ irq_enter_no_switch_fp:
     bx lr
 
 .thumb_func
-.global syscall_enter
-syscall_enter:
+.global svc_hndlr
+svc_hndlr:
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
@@ -103,3 +99,61 @@ syscall_enter:
 
     @ We don't need to save the other general purpose registers, because the syscall obeys the AAPCS calling convention.
     b _syscall_hndlr
+
+
+.thumb_func
+.global hard_fault_hndlr
+hard_fault_hndlr:
+    @ Check which stack we need to use.
+    tst lr, #4
+    ite eq
+    mrseq r0, msp
+    mrsne r0, psp
+
+    @ Save the frame pointer as the second argument.
+    mov r1, r11
+
+    b handle_hard_fault
+
+.thumb_func
+.global mem_manage_fault_hndlr
+mem_manage_fault_hndlr:
+    @ Check which stack we need to use.
+    tst lr, #4
+    ite eq
+    mrseq r0, msp
+    mrsne r0, psp
+
+    @ Save the frame pointer as the second argument.
+    mov r1, r11
+
+    b handle_mem_manage_fault
+
+.thumb_func
+.global bus_fault_hndlr
+bus_fault_hndlr:
+    @ Check which stack we need to use.
+    tst lr, #4
+    ite eq
+    mrseq r0, msp
+    mrsne r0, psp
+
+    @ Save the frame pointer as the second argument.
+    mov r1, r11
+
+    b handle_bus_fault
+
+.thumb_func
+.global usage_fault_hndlr
+usage_fault_hndlr:
+    @ Check which stack we need to use.
+    tst lr, #4
+    ite eq
+    mrseq r0, msp
+    mrsne r0, psp
+
+    @ Save the frame pointer as the second argument.
+    mov r1, r11
+
+    b handle_usage_fault
+    

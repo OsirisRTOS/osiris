@@ -52,16 +52,16 @@ else()
     message(FATAL_ERROR "Unsupported architecture '${ARCH}'.")
 endif()
 
+# Enable debug symbols if a debug build is requested.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CONFIG_RUNTIME_SYMBOLS ON)
+endif()
+
 project(Osiris LANGUAGES C CXX ASM)
 
 # Define the necessary scripts.
 set(STARTUP_DIR "${CMAKE_SOURCE_DIR}/machine/startup/${CPU}")
-set(LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/machine/startup/mcu/${MCU}/link.ld")
-
-# Check if the linker script exists.
-if(NOT EXISTS "${LINKER_SCRIPT}")
-    message(FATAL_ERROR "Linker script not found: ${LINKER_SCRIPT}")
-endif()
+set(LINKER_SCRIPT "${CMAKE_BINARY_DIR}/machine/${ARCH}/${HAL}/link.ld")
 
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
@@ -126,6 +126,25 @@ target_link_options(${PROJECT_NAME}
         "-fstack-usage"
 )
 
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_NM} --defined-only --demangle $<TARGET_FILE:${PROJECT_NAME}> > ${CMAKE_SOURCE_DIR}/symbols.map
+    COMMENT "Generating symbols map symbols.map"
+)
+
+if (CONFIG_RUNTIME_SYMBOLS)
+    # Post build symbol injection
+    add_subdirectory(scripts/syms)
+
+    # The syms script environment must be set up before we can use it. e.g. create venv and install dependencies.
+    add_dependencies(${PROJECT_NAME} syms)
+
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${SYMS_CMD} -f $<TARGET_FILE:${PROJECT_NAME}>
+        COMMENT "Injecting symbols into ${PROJECT_NAME}.elf"
+    )
+endif()
+
+# This must happen after the syms injection, so we can get the symbols in the binary.
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}> ${PROJECT_NAME}.bin
     COMMENT "Generating binary ${PROJECT_NAME}.bin"

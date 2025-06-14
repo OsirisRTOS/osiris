@@ -14,6 +14,7 @@ mod sync;
 mod syscalls;
 mod time;
 mod uspace;
+mod faults;
 
 use core::ffi::c_char;
 
@@ -87,13 +88,15 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
 #[cfg(all(not(test), not(doctest), not(doc), target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    // Print the panic message.
+    kprintln!("**************************** PANIC ****************************");
+    kprintln!("");
+    kprintln!("Message: {}", info.message());
+
     if let Some(location) = info.location() {
-        kprintln!("[Kernel] Panic at {}:{}", location.file(), location.line());
-    } else {
-        kprintln!("[Kernel] Panic: {}", info);
-    }
-    kprintln!("[Kernel] Halting CPU...");
+        kprintln!("Location: {}:{}", location.file(), location.line());
+    } 
+
+    kprintln!("**************************** PANIC ****************************");
 
     hal::panic::panic_handler(info);
 }
