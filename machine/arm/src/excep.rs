@@ -74,7 +74,12 @@ impl Display for ExcepBacktrace {
         write!(f, "\nBacktrace:\n")?;
 
         if let Some(symbol) = crate::debug::find_nearest_symbol(self.stack_frame.pc as usize) {
-            write!(f, "0:     {:#} (0x{:08x})\n", rustc_demangle::demangle(symbol), self.stack_frame.pc)?;
+            write!(
+                f,
+                "0:     {:#} (0x{:08x})\n",
+                rustc_demangle::demangle(symbol),
+                self.stack_frame.pc
+            )?;
         } else {
             write!(f, "0:     0x{:08x}\n", self.stack_frame.pc)?;
         }
@@ -92,7 +97,13 @@ impl Display for ExcepBacktrace {
             // Print the return address.
 
             if let Some(symbol) = crate::debug::find_nearest_symbol(ret_addr as usize) {
-                write!(f, "{}:     {:#} (0x{:08x})\n", i, rustc_demangle::demangle(symbol), ret_addr)?;
+                write!(
+                    f,
+                    "{}:     {:#} (0x{:08x})\n",
+                    i,
+                    rustc_demangle::demangle(symbol),
+                    ret_addr
+                )?;
             } else {
                 write!(f, "{}:     0x{:08x}\n", i, ret_addr)?;
             }
