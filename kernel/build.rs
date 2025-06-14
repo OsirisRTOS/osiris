@@ -80,12 +80,12 @@ fn is_syscall(attrs: &[Attribute], name: &str) -> Option<u16> {
                     return Ok(());
                 }
 
-                Err(meta.error(format!("unknown attribute: {}", name)))
+                Err(meta.error(format!("unknown attribute '{}'", meta.path.get_ident().unwrap())))
             });
 
             if let Err(e) = result {
                 println!(
-                    "cargo:warning=Failed to parse syscall arguments for: `{}`. message: {}",
+                    "cargo:warning=Failed to parse syscall arguments for `{}`, {}",
                     name, e
                 );
                 return None;
