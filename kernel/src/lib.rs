@@ -2,6 +2,7 @@
 //! The kernel is organized as a microkernel.
 
 #![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
+extern crate alloc;
 
 mod macros;
 #[macro_use]
@@ -15,6 +16,8 @@ mod sync;
 mod syscalls;
 mod time;
 mod uspace;
+
+mod modules;
 
 use core::ffi::c_char;
 

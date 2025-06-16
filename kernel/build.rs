@@ -18,6 +18,11 @@ fn main() {
     generate_syscall_map("src").expect("Failed to generate syscall map.");
 }
 
+fn generate_modules() -> Result<(), std::io::Error> {
+    let mut file = File::create("../include/syscalls.map.gen.h")?;
+    Ok(())
+}
+
 fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
     let syscalls = collect_syscalls(root);
 
