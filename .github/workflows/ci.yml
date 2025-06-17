@@ -16,7 +16,7 @@ env:
 jobs:
   container:
     name: Build Container
-    runs-on: ubuntu-latest
+    runs-on: Linux
     permissions:
       packages: write
     outputs:
@@ -59,7 +59,7 @@ jobs:
   test:
     name: Testing
     needs: [container]
-    runs-on: ubuntu-latest
+    runs-on: Linux
     container:
       image: ${{ needs.container.outputs.container_name }}
       options: --user root --privileged
@@ -87,7 +87,7 @@ jobs:
   fmt:
     name: Check formatting
     needs: [container]
-    runs-on: ubuntu-latest
+    runs-on: Linux
     container:
       image: ${{ needs.container.outputs.container_name }}
       options: --user root
@@ -103,7 +103,7 @@ jobs:
   kani:
     name: Kani verification
     needs: [container]
-    runs-on: ubuntu-latest
+    runs-on: Linux
     container:
       image: ${{ needs.container.outputs.container_name }}
       options: --user root
@@ -119,7 +119,7 @@ jobs:
   build-stm32-nucleo-l4r5zi:
     name: Build for the STM32 Nucleo L4R5ZI
     needs: [container]
-    runs-on: ubuntu-latest
+    runs-on: Linux
     container:
       image: ${{ needs.container.outputs.container_name }}
       options: --user root
