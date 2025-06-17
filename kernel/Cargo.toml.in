@@ -36,6 +36,7 @@ opt-level = "z"
 panic = "abort"
 opt-level = "z"
 codegen-units = 1
+lto = true
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
