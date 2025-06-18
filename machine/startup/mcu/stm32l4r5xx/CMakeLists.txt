@@ -3,6 +3,7 @@
 add_library(startup_${MCU} OBJECT
     isr_ext.c
     jumper.c
+    bootstrap.c
 )
 
 target_include_directories(startup_${MCU}

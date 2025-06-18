@@ -1,7 +1,5 @@
 //! Module: sched
 
-use crate::bindings;
-
 /// Type: CtxPtr
 pub type CtxPtr = *const u32;
 
@@ -14,10 +12,10 @@ pub struct ThreadDesc {
     pub argv: *const u8,
 
     /// The finalizer function to call when the thread is done.
-    pub finalizer: extern "C" fn(),
+    pub finalizer: unsafe extern "C" fn(),
 
     /// The entry point of the thread.
-    pub entry: extern "C" fn(argc: usize, argv: *const *const u8),
+    pub entry: unsafe extern "C" fn(argc: usize, argv: *const *const u8),
 }
 
 /// Struct: ThreadContext
@@ -133,6 +131,7 @@ impl From<ThreadContext> for CtxPtr {
 /// Reschedule the tasks.
 #[cfg(not(feature = "host"))]
 pub fn reschedule() {
+    use crate::bindings;
     unsafe { bindings::reschedule() };
 }
 

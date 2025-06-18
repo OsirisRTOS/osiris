@@ -4,6 +4,7 @@ set(CPU_COMPILE_FLAGS
     -mcpu=${CPU}
     -mthumb
     -mfloat-abi=softfp
+    -fpic
 )
 
 set(CPU_LINK_FLAGS
@@ -11,9 +12,8 @@ set(CPU_LINK_FLAGS
     -mfloat-abi=softfp
     -mthumb
     -z noexecstack
+    -fpic
 )
-
-set_property(SOURCE crt0.s APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")
 
 add_library(startup_${CPU} OBJECT
     crt0.S

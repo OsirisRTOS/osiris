@@ -15,6 +15,7 @@ mod sync;
 mod syscalls;
 mod time;
 mod uspace;
+mod init;
 
 use core::ffi::c_char;
 
@@ -70,6 +71,11 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize the services.
     if let Err(_e) = services::init_services() {
         panic!("[Kernel] Error: failed to initialize services.");
+    }
+
+    // Initialize the init task.
+    if let Err(_e) = init::spawn_init_task() {
+        panic!("[Kernel] Error: failed to initialize init task.");
     }
 
     let (cyc, ns) = hal::bench_end();

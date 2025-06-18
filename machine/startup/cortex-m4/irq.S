@@ -52,41 +52,11 @@ pendsv_hndlr:
     .ltorg
 
 .thumb_func
-.global irq_enter_no_switch_fp
-irq_enter_no_switch_fp:
-    @ Check which stack we need to use.
-    tst lr, #4
-    ite eq
-    mrseq r0, msp
-    mrsne r0, psp
-
-    @ Check if we need to save the floating point registers.
-    @tst lr, #10
-    @ite eq
-    @vstmdbeq r0!, {s16-s31}
-    
-    @ Save the EXEC_RETURN of this thread.
-    stmdb r0, {r4-r11, lr}
-
-    @ This function takes a pointer to the thread's context as the first argument.
-    blx sched_enter
-
-    @ Restore the EXEC_RETURN of the new thread.
-    ldmia r0!, {r4-r11, lr}
-
-    @ Check if we need to restore the floating point registers.
-    @tst lr, #10
-    @ite eq
-    @vldmiaeq r0!, {s16-s31}
-
-    @ Check which stack we need to use.
-    tst lr, #4
-    ite eq
-    msreq msp, r0
-    msrne psp, r0
-
-    @ Return to the thread
-    bx lr
+.global default_hndlr
+default_hndlr:
+    @ Endless loop.
+    0: b 0b
+    .size default_hndlr, . - default_hndlr
 
 .thumb_func
 .global svc_hndlr

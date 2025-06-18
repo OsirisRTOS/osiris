@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <nlib/core.h>
-#include <kernel/lib.h>
+
+#include "../../../../kernel/include/kernel/lib.h"
 
 #define MEM_MAP_CAPACITY 32
 

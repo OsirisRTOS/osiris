@@ -18,6 +18,8 @@ FetchContent_MakeAvailable(Corrosion)
 
 corrosion_import_crate(MANIFEST_PATH Cargo.toml NO_STD)
 
+corrosion_add_target_rustflags(kernel "-C relocation-model=pic")
+
 if (CMAKE_VERBOSE_MAKEFILE)
     corrosion_set_cargo_flags(kernel -vvv)
 endif()

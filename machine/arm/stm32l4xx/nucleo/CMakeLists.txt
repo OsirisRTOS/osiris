@@ -10,9 +10,9 @@ add_library(nucleo_stm32l4xx STATIC ${SRC_FILES})
 
 # Set the include directories so the cmake src root machine/arm/cmsis machine/arm/device/stm32l4xx
 target_include_directories(nucleo_stm32l4xx PUBLIC
-    ${CMAKE_SOURCE_DIR}/machine/arm/cmsis
-    ${CMAKE_SOURCE_DIR}/machine/arm/stm32l4xx/device
-    ${CMAKE_SOURCE_DIR}/machine/arm/stm32l4xx/hal
+    ../../cmsis
+    ../device
+    ../hal
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
