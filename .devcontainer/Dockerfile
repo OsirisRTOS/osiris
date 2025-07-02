@@ -55,6 +55,10 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	libusb1-devel \
 	openssl-devel \
 	lcov \
+	python3 \
+	python3-pip \
+	python3-setuptools \
+	python3-wheel \
 	awk \
 	'dnf-command(copr)' && \
 	dnf copr enable -y rleh/arm-none-eabi-gdb && \
