@@ -7,9 +7,9 @@ BUILD_DIR := build
 SHELL := /bin/bash
 .PHONY: check-format format fmt verify clean hooks
 
-osiris: $(BUILD_DIR)
-	cd build && cmake -DMCU=stm32l4r5xx -DBOARD=nucleo -DCMAKE_BUILD_TYPE=Release ..
-	cmake --build $(BUILD_DIR) --parallel $(shell nproc)
+osiris:
+	cargo build --release --target thumbv7em-none-eabi --no-default-features
+	arm-none-eabi-objcopy -O binary target/thumbv7em-none-eabi/release/kernel Osiris.bin
 
 $(BUILD_DIR):
 	@if [ -n "$$CI" ]; then \

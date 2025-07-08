@@ -1,6 +1,6 @@
 //! This module provides task management related syscalls.
 
-use core::{ffi::c_void, str};
+use core::{ffi::{c_int, c_void}, str};
 
 use crate::sched;
 use macros::syscall_handler;
@@ -10,7 +10,7 @@ use macros::syscall_handler;
 ///
 /// No arguments are passed to this syscall.
 #[syscall_handler(num = 1)]
-fn syscall_reschedule() -> usize {
+fn syscall_reschedule() -> c_int {
     sched::reschedule();
     0
 }

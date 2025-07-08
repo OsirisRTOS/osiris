@@ -203,12 +203,12 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     let func_name = item.sig.ident.clone();
 
     let call = quote::quote! {
-        #func_name( #(#unpack),* );
+        #func_name( #(#unpack),* )
     };
 
     let wrapper = quote::quote! {
         #[unsafe(no_mangle)]
-        pub extern "C" fn  #wrapper_name(svc_args: *const core::ffi::c_void) {
+        pub extern "C" fn  #wrapper_name(svc_args: *const core::ffi::c_uint) -> core::ffi::c_int {
             // This function needs to extract the arguments from the pointer and call the original function by passing the arguments as actual different parameters.
             let args = unsafe { svc_args as *const usize };
             // Call the original function with the extracted arguments.

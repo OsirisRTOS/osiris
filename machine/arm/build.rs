@@ -1,3 +1,4 @@
+use cmake;
 use std::env;
 
 fn main() {
@@ -5,12 +6,13 @@ fn main() {
 
     let hal = env::var("HAL").unwrap_or("stm32l4xx".to_string());
     let board = env::var("BOARD").unwrap_or("nucleo".to_string());
-    let _mcu = env::var("MCU").unwrap_or("STM32L4R5xx".to_string());
+    let mcu = env::var("MCU").unwrap_or("r5zi".to_string());
+    let _target_triple = env::var("TARGET").expect("TARGET environment variable not set");
 
-    let board_dir = format!("{}/{}", hal, board);
+    let _board_dir = format!("{}/{}", hal, board);
 
     let bindgen = bindgen::Builder::default()
-        .header(format!("{}/{}/lib.h", hal, board))
+        .header(format!("{}/interface/export.h", hal))
         .use_core()
         .wrap_unsafe_ops(true)
         .generate()
@@ -20,8 +22,28 @@ fn main() {
         .write_to_file(format!("{}/bindings.rs", out))
         .expect("Couldn't write bindings!");
 
-    println!("cargo:rerun-if-changed={}", board_dir);
+    println!("cargo:rerun-if-changed={}", mcu);
     println!("cargo:rerun-if-env-changed=HAL");
     println!("cargo:rerun-if-env-changed=BOARD");
     println!("cargo:rerun-if-env-changed=MCU");
+
+    // Only build when we are not on the host
+    if env::var("CARGO_FEATURE_HOST").is_ok() {
+        println!("cargo:warning=Building for host, skipping HAL build.");
+        return;
+    }
+
+    // Build the HAL library
+    let target = format!("interface_{}", hal);
+    let libhal = cmake::Config::new(hal)
+        .define("MCU", mcu.clone())
+        .define("BOARD", board.clone())
+        .define("OUT_DIR", out.clone())
+        .build();
+    println!("cargo:rustc-link-search=native={}", libhal.display());
+    println!("cargo:linker-script={}/link.ld", out);
+
+    // Build the common library
+    let common = cmake::Config::new("common").define("MCU", mcu).build();
+    println!("cargo:rustc-link-search=native={}", common.display());
 }

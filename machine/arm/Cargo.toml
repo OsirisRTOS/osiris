@@ -5,6 +5,9 @@ rust-version = "1.85.0"
 authors = ["Thomas Wachter"]
 edition = "2024"
 build = "build.rs"
+# Through this we can access env variables set by the build script through DEP_HAL_<VAR_NAME>
+# It has nothing to do with native libraries.
+links = "hal"
 
 [lib]
 crate-type = ["rlib"]
@@ -13,6 +16,7 @@ crate-type = ["rlib"]
 
 [build-dependencies]
 bindgen = "0.72.0"
+cmake = "0.1.54"
 
 [features]
 # This enables the host implementation of the HAL. Mainly used for testing.

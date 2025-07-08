@@ -14,6 +14,15 @@ mod bindings {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
+// Make sure that our startup code is linked in.
+#[cfg(not(feature = "host"))]
+#[link(name = "common", kind = "static", modifiers = "+whole-archive")]
+#[link(name = "device_native", kind = "static")]
+#[link(name = "hal_native", kind = "static")]
+#[link(name = "interface_native", kind = "static")]
+#[link(name = "chip_native", kind = "static")]
+unsafe extern "C" {}
+
 #[cfg(not(feature = "host"))]
 pub fn init() {
     unsafe { bindings::init_hal() };

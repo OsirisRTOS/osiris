@@ -1,9 +1,13 @@
+#include <stdint.h>
+
+#include <kernel/lib.h>
 
 #include <stdint.h>
 
 /*
  * External interrupt vector table for the STM32 Nucleo L4R5ZI
- * Used references: https://www.st.com/resource/en/reference_manual/rm0432-stm32l4-series-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
+ * Used references:
+ * https://www.st.com/resource/en/reference_manual/rm0432-stm32l4-series-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
  */
 
 extern void wwdg_hndlr(void);
@@ -192,4 +196,38 @@ const uintptr_t vector_table_ext[] __attribute__((section(".ivt.ext"))) = {
     (uintptr_t)&lcd_tft_hndlr,
     (uintptr_t)&lcd_tft_er_hndlr,
     (uintptr_t)&gfxmmu_hndlr,
-    (uintptr_t)&dmamux1_ovr_hndlr};
+    (uintptr_t)&dmamux1_ovr_hndlr,
+};
+
+void init_boot_info(BootInfo *boot_info) {
+  boot_info->implementer = "ARM";
+  boot_info->variant = "Cortex-M4";
+
+  boot_info->mmap;
+
+  boot_info->mmap_len = 3;
+
+  // SRAM1
+  boot_info->mmap[0] = (MemMapEntry){
+      .size = sizeof(MemMapEntry),
+      .addr = 0x20000000,
+      .length = 0x30000,
+      .ty = 1,
+  };
+
+  // SRAM2
+  boot_info->mmap[1] = (MemMapEntry){
+      .size = sizeof(MemMapEntry),
+      .addr = 0x20030000,
+      .length = 0x10000,
+      .ty = 1,
+  };
+
+  // SRAM3
+  boot_info->mmap[2] = (MemMapEntry){
+      .size = sizeof(MemMapEntry),
+      .addr = 0x20040000,
+      .length = 0x60000,
+      .ty = 1,
+  };
+}

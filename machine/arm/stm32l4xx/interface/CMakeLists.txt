@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.28)
 
 # Glob all source files
 file(GLOB_RECURSE SRC_FILES
@@ -6,14 +6,17 @@ file(GLOB_RECURSE SRC_FILES
 )
 
 # Add the library target
-add_library(device_native STATIC ${SRC_FILES})
+add_library(interface_native STATIC ${SRC_FILES})
 
 # Set the include directories so the cmake src root machine/arm/cmsis machine/arm/device/stm32l4xx
-target_include_directories(device_native PUBLIC
+target_include_directories(interface_native PUBLIC
     ../../cmsis
+    ../device
+    ../hal
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_definitions(device_native PUBLIC
+target_compile_definitions(interface_native PUBLIC
     ${TARGET_DEFINES}
+    BOARD_HEADER="../board/${BOARD}.h"
 )

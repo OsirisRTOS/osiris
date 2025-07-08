@@ -8,7 +8,7 @@
 .section .ivt.core, "a", %progbits
 vector_table:
 .word __stack_top
-.word reset_hndlr
+.word _start
 .word nmi_hndlr
 .word hard_fault_hndlr
 .word mem_manage_fault_hndlr
@@ -39,12 +39,3 @@ vector_table:
 
 hndl_weak_endl nmi_hndlr
 hndl_weak_endl debug_mon_hndlr
-
-.thumb_func
-.global reset_hndlr
-reset_hndlr:
-    ldr r1,=__stack_top
-    mov sp, r1
-    bl _main
-
-

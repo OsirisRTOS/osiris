@@ -5,18 +5,15 @@
  *
  */
 
-#include <syscalls.map.gen.h>
-
 extern void _syscall_hndlr(unsigned int *svc_args);
 
-DECLARE_SYSCALLS()
+extern int handle_syscall(unsigned int svc_number, unsigned int *svc_args);
 
 void _syscall_hndlr(unsigned int *svc_args)
 {
     unsigned int svc_number;
     svc_number = ((char *)svc_args[6])[-2];
-    switch (svc_number)
-    {
-        IMPLEMENT_SYSCALLS()
-    }
+    
+    int ret = handle_syscall(svc_number, svc_args);
+    svc_args[0] = ret;
 }

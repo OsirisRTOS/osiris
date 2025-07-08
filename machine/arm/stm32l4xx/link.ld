@@ -1,6 +1,10 @@
-ENTRY(reset_hndlr)
+ENTRY(_start)
 
-#include "config/config.ldconf"
+#ifndef MCU_HEADER
+#error "MCU_HEADER is not defined."
+#endif
+
+#include MCU_HEADER
 
 __ram_start = ORIGIN(RAM);
 __ram_end = ORIGIN(RAM) + LENGTH(RAM);
@@ -105,7 +109,7 @@ SECTIONS
         __syms_area_start = .;
         KEEP(*(.syms_area))
         BYTE(0x00); /* make sure the section is not empty */
-        . = __syms_size;
+        . += __syms_size;
         __syms_area_end = .;
     } > FLASH
 

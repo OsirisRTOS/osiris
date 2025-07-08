@@ -104,3 +104,23 @@ pub fn enable_interrupts() {
 #[cfg(feature = "host")]
 #[inline(always)]
 pub fn enable_interrupts() {}
+
+#[cfg(not(feature = "host"))]
+#[macro_export]
+macro_rules! __macro_startup_trampoline {
+    () => {{
+        use core::arch::naked_asm;
+        naked_asm!("ldr r1,=__stack_top", "mov sp, r1", "b _main")
+    }};
+}
+
+#[cfg(feature = "host")]
+#[macro_export]
+macro_rules! __macro_startup_trampoline {
+    () => {{
+        use core::arch::naked_asm;
+        naked_asm!("")
+    }};
+}
+
+pub use crate::__macro_startup_trampoline as startup_trampoline;

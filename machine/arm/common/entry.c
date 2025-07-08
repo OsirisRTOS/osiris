@@ -1,6 +1,8 @@
 
 #include <stdint.h>
-#include <nlib/core.h>
+#include "mem.h"
+
+#include <kernel/lib.h>
 
 extern uintptr_t __bss_start;
 extern uintptr_t __bss_end;
@@ -17,6 +19,7 @@ extern func_t __fini_array_start;
 extern func_t __fini_array_end;
 
 extern void _main(void) __attribute__((noreturn));
+extern void init_boot_info(BootInfo *boot_info);
 
 extern int main(void);
 
@@ -56,7 +59,12 @@ void _main(void)
 
     call_constructors();
 
-    // call main
-    main();
+    // Init boot info
+    BootInfo boot_info;
+    memset(&boot_info, 0, sizeof(BootInfo));
+    init_boot_info(&boot_info);
+
+    // Boot!
+    kernel_init(&boot_info);
     unreachable();
 }

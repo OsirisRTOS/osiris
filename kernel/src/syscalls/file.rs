@@ -1,10 +1,10 @@
-use core::str;
+use core::{ffi::c_int, str};
 
 use crate::kprintln;
 use macros::syscall_handler;
 
 #[syscall_handler(num = 0)]
-fn syscall_print(fd: usize, buf: *const u8, len: usize) -> usize {
+fn syscall_print(fd: usize, buf: *const u8, len: usize) -> c_int {
     if fd == 0 {
         let bytes = unsafe { core::slice::from_raw_parts(buf, len) };
 

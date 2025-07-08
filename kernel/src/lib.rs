@@ -3,18 +3,19 @@
 
 #![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
 
-mod macros;
 #[macro_use]
-mod utils;
-mod faults;
-mod mem;
-mod print;
-mod sched;
-mod services;
-mod sync;
-mod syscalls;
-mod time;
-mod uspace;
+pub mod macros;
+#[macro_use]
+pub mod utils;
+pub mod faults;
+pub mod mem;
+pub mod print;
+pub mod sched;
+pub mod services;
+pub mod sync;
+pub mod syscalls;
+pub mod time;
+pub mod uspace;
 
 use core::ffi::c_char;
 
@@ -82,21 +83,4 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     sched::enable_scheduler();
 
     loop {}
-}
-
-/// The panic handler.
-#[cfg(all(not(test), not(doctest), not(doc), target_os = "none"))]
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    kprintln!("**************************** PANIC ****************************");
-    kprintln!("");
-    kprintln!("Message: {}", info.message());
-
-    if let Some(location) = info.location() {
-        kprintln!("Location: {}:{}", location.file(), location.line());
-    }
-
-    kprintln!("**************************** PANIC ****************************");
-
-    hal::panic::panic_handler(info);
 }

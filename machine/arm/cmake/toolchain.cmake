@@ -10,6 +10,8 @@ set(CMAKE_OBJCOPY ${TOOLCHAIN_PREFIX}-objcopy)
 set(CMAKE_NM ${TOOLCHAIN_PREFIX}-nm)
 set(CMAKE_SIZE ${TOOLCHAIN_PREFIX}-size)
 
+add_compile_options(-mfloat-abi=softfp)
+
 # Implement syscalls as stubs, as we are on bare metal.
 set(CMAKE_EXE_LINKER_FLAGS "--specs=nosys.specs" CACHE INTERNAL "")
 
