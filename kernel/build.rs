@@ -23,6 +23,8 @@ fn main() {
     } else {
         println!("cargo:warning=LD_SCRIPT_PATH environment variable not set.");
     }
+
+    // Check if the target is an arm architecture
 }
 
 fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {

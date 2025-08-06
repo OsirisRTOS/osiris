@@ -2,5 +2,23 @@
 resolver = "3"
 
 members = [
-    "kernel",
+    "kernel"
 ]
+
+exclude = [
+    "tools/config",
+]
+
+default-members = ["kernel"]
+
+[profile.dev]
+panic = "abort"
+strip = false
+opt-level = "z"
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+codegen-units = 1
+lto = true
+

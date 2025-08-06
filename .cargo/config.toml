@@ -1,0 +1,8 @@
+[env]
+HAL = "stm32l4xx"
+BOARD = "nucleo"
+MCU = "r5zi"
+ARCH = "arm"
+
+[build]
+target = "thumbv7em-none-eabi"
