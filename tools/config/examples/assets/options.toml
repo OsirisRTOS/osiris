@@ -15,11 +15,13 @@ depends_on = [{ key = "demo_category.demo_option4", value = "value1" }]
 name = "Demo Option"
 description = "This is a demo option in a subcategory."
 type = "String"
+default = "This is a default value"
 
 [demo_category.demo_subcategory.demo_option2]
 name = "Demo Option 2"
 description = "This is another demo option in a subcategory."
 type = "Boolean"
+default = true
 
 [demo_category.demo_subcategory.demo_option3]
 name = "Demo Option 3"
