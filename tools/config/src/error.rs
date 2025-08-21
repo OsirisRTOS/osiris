@@ -1,15 +1,49 @@
 use annotate_snippets::{Level, Message, Snippet};
-use std::{borrow::Cow, ops::Range};
+use std::{borrow::Cow, fmt::Display, ops::Range, process::exit};
+use thiserror::Error;
+use toml_edit::TomlError;
 
 use crate::toml_patch::Spanned;
 
+use annotate_snippets as asn;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub fn fail_on_error<T>(res: Result<T>, diag: Option<&Diagnostic>) -> T {
+    match (res, diag) {
+        (Ok(value), _) => value,
+        (Err(Error::InvalidToml(rep)), Some(diag)) => {
+            let msg = diag.msg(&rep);
+            log::error!("{}", asn::Renderer::styled().render(msg));
+            exit(1);
+        }
+        (Err(error), _) => {
+            log::error!("{error}");
+            exit(1);
+        }
+    }
+}
+
 /// This is our global error type which contains all possible errors.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
-    InvalidToml(Report),
-    IoError(std::io::Error),
+    InvalidToml(#[from] Report),
+    Io(#[from] std::io::Error),
+    Fmt(#[from] std::fmt::Error),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::InvalidToml(report) => write!(f, "{}", report),
+            Error::Io(err) => write!(f, "{err}"),
+            Error::Fmt(err) => write!(f, "{err}"),
+            Error::Other(err) => write!(f, "{err}"),
+        }
+    }
 }
 
 /// This struct is supposed to be filled by the functions parent to fill in context information about the error.
@@ -33,7 +67,7 @@ impl<'a> Diagnostic<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub struct Report {
     lvl: Level,
     title: Cow<'static, str>,
@@ -87,15 +121,49 @@ impl Report {
         if let Some(source) = source {
             let snippet = Snippet::source(source).fold(true).origin(origin);
 
-            msg.snippet(snippet.annotations(self.annotations.iter().filter_map(
-                |(lvl, range, message)| {
-                    message
-                        .as_ref()
-                        .map(|message| lvl.span(range.clone()).label(message.as_ref()))
+            msg.snippet(snippet.annotations(self.annotations.iter().map(
+                |(lvl, range, message)| match message {
+                    Some(message) => lvl.span(range.clone()).label(message.as_ref()),
+                    None => lvl.span(range.clone()),
                 },
             )))
         } else {
             msg
         }
+    }
+}
+
+impl From<TomlError> for Report {
+    fn from(err: TomlError) -> Self {
+        // cut of at the first newline
+        let mut message = err.to_string();
+        let _ = message.split_off(
+            err.to_string()
+                .find('\n')
+                .unwrap_or_else(|| err.to_string().len()),
+        );
+
+        let mut report = Self {
+            lvl: Level::Error,
+            title: message.clone().into(),
+            annotations: Vec::new(),
+        };
+
+        // Add annotation with the error message and span if available
+        if let Some(span) = err.span() {
+            report.add_annotation(
+                Level::Error,
+                span.start..span.end,
+                None::<Cow<'static, str>>,
+            );
+        }
+
+        report
+    }
+}
+
+impl Display for Report {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.title)
     }
 }

@@ -1,8 +1,3 @@
-use std::collections::HashMap;
-use std::fs;
-use std::io;
-use std::path::Path;
-
 use toml_edit::ImDocument;
 use toml_edit::Item;
 use toml_edit::Key;
@@ -12,25 +7,25 @@ use toml_edit::Value;
 
 use annotate_snippets as asn;
 
+use crate::category::ConfigCategory;
 use crate::error::Diagnostic;
 use crate::error::Error;
 use crate::error::Report;
 use crate::error::Result;
+use crate::option::ConfigOption;
 use crate::toml_patch::Spanned;
-use crate::types::ConfigCategory;
 use crate::types::ConfigKey;
 use crate::types::ConfigNode;
-use crate::types::ConfigOption;
 use crate::types::ConfigType;
 use crate::types::ConfigValue;
 
 fn parse_config_type_value(value: &Value, key: &Key, diag: &Diagnostic) -> Result<ConfigType> {
     match value {
         Value::String(s) => match s.value().to_ascii_lowercase().as_str() {
-            "boolean" => Ok(ConfigType::Boolean),
-            "string" => Ok(ConfigType::String(None)),
-            "integer" => Ok(ConfigType::Integer(i64::MIN..i64::MAX)),
-            "float" => Ok(ConfigType::Float(f64::MIN..f64::MAX)),
+            "boolean" => Ok(ConfigType::Boolean(false)),
+            "string" => Ok(ConfigType::String(None, "".to_string())),
+            "integer" => Ok(ConfigType::Integer(i64::MIN..i64::MAX, 0)),
+            "float" => Ok(ConfigType::Float(f64::MIN..f64::MAX, 0.0)),
             _ => Err(Error::InvalidToml(Report::from_spanned(
                 asn::Level::Error,
                 Some(key),
@@ -42,23 +37,23 @@ fn parse_config_type_value(value: &Value, key: &Key, diag: &Diagnostic) -> Resul
             // If the value is an inline table, we parse it as a type.
             if let Some(Value::String(s)) = table.get("type") {
                 match s.value().to_ascii_lowercase().as_str() {
-                    "boolean" => Ok(ConfigType::Boolean),
+                    "boolean" => Ok(ConfigType::Boolean(false)),
                     "string" => {
                         if let Some(Value::Array(arr)) = table.get("allowed_values") {
                             let values: Vec<String> = arr
                                 .iter()
                                 .filter_map(|v| v.as_str().map(String::from))
                                 .collect();
-                            Ok(ConfigType::String(Some(values)))
+                            Ok(ConfigType::String(Some(values), "".to_string()))
                         } else {
-                            Ok(ConfigType::String(None))
+                            Ok(ConfigType::String(None, "".to_string()))
                         }
                     }
                     "integer" => {
                         if let (Some(Value::Integer(min)), Some(Value::Integer(max))) =
                             (table.get("min"), table.get("max"))
                         {
-                            return Ok(ConfigType::Integer(*min.value()..*max.value()));
+                            return Ok(ConfigType::Integer(*min.value()..*max.value(), 0));
                         }
 
                         let msg = "integer type without range specified (Using max range). Please use 'type = 'Integer' instead.".to_string();
@@ -67,20 +62,20 @@ fn parse_config_type_value(value: &Value, key: &Key, diag: &Diagnostic) -> Resul
                         let msg = diag.msg(&report);
                         println!("{}", asn::Renderer::styled().render(msg));
 
-                        Ok(ConfigType::Integer(i64::MIN..i64::MAX))
+                        Ok(ConfigType::Integer(i64::MIN..i64::MAX, 0))
                     }
                     "float" => {
                         if let (Some(Value::Float(min)), Some(Value::Float(max))) =
                             (table.get("min"), table.get("max"))
                         {
-                            return Ok(ConfigType::Float(*min.value()..*max.value()));
+                            return Ok(ConfigType::Float(*min.value()..*max.value(), 0.0));
                         }
                         let msg = "float type without range specified. (Using max range). Please use 'type = 'Float' instead.".to_string();
                         let report =
                             Report::from_spanned(asn::Level::Warning, Some(key), value, msg);
                         let msg = diag.msg(&report);
                         println!("{}", asn::Renderer::styled().render(msg));
-                        Ok(ConfigType::Float(f64::MIN..f64::MAX))
+                        Ok(ConfigType::Float(f64::MIN..f64::MAX, 0.0))
                     }
                     _ => Err(Error::InvalidToml(Report::from_spanned(
                         asn::Level::Error,
@@ -136,20 +131,36 @@ fn parse_config_type(table: &Table, key: &Key, diag: &Diagnostic) -> Result<Conf
     }
 }
 
-fn parse_config_key(key: &str) -> ConfigKey {
+fn parse_config_key(key: &str, span: &impl Spanned) -> Result<ConfigKey> {
+    // A key is only allowed to contain a-z A-Z and .
+    if !key
+        .chars()
+        .all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '.' | '0'..='9'))
+    {
+        return Err(Error::InvalidToml(
+            Report::from_spanned(
+                asn::Level::Error,
+                None::<&Key>,
+                span,
+                format!("keys can only contain letters (a-zA-Z), digits (0-9), and dots (.)"),
+            )
+            .into(),
+        ));
+    }
+
     if key.contains('.') {
         // Qualified key
-        ConfigKey::Qualified(key.to_string())
+        Ok(ConfigKey::Qualified(key.to_string()))
     } else {
         // Simple key
-        ConfigKey::Simple(key.to_string())
+        Ok(ConfigKey::Simple(key.to_string()))
     }
 }
 
 fn parse_config_depend(
     key: &Key,
     table: &(impl TableLike + Spanned),
-) -> Result<(String, ConfigValue)> {
+) -> Result<(ConfigKey, Option<ConfigValue>)> {
     if let Some(Item::Value(Value::String(dependency))) = table.get("key") {
         if let Some(value) = table.get("value") {
             let parsed_value: ConfigValue = value.into();
@@ -163,14 +174,14 @@ fn parse_config_depend(
                 )));
             }
 
-            Ok((dependency.clone().into_value(), parsed_value))
+            let key =
+                parse_config_key(&dependency.clone().into_value(), table.get("key").unwrap())?;
+
+            Ok((key, Some(parsed_value)))
         } else {
-            Err(Error::InvalidToml(Report::from_spanned(
-                asn::Level::Error,
-                Some(key),
-                table,
-                "missing 'value' field in dependency".to_string(),
-            )))
+            let key =
+                parse_config_key(&dependency.clone().into_value(), table.get("key").unwrap())?;
+            Ok((key, None))
         }
     } else {
         Err(Error::InvalidToml(Report::from_spanned(
@@ -182,16 +193,15 @@ fn parse_config_depend(
     }
 }
 
-fn parse_config_depends(key: &Key, value: &Item) -> Result<HashMap<ConfigKey, ConfigValue>> {
-    let mut map = HashMap::new();
+fn parse_config_depends(key: &Key, value: &Item) -> Result<Vec<(ConfigKey, Option<ConfigValue>)>> {
+    let mut vec = Vec::new();
 
     match value {
         Item::Value(Value::Array(v)) => {
             for item in v {
                 if let Value::InlineTable(table) = item {
                     let (k, v) = parse_config_depend(key, table)?;
-                    let k = parse_config_key(&k);
-                    map.insert(k, v);
+                    vec.push((k, v));
                 } else {
                     return Err(Error::InvalidToml(Report::from_spanned(
                         asn::Level::Error,
@@ -205,8 +215,7 @@ fn parse_config_depends(key: &Key, value: &Item) -> Result<HashMap<ConfigKey, Co
         Item::ArrayOfTables(v) => {
             for item in v {
                 let (k, v) = parse_config_depend(key, item)?;
-                let k = parse_config_key(&k);
-                map.insert(k, v);
+                vec.push((k, v));
             }
         }
         _ => {
@@ -219,28 +228,30 @@ fn parse_config_depends(key: &Key, value: &Item) -> Result<HashMap<ConfigKey, Co
         }
     }
 
-    Ok(map)
+    Ok(vec)
 }
 
-fn parse_config_default(key: &Key, value: &Item, typ: &ConfigType) -> Result<ConfigValue> {
+fn parse_config_default(key: &Key, value: &Item, typ: &mut ConfigType) -> Result<()> {
     match value {
         Item::Value(Value::Boolean(b)) => {
-            if let ConfigType::Boolean = typ {
-                Ok(ConfigValue::Boolean(*b.value()))
+            if let ConfigType::Boolean(default) = typ {
+                *default = *b.value();
+                Ok(())
             } else {
-                Err(Error::InvalidToml(Report::from_spanned(
+                Err(Report::from_spanned(
                     asn::Level::Error,
                     Some(key),
                     value,
                     "default value for boolean type must be a boolean".to_string(),
-                )))
+                )
+                .into())
             }
         }
         Item::Value(Value::String(s)) => {
-            if let ConfigType::String(allowed_values) = typ {
+            if let ConfigType::String(allowed_values, default) = typ {
                 if let Some(allowed_values) = allowed_values {
-                    if !allowed_values.contains(&s.value()) {
-                        return Err(Error::InvalidToml(Report::from_spanned(
+                    if !allowed_values.contains(s.value()) {
+                        return Err(Report::from_spanned(
                             asn::Level::Error,
                             Some(key),
                             value,
@@ -249,24 +260,27 @@ fn parse_config_default(key: &Key, value: &Item, typ: &ConfigType) -> Result<Con
                                 s.value(),
                                 allowed_values
                             ),
-                        )));
+                        )
+                        .into());
                     }
                 }
 
-                Ok(ConfigValue::String(s.to_string()))
+                *default = s.value().to_string();
+                Ok(())
             } else {
-                Err(Error::InvalidToml(Report::from_spanned(
+                Err(Report::from_spanned(
                     asn::Level::Error,
                     Some(key),
                     value,
                     "default value for string type must be a string".to_string(),
-                )))
+                )
+                .into())
             }
         }
         Item::Value(Value::Integer(i)) => {
-            if let ConfigType::Integer(range) = typ {
+            if let ConfigType::Integer(range, default) = typ {
                 if i.value() < &range.start || i.value() > &range.end {
-                    return Err(Error::InvalidToml(Report::from_spanned(
+                    return Err(Report::from_spanned(
                         asn::Level::Error,
                         Some(key),
                         value,
@@ -275,23 +289,26 @@ fn parse_config_default(key: &Key, value: &Item, typ: &ConfigType) -> Result<Con
                             i.value(),
                             range
                         ),
-                    )));
+                    )
+                    .into());
                 }
 
-                Ok(ConfigValue::Integer(*i.value()))
+                *default = *i.value();
+                Ok(())
             } else {
-                Err(Error::InvalidToml(Report::from_spanned(
+                Err(Report::from_spanned(
                     asn::Level::Error,
                     Some(key),
                     value,
                     "default value for integer type must be an integer".to_string(),
-                )))
+                )
+                .into())
             }
         }
         Item::Value(Value::Float(f)) => {
-            if let ConfigType::Float(_) = typ {
-                if f.value() < &f64::MIN || f.value() > &f64::MAX {
-                    return Err(Error::InvalidToml(Report::from_spanned(
+            if let ConfigType::Float(range, default) = typ {
+                if f.value() < &range.start || f.value() > &range.end {
+                    return Err(Report::from_spanned(
                         asn::Level::Error,
                         Some(key),
                         value,
@@ -301,25 +318,29 @@ fn parse_config_default(key: &Key, value: &Item, typ: &ConfigType) -> Result<Con
                             f64::MIN,
                             f64::MAX
                         ),
-                    )));
+                    )
+                    .into());
                 }
 
-                Ok(ConfigValue::Float(*f.value()))
+                *default = *f.value();
+                Ok(())
             } else {
-                Err(Error::InvalidToml(Report::from_spanned(
+                Err(Report::from_spanned(
                     asn::Level::Error,
                     Some(key),
                     value,
                     "default value for float type must be a float".to_string(),
-                )))
+                )
+                .into())
             }
         }
-        _ => Err(Error::InvalidToml(Report::from_spanned(
+        _ => Err(Report::from_spanned(
             asn::Level::Error,
             Some(key),
             value,
-            format!("default value for type {:?} must be a valid value", typ),
-        ))),
+            format!("default value for type {typ:?} must be a valid value"),
+        )
+        .into()),
     }
 }
 
@@ -330,6 +351,7 @@ fn parse_config_category(
     table: &Table,
     parent: &Option<ConfigKey>,
     diag: &Diagnostic,
+    next_id: &mut usize,
 ) -> Result<ConfigCategory> {
     let name = table
         .get("name")
@@ -345,7 +367,7 @@ fn parse_config_category(
     let depends_on = if let Some(value) = table.get("depends_on") {
         parse_config_depends(key, value)?
     } else {
-        HashMap::new()
+        Vec::new()
     };
 
     let children = table
@@ -355,13 +377,16 @@ fn parse_config_category(
             let k = table.key(k).unwrap(); // Safe unwrap, we are iterating over the keys of the table.
 
             if let Item::Table(table) = v {
+                // Ensure the key is valid
+                parse_config_key(k, table)?;
+
                 if table.contains_key("type") {
                     // If the value is an option, we set the parent to pending, as we are registering it as a child of the current category.
-                    parse_config_option(k, v, &Some(ConfigKey::Pending()), diag)
+                    parse_config_option(k, v, &Some(ConfigKey::Pending()), diag, next_id)
                         .map(ConfigNode::Option)
                 } else {
                     // If the value is a category, we recursively parse it. We set the parent to pending, as we are registering it as a child of the current category.
-                    parse_config_category(k, table, &Some(ConfigKey::Pending()), diag)
+                    parse_config_category(k, table, &Some(ConfigKey::Pending()), diag, next_id)
                         .map(ConfigNode::Category)
                 }
             } else {
@@ -375,9 +400,12 @@ fn parse_config_category(
         })
         .collect::<Result<Vec<_>>>()?;
 
+    *next_id += 1;
+
     Ok(ConfigCategory {
         parent: parent.clone(),
         key: key.to_string(),
+        id: *next_id - 1,
         name,
         description,
         depends_on,
@@ -390,6 +418,7 @@ fn parse_config_option(
     value: &Item,
     parent: &Option<ConfigKey>,
     diag: &Diagnostic,
+    next_id: &mut usize,
 ) -> Result<ConfigOption> {
     if let Item::Table(table) = value {
         let name = table
@@ -403,33 +432,28 @@ fn parse_config_option(
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        let typ = parse_config_type(table, key, diag)?;
+        let mut typ = parse_config_type(table, key, diag)?;
 
         let depends_on = if let Some(value) = table.get("depends_on") {
             parse_config_depends(key, value)?
         } else {
-            HashMap::new()
+            Vec::new()
         };
 
-        let default = if let Some(value) = table.get("default") {
-            parse_config_default(key, value, &typ)?
-        } else {
-            match typ {
-                ConfigType::Boolean => ConfigValue::Boolean(false),
-                ConfigType::String(_) => ConfigValue::String(String::new()),
-                ConfigType::Integer(_) => ConfigValue::Integer(0),
-                ConfigType::Float(_) => ConfigValue::Float(0.0),
-            }
-        };
+        if let Some(value) = table.get("default") {
+            parse_config_default(key, value, &mut typ)?
+        }
+
+        *next_id += 1;
 
         Ok(ConfigOption {
-            parent: parent.clone(), // Parent will be set later
+            parent: parent.clone(),
             key: key.to_string(),
+            id: *next_id - 1,
             name,
             description,
             typ,
             depends_on,
-            default,
         })
     } else {
         Err(Error::InvalidToml(Report::from_spanned(
@@ -442,21 +466,14 @@ fn parse_config_option(
 }
 
 /// We build this tree bottom-up, so we first load all the files and then parse them into ConfigOption structs as-well as ConfigCategory structs.
-pub fn parse_file(path: &Path) -> Result<Vec<ConfigNode>> {
-    let content = fs::read_to_string(path).map_err(Error::IoError)?;
-
-    let path = path.to_string_lossy();
-    let diag = Diagnostic::new(&path, Some(&content));
-
-    let document = ImDocument::parse(&content).map_err(|e| {
-        Error::IoError(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Failed to parse TOML file '{path}': {e}"),
-        ))
-    })?;
+pub fn parse_content(
+    content: &str,
+    next_id: &mut usize,
+    diag: &Diagnostic,
+) -> Result<Vec<ConfigNode>> {
+    let document = ImDocument::parse(&content).map_err(Report::from)?;
 
     let mut opts = Vec::new();
-
     let mut parent: Option<ConfigKey> = None;
 
     // First, parse the metadata of our file.
@@ -464,14 +481,20 @@ pub fn parse_file(path: &Path) -> Result<Vec<ConfigNode>> {
         Some(Item::Table(meta_tbl)) => {
             if let Some(Item::Value(Value::String(name))) = meta_tbl.get("parent") {
                 // If the metadata has a parent, we set the current parent to this category.
-                parent = Some(parse_config_key(name.value()));
+                parent = Some(parse_config_key(
+                    name.value(),
+                    meta_tbl.get("parent").unwrap(),
+                )?);
             }
         }
-        Some(_) => {
-            return Err(Error::IoError(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Invalid metadata format in TOML file.",
-            )));
+        Some(item) => {
+            return Err(Report::from_spanned(
+                asn::Level::Error,
+                None::<&Key>,
+                item,
+                "expected to be a table".to_string(),
+            )
+            .into());
         }
         None => {
             // If there is no parent, we assume the parent is the root category.
@@ -486,32 +509,12 @@ pub fn parse_file(path: &Path) -> Result<Vec<ConfigNode>> {
         if let Item::Table(table) = value {
             if table.contains_key("type") {
                 // Option
-                match parse_config_option(key, value, &parent, &diag) {
-                    Ok(option) => {
-                        opts.push(ConfigNode::Option(option));
-                    }
-                    Err(Error::InvalidToml(report)) => {
-                        let msg = diag.msg(&report);
-                        println!("{}", asn::Renderer::styled().render(msg));
-                    }
-                    _ => {
-                        unreachable!("Unexpected error while parsing option");
-                    }
-                }
+                let option = parse_config_option(key, value, &parent, &diag, next_id)?;
+                opts.push(ConfigNode::Option(option));
             } else {
                 // Category
-                match parse_config_category(key, table, &parent, &diag) {
-                    Ok(category) => {
-                        opts.push(ConfigNode::Category(category));
-                    }
-                    Err(Error::InvalidToml(report)) => {
-                        let msg = diag.msg(&report);
-                        println!("{}", asn::Renderer::styled().render(msg));
-                    }
-                    _ => {
-                        unreachable!("Unexpected error while parsing category");
-                    }
-                }
+                let category = parse_config_category(key, table, &parent, &diag, next_id)?;
+                opts.push(ConfigNode::Category(category));
             }
         }
     }

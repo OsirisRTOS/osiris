@@ -1,34 +1,11 @@
 use std::collections::{HashMap, VecDeque};
-use std::path::{Path, PathBuf};
 
-use walkdir::WalkDir;
+use anyhow::anyhow;
 
-use crate::types::{ConfigCategory, ConfigKey};
-use crate::{error::Result, types::ConfigNode};
-use crate::parse;
-
-pub fn load_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-
-    for entry in WalkDir::new(root)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-    {
-        let path = entry.path();
-
-        if path.is_dir() {
-            continue;
-        }
-
-        if path.extension().map(|e| e == "toml").unwrap_or(false)
-            && path.file_name().is_some_and(|f| f == "options.toml")
-        {
-            files.push(path.to_path_buf());
-        }
-    }
-
-    Ok(files)
-}
+use crate::category::ConfigCategory;
+use crate::error::Result;
+use crate::types::ConfigNode;
+use crate::types::{ConfigKey, ConfigNodelike};
 
 fn should_link(parent: &Option<ConfigKey>, key: &str, path: &str) -> bool {
     match parent {
@@ -52,8 +29,8 @@ fn build_current_path(current_node: &ConfigCategory, path: &str) -> String {
 // But we still need to link these nodes in our tree. Luckily we already process our files in a BFS fashion. Which means each new node just needs to be append to an already existing parent node.
 // The nodes have a parent key, which is either a ConfigKey::Simple or ConfigKey::Qualified. Simple means we just search the nearest parent node in the tree with the same "name"/key. If this is not unique, we throw an error and the user has to use a fully qualified key.
 // The fully qualified key is the path to the parent node, seperated by dots. If the parent is None this means its parent is the "root" node.
-fn link_nodes(root: &mut ConfigCategory, new_nodes: &Vec<ConfigNode>) {
-    for node in new_nodes {
+pub fn link_nodes(root: &mut ConfigCategory, new_nodes: Vec<ConfigNode>) {
+    for node in new_nodes.into_iter() {
         // I dont care about performance in a config tool.
         let mut queue: VecDeque<(&mut ConfigCategory, String)> = VecDeque::new();
         queue.push_back((root, "".to_string()));
@@ -63,12 +40,12 @@ fn link_nodes(root: &mut ConfigCategory, new_nodes: &Vec<ConfigNode>) {
             let current_path = build_current_path(current_node, &path);
 
             let should_link = match node {
-                ConfigNode::Category(cat) => should_link(&cat.parent, &cat.key, &current_path),
-                ConfigNode::Option(opt) => should_link(&opt.parent, &opt.key, &current_path),
+                ConfigNode::Category(ref cat) => should_link(&cat.parent, &cat.key, &current_path),
+                ConfigNode::Option(ref opt) => should_link(&opt.parent, &opt.key, &current_path),
             };
 
             if should_link {
-                current_node.children.push(node.clone());
+                current_node.children.push(node);
                 break; // We found the right place to link the node, so we can stop searching
             }
 
@@ -89,8 +66,9 @@ fn link_nodes(root: &mut ConfigCategory, new_nodes: &Vec<ConfigNode>) {
     }
 }
 
-fn resolve_parents(root: &mut ConfigCategory) {
+pub fn resolve_paths(root: &mut ConfigCategory) -> Result<()> {
     let mut queue = VecDeque::new();
+    let mut id_map = HashMap::new();
 
     for child in &mut root.children {
         queue.push_back((child, "".to_string()));
@@ -100,33 +78,74 @@ fn resolve_parents(root: &mut ConfigCategory) {
         let current_path = format!("{}.{}", path, node.key());
 
         // Resolve the parent for the current node
-        node.set_parent(ConfigKey::Resolved(current_path.clone()));
+        node.set_parent(ConfigKey::Resolved {
+            path: path.clone(),
+            id: None,
+        });
+
+        id_map.insert(current_path.clone(), node.id());
 
         for child in &mut node.iter_children_mut() {
             queue.push_back((child, current_path.clone()));
         }
     }
-}
 
+    let mut queue = VecDeque::new();
 
-pub fn resolve_config(root: &Path) -> Result<ConfigNode> {
-    let files = load_files(root)?;
-   
-    let mut root = ConfigCategory {
-        parent: None,
-        key: ".".to_string(),
-        name: "Root".to_string(),
-        description: None,
-        depends_on: HashMap::new(),
-        children: Vec::new(),
-    };
-
-    for file in files {
-        let nodes = parse::parse_file(&file)?;
-        link_nodes(&mut root, &nodes);
+    for child in &mut root.children {
+        queue.push_back((child, "".to_string()));
     }
 
-    resolve_parents(&mut root);
+    while let Some((node, path)) = queue.pop_front() {
+        let current_path = format!("{}.{}", path, node.key());
+        let id = node.id();
 
-    Ok(ConfigNode::Category(root))
+        // Inefficient but it works for now.
+        let drained_deps: Vec<_> = node.dependencies_drain().collect();
+        for (mut dep, value) in drained_deps {
+            match dep {
+                ConfigKey::Resolved {
+                    ref path,
+                    ref mut id,
+                } => *id = id_map.get(path).copied(),
+                ConfigKey::Simple(ref key) => {
+                    if let Some(id) = id_map.get(&format!("{}.{}", path, key)) {
+                        dep = ConfigKey::Resolved {
+                            path: format!("{}.{}", path, key),
+                            id: Some(*id),
+                        };
+                    } else {
+                        Err(anyhow!("Unresolved dependency: {key} in {path}"))?
+                    }
+                }
+                ConfigKey::Qualified(ref key) => {
+                    if let Some(id) = id_map.get(key) {
+                        dep = ConfigKey::Resolved {
+                            path: key.clone(),
+                            id: Some(*id),
+                        };
+                    } else {
+                        Err(anyhow!("Unresolved dependency: {key} in {path}"))?
+                    }
+                }
+                _ => Err(anyhow!("Unresolved dependency: {dep:?} in {path}"))?,
+            };
+
+            node.add_dependency(dep, value);
+        }
+
+        for child in &mut node.iter_children_mut() {
+            // Add parent node as dependency of the child
+            child.add_dependency(
+                ConfigKey::Resolved {
+                    path: current_path.clone(),
+                    id: Some(id),
+                },
+                None,
+            );
+            queue.push_back((child, current_path.clone()));
+        }
+    }
+
+    Ok(())
 }

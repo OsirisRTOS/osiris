@@ -32,5 +32,4 @@ impl Spanned for toml_edit::Table {
     fn span(&self) -> Option<Range<usize>> {
         self.span()
     }
-    
 }
