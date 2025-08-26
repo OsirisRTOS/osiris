@@ -1,0 +1,34 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "kernel"
+path = "src/main.rs"
+
+[dependencies]
+hal-arm = { path = "../machine/arm", features = [], optional = true }
+macros = { path = "macros" }
+
+[features]
+default = ["arm"]
+arm = ["hal-arm"]
+
+unstable = []
+no-atomic-cas = []
+multi-core = []
+
+[build-dependencies]
+cbindgen = "0.28.0"
+bindgen = "0.69.5"
+walkdir = "2.5.0"
+syn = "2.0.100"
+quote = "1.0.40"
+rand = "0.8.5"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
