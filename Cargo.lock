@@ -62,6 +62,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.99"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
+
+[[package]]
 name = "bindgen"
 version = "0.69.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -264,9 +270,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 
 [[package]]
-name = "hal"
+name = "hal-arm"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bindgen 0.72.0",
  "cmake",
 ]
@@ -338,7 +345,7 @@ version = "0.1.0"
 dependencies = [
  "bindgen 0.69.5",
  "cbindgen",
- "hal",
+ "hal-arm",
  "macros",
  "quote",
  "rand",
@@ -928,6 +935,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f42320e61fe2cfd34354ecb597f86f413484a798ba44a8ca1165c58d42da6c1"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]

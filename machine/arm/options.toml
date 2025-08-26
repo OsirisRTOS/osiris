@@ -1,0 +1,13 @@
+[metadata]
+parent = ".arm"
+
+[hal]
+name = "Hardware Abstraction Layer"
+description = "The hardware abstraction layer to use."
+type = { type = "String", allowed_values = ["stm32l4xx"] }
+default = "stm32l4xx"
+
+[stm32l4xx]
+name = "STM32L4xx"
+description = "Config for the STM32L4xx microcontroller series."
+depends_on = [{ key = "hal", value = "stm32l4xx" }]

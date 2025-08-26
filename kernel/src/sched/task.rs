@@ -1,5 +1,5 @@
 //! This module provides the basic task and thread structures for the scheduler.
-
+use crate::hal;
 use core::{cmp::Ordering, ptr::NonNull};
 
 use crate::mem;

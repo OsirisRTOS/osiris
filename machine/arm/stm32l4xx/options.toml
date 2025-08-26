@@ -1,0 +1,14 @@
+[metadata]
+parent = ".arm.stm32l4xx"
+
+[mcu]
+name = "Microcontroller"
+description = "The specific microcontroller to use."
+type = { type = "String", allowed_values = ["r5zi"] }
+default = "r5zi"
+
+[board]
+name = "Board"
+description = "The specific board to use."
+type = { type = "String", allowed_values = ["nucleo"] }
+default = "nucleo"

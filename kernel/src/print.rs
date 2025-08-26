@@ -2,6 +2,7 @@ use core::ffi::CStr;
 use core::fmt::{self, Write};
 
 use crate::kprintln;
+use crate::hal;
 
 pub struct Printer;
 

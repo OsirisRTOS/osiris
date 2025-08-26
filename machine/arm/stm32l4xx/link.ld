@@ -9,7 +9,7 @@ ENTRY(_start)
 __ram_start = ORIGIN(RAM);
 __ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
-#ifdef CONFIG_RUNTIME_SYMBOLS
+#ifdef DEBUG_RUNTIMESYMBOLS
 /* at least 250kb for the symbol table */
 __syms_size = 0x3e800;
 #else

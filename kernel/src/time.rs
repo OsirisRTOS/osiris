@@ -1,4 +1,4 @@
-use crate::{sched, sync::spinlock::SpinLocked};
+use crate::{sched, sync::spinlock::SpinLocked, hal};
 
 // This variable is only allowed to be modified by the systick handler.
 static TIME: SpinLocked<u64> = SpinLocked::new(0);

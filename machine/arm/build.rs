@@ -1,11 +1,48 @@
-use std::env;
+use anyhow::{Context, Result};
+use std::{env, process::Command};
+
+fn host_triple() -> Result<String> {
+    let out = Command::new("rustc")
+        .arg("-vV")
+        .output()
+        .context("Failed to get host triple")?;
+
+    let s = String::from_utf8(out.stdout)?;
+    let triple = s
+        .lines()
+        .find_map(|l| l.strip_prefix("host: ").map(str::to_owned))
+        .context("could not parse host triple")?;
+    Ok(triple)
+}
+
+fn fail_on_error<T>(res: Result<T>) -> T {
+    match res {
+        Ok(val) => val,
+        Err(e) => {
+            println!("cargo:error={}", e);
+            std::process::exit(1);
+        }
+    }
+}
 
 fn main() {
     let out = env::var("OUT_DIR").unwrap_or("src".to_string());
 
-    let hal = env::var("HAL").unwrap_or("stm32l4xx".to_string());
-    let board = env::var("BOARD").unwrap_or("nucleo".to_string());
-    let mcu = env::var("MCU").unwrap_or("r5zi".to_string());
+    let hal = fail_on_error(env::var("ARM_HAL").with_context(
+        || "ARM_HAL environment variable not set. Please set it to the path of the ARM HAL.",
+    ));
+    let board = fail_on_error(
+        env::var(format!("ARM_{}_BOARD", hal.to_uppercase())).with_context(|| {
+            "ARM_{}_BOARD environment variable not set. Please set it to the board name."
+                .replace("{}", &hal)
+        }),
+    );
+    let mcu = fail_on_error(
+        env::var(format!("ARM_{}_MCU", hal.to_uppercase())).with_context(|| {
+            "ARM_{}_MCU environment variable not set. Please set it to the MCU name."
+                .replace("{}", &hal)
+        }),
+    );
 
     let bindgen = bindgen::Builder::default()
         .header(format!("{hal}/interface/export.h"))
@@ -19,14 +56,23 @@ fn main() {
         .expect("Couldn't write bindings!");
 
     println!("cargo:rerun-if-changed={mcu}");
-    println!("cargo:rerun-if-env-changed=HAL");
-    println!("cargo:rerun-if-env-changed=BOARD");
-    println!("cargo:rerun-if-env-changed=MCU");
+    println!("cargo:rerun-if-env-changed=ARM_HAL");
+    println!("cargo:rerun-if-env-changed=ARM_{}_BOARD", hal.to_uppercase());
+    println!("cargo:rerun-if-env-changed=ARM_{}_MCU", hal.to_uppercase());
 
-    // Only build when we are not on the host
-    if env::var("CARGO_FEATURE_HOST").is_ok() {
-        println!("cargo:warning=Building for host, skipping HAL build.");
-        return;
+    // Enable host feature when target triplet is equal to host target
+    match host_triple() {
+        Ok(host) => {
+            if host == env::var("TARGET").unwrap_or_default() {
+                println!("cargo:rustc-cfg=feature=\"host\"");
+                println!("cargo:warning=Building for host, skipping HAL build.");
+                // Only build when we are not on the host
+                return;
+            }
+        }
+        Err(e) => {
+            println!("cargo:warning=Could not determine host triple: {}", e);
+        }
     }
 
     // Build the HAL library

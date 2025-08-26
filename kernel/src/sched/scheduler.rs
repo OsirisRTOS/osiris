@@ -7,6 +7,7 @@ use crate::{
     sync::spinlock::SpinLocked,
     utils,
 };
+use crate::hal;
 use hal::sched::{CtxPtr, ThreadDesc};
 
 /// The global scheduler instance.

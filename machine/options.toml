@@ -1,0 +1,13 @@
+[metadata]
+parent = "."
+
+[arch]
+name = "Architecture"
+description = "The cpu architecture where Osiris will run on."
+type = { type = "String", allowed_values = ["arm"] }
+default = "arm"
+
+[arm]
+name = "ARM"
+description = "The ARM architecture."
+depends_on = [{ key = "arch", value = "arm" }]

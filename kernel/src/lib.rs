@@ -3,6 +3,9 @@
 
 #![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
 
+#[cfg(feature = "arm")]
+pub use hal_arm as hal;
+
 #[macro_use]
 pub mod macros;
 #[macro_use]

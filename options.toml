@@ -1,0 +1,11 @@
+[metadata]
+parent = "."
+
+[debug]
+name = "Debugging"
+description = "Configure/enable features for debugging."
+
+[debug.runtimesymbols]
+name = "Runtime Symbols"
+description = "Enables runtime symbols for debugging. This will increase the binary size by potentially a lot. When enabled backtraces will display function names."
+type = "Boolean"

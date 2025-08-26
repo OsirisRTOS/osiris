@@ -3,6 +3,7 @@
 pub mod scheduler;
 pub mod task;
 
+use crate::hal;
 use crate::utils::KernelError;
 
 /// Reschedule the tasks.

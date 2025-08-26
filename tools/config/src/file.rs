@@ -20,7 +20,7 @@ pub fn load_file(path: &Path) -> Result<File> {
     })
 }
 
-pub fn load_files(root: &Path) -> Vec<Result<File>> {
+pub fn load_files(root: &Path, filename: &str) -> Vec<Result<File>> {
     let mut files = Vec::new();
 
     let mut entries = WalkDir::new(root)
@@ -38,8 +38,7 @@ pub fn load_files(root: &Path) -> Vec<Result<File>> {
             continue;
         }
 
-        if path.extension().map(|e| e == "toml").unwrap_or(false)
-            && path.file_name().is_some_and(|f| f == "options.toml")
+        if path.file_name().is_some_and(|f| f == filename)
         {
             let file = load_file(&path);
             files.push(file);

@@ -148,10 +148,7 @@ impl<'a> Widget for Button<'a> {
         buf.set_style(area, Style::new().bg(background).fg(text));
 
         // Calculate centered position for the label
-        // Horizontal centering: subtract label width from area width and divide by 2
         let label_x = area.x + (area.width.saturating_sub(self.label.width() as u16)) / 2;
-
-        // Vertical centering: subtract 1 (single line height) from area height and divide by 2
         let label_y = area.y + (area.height.saturating_sub(1)) / 2;
 
         // Render the label at the calculated centered position

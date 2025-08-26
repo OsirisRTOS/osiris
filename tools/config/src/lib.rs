@@ -23,8 +23,8 @@ pub mod ui;
 use annotate_snippets as asn;
 use toml_edit::ImDocument;
 
-pub fn load_config(root: &Path) -> ConfigNode {
-    let files = file::load_files(root);
+pub fn load_config(root: &Path, filename: &str) -> ConfigNode {
+    let files = file::load_files(root, filename);
 
     let mut id = 0;
 

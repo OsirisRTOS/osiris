@@ -1,3 +1,5 @@
+use crate::hal;
+
 use hal::excep::ExcepStackFrame;
 
 #[unsafe(no_mangle)]

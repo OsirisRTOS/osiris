@@ -1,5 +1,5 @@
 [package]
-name = "hal"
+name = "hal-arm"
 version = "0.1.0"
 rust-version = "1.85.0"
 authors = ["Thomas Wachter"]
@@ -17,6 +17,7 @@ crate-type = ["rlib"]
 [build-dependencies]
 bindgen = "0.72.0"
 cmake = "0.1.54"
+anyhow = "1.0.99"
 
 [features]
 # This enables the host implementation of the HAL. Mainly used for testing.

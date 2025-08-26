@@ -1,8 +1,10 @@
 [env]
-HAL = "stm32l4xx"
-BOARD = "nucleo"
-MCU = "r5zi"
 ARCH = "arm"
+ARM_STM32L4XX_MCU = "r5zi"
+ARM_STM32L4XX_BOARD = "nucleo"
+ARM_HAL = "stm32l4xx"
 
-[build]
-target = "thumbv7em-none-eabi"
+[alias]
+xtask = "run --manifest-path xtask/Cargo.toml --release --"
+
+
