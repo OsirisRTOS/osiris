@@ -1,5 +1,5 @@
 [metadata]
-parent = ".arm"
+parent = "."
 
 [hal]
 name = "Hardware Abstraction Layer"

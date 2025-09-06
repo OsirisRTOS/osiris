@@ -7,12 +7,13 @@ edition = "2024"
 build = "build.rs"
 # Through this we can access env variables set by the build script through DEP_HAL_<VAR_NAME>
 # It has nothing to do with native libraries.
-links = "hal"
+links = "halarm"
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
+hal-api = { path = "../api" }
 
 [build-dependencies]
 bindgen = "0.72.0"

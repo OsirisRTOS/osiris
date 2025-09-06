@@ -16,7 +16,6 @@ macro_rules! __macro_nop {
 pub use crate::__macro_nop as nop;
 
 /// Macro for doing a system call.
-
 #[cfg(not(feature = "host"))]
 #[macro_export]
 macro_rules! __macro_syscall {

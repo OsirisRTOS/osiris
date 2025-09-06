@@ -1,5 +1,36 @@
-use std::{env, process::Command};
+
+
+use std::{path::PathBuf, process::Command};
 use anyhow::{bail, Context, Ok, Result};
+
+use clap::Parser;
+use tracing_subscriber::EnvFilter;
+
+#[derive(clap::Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Subcommand
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Subcommand {
+    Config {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>
+    },
+    /// Inject symbols into the given target binary.
+    InjectSyms {
+        /// Target triple. If not specified, the host triple will be used.
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long, default_value_t = false)]
+        release: bool,
+        #[arg(long, default_value_t = String::from("Kernel"))]
+        binary: String,
+    }
+}
+
 
 fn host_triple() -> Result<String> {
     let out = Command::new("rustc").arg("-vV").output()
@@ -12,13 +43,70 @@ fn host_triple() -> Result<String> {
     Ok(triple)
 }
 
-fn main() -> Result<()> {
-    let mut args = env::args().skip(1);
-    match args.next().as_deref() {
-        Some("config") => run_config(args.collect()),
-        Some(other) => bail!("unknown xtask command: {other}"),
-        None => bail!("usage: xtask <command> [args]")
+fn init_tracing() {
+    let filter = EnvFilter::try_from_env("XTASK_LOG")
+        .or_else(|_| EnvFilter::try_new("warn"))
+        .unwrap();
+
+    let event_fmt = tracing_subscriber::fmt::format()
+        .compact()
+        .with_level(true)
+        .with_target(false)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .without_time();
+
+    tracing_subscriber::fmt()
+        .event_format(event_fmt)
+        .with_env_filter(filter)
+        .init();
+}
+
+fn main() {
+    init_tracing();
+
+    let cli = Cli::parse();
+
+    if let Err(err) = match cli.cmd {
+        Subcommand::Config { args } => run_config(args),
+        Subcommand::InjectSyms { target, release, binary } => run_inject_syms(target, release, binary),
     }
+    {
+        tracing::error!("{:?}", err);
+        std::process::exit(1);
+    }
+}
+
+fn run_inject_syms(target: Option<String>, release: bool, binary: String) -> Result<()> {
+    let target = match target {
+        Some(t) => t,
+        None => host_triple()?
+    };
+
+    // find the target directory
+    let mut binary_file = PathBuf::from("target").join(&target);
+    let build_type = if release { "release" } else { "debug" };
+    binary_file = binary_file.join(build_type).join(&binary);
+
+    // Check if the target directory exists
+    if !binary_file.exists() {
+        bail!("Target binary does not exist: {}", binary_file.display());
+    }
+
+    println!("Injecting symbols into binary: {}", binary_file.display());
+
+    let status = Command::new("python3")
+        .arg("tools/injector/inject_syms.py")
+        .arg("--file")
+        .arg(&binary_file)
+        .status()
+        .context("failed to run inject_syms")?;
+
+    if !status.success() {
+        bail!("inject_syms command failed with status: {status}");
+    }
+
+    Ok(())
 }
 
 fn run_config(args: Vec<String>) -> Result<()> {

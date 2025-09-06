@@ -2,13 +2,14 @@ use core::ffi::CStr;
 use core::fmt::{self, Write};
 
 use crate::kprintln;
-use crate::hal;
+
+use hal::Machinelike;
 
 pub struct Printer;
 
 impl Write for Printer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        hal::print(s).map_err(|_| fmt::Error)?;
+        hal::Machine::print(s).map_err(|_| fmt::Error)?;
         Ok(())
     }
 }

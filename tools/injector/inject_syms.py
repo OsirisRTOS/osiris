@@ -12,7 +12,7 @@ def extract_section(file_path, section_name):
         section = elf.get_section_by_name(section_name)
         if section is None:
             print(f"error: section '{section_name}' not found.")
-            return
+            exit(1)
         data = section.data()
         return data
 
@@ -22,12 +22,12 @@ def inject_section(file_path, section_name, new_data):
         section = elf.get_section_by_name(section_name)
         if section is None:
             print(f"error: section '{section_name}' not found.")
-            return
+            exit(1)
         data = section.data()
 
         if len(new_data) > len(data):
             print(f"error: new data size exceeds original section size.")
-            return
+            exit(1)
         f.seek(section['sh_offset'])
         f.write(new_data)
 

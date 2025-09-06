@@ -38,7 +38,7 @@ macro_rules! BUG_ON {
 }
 
 /// The error type that is returned when an error in the kernel occurs.
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum KernelError {
     /// The alignment is invalid.
     InvalidAlign,
@@ -46,6 +46,8 @@ pub enum KernelError {
     OutOfMemory,
     InvalidSize,
     InvalidAddress,
+    InvalidArgument,
+    HalError(hal::Error),
 }
 
 /// Debug msg implementation for KernelError.
@@ -56,6 +58,14 @@ impl Debug for KernelError {
             KernelError::OutOfMemory => write!(f, "Out of memory"),
             KernelError::InvalidSize => write!(f, "Invalid size"),
             KernelError::InvalidAddress => write!(f, "Invalid address"),
+            KernelError::InvalidArgument => write!(f, "Invalid argument"),
+            KernelError::HalError(e) => write!(f, "{e} (in HAL)"),
         }
+    }
+}
+
+impl From<hal::Error> for KernelError {
+    fn from(err: hal::Error) -> Self {
+        KernelError::HalError(err)
     }
 }

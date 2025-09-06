@@ -2,7 +2,6 @@ use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use core::sync::atomic::AtomicU8;
 use core::sync::atomic::Ordering;
-use crate::hal;
 
 /// A synchronization primitive that can be used to block a thread until a value is ready.
 /// The procedure is as follows:

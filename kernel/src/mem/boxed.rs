@@ -236,3 +236,39 @@ impl<T> AsMut<T> for Box<T> {
         self.as_mut()
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use crate::mem::alloc;
+
+    use super::*;
+
+    /*
+    fn alloc_range(length: usize) -> Option<Range<usize>> {
+        let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+
+        if ptr.is_null() || ((ptr as usize) >= isize::MAX as usize - length) {
+            None
+        } else {
+            Some(ptr as usize..ptr as usize + length)
+        }
+    }
+
+    #[kani::proof]
+    fn proof_new_slice_zero() {
+        let mut allocator = alloc::BestFitAllocator::new();
+        allocator
+
+        let len = kani::any();
+        kani::assume(len < alloc::MAX_ADDR);
+
+        let b = Box::<u8>::new_slice_zeroed(len);
+
+        let index = kani::any();
+        kani::assume(index < len);
+
+        assert!(b[index] == 0);
+    }
+    */
+}

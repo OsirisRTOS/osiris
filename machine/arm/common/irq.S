@@ -1,6 +1,5 @@
 .syntax unified
 .thumb
-.fpu softvfp
 
 .text
 .align
@@ -22,7 +21,7 @@ pendsv_hndlr:
     mrsne r0, psp
 
     @ Check if we need to save the floating point registers.
-#ifdef CONFIG_FPU
+#if OSIRIS_TUNING_ENABLEFPU
     tst lr, #0x10
     it eq
     vstmdbeq r0!, {s16-s31}
@@ -36,7 +35,7 @@ pendsv_hndlr:
     ldmia r0!, {r4-r11, lr}
 
     @ Check if we need to restore the floating point registers.
-#ifdef CONFIG_FPU
+#if OSIRIS_TUNING_ENABLEFPU
     tst lr, #0x10
     it eq
     vldmiaeq r0!, {s16-s31}

@@ -1,4 +1,5 @@
-use crate::{sched, sync::spinlock::SpinLocked, hal};
+use crate::{sched, sync::spinlock::SpinLocked};
+use hal::Schedable;
 
 // This variable is only allowed to be modified by the systick handler.
 static TIME: SpinLocked<u64> = SpinLocked::new(0);
@@ -42,6 +43,6 @@ pub extern "C" fn systick_hndlr() {
     let resched = { sched::tick_scheduler() };
 
     if resched {
-        hal::sched::reschedule();
+        hal::Machine::trigger_reschedule();
     }
 }

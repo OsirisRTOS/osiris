@@ -2,13 +2,15 @@
 
 pub mod scheduler;
 pub mod task;
+pub mod thread;
 
-use crate::hal;
-use crate::utils::KernelError;
+use hal::Schedable;
+
+use crate::{sched::task::TaskDescriptor, utils::KernelError};
 
 /// Reschedule the tasks.
 pub fn reschedule() {
-    hal::sched::reschedule();
+    hal::Machine::trigger_reschedule();
 }
 
 /// Create a new task.
@@ -18,14 +20,19 @@ pub fn reschedule() {
 /// `main_timing` - The timing information for the main thread.
 ///
 /// Returns the task ID if the task was created successfully, or an error if the task could not be created.
-pub fn create_task(
-    desc: task::TaskDesc,
-    main_desc: hal::sched::ThreadDesc,
-    main_timing: task::Timing,
-) -> Result<task::TaskId, KernelError> {
+pub fn create_task(desc: task::TaskDescriptor) -> Result<task::TaskId, KernelError> {
+    scheduler::SCHEDULER.lock().create_task(desc)
+}
+
+pub fn create_thread(
+    task_id: task::TaskId,
+    entry: extern "C" fn(),
+    fin: Option<extern "C" fn() -> !>,
+    timing: thread::Timing,
+) -> Result<thread::ThreadUId, KernelError> {
     scheduler::SCHEDULER
         .lock()
-        .create_task(desc, main_desc, main_timing)
+        .create_thread(entry, fin, timing, task_id)
 }
 
 pub fn enable_scheduler() {

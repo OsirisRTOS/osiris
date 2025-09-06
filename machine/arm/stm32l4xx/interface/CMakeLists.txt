@@ -18,5 +18,4 @@ target_include_directories(interface_native PUBLIC
 
 target_compile_definitions(interface_native PUBLIC
     ${TARGET_DEFINES}
-    BOARD_HEADER="../board/${BOARD}.h"
 )

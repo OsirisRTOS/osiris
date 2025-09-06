@@ -2,20 +2,22 @@
 
 use super::boxed::Box;
 use crate::utils::KernelError;
-use core::mem::MaybeUninit;
+use core::{borrow::Borrow, mem::MaybeUninit};
 
 /// This is a fixed-size map that can store up to N consecutive elements.
-pub struct IndexMap<T, const N: usize> {
-    data: [Option<T>; N],
+pub struct IndexMap<K: Borrow<usize> + Default, V, const N: usize> {
+    data: [Option<V>; N],
+    phantom: core::marker::PhantomData<K>,
 }
 
-impl<T, const N: usize> IndexMap<T, N> {
+impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
     /// Create a new IndexMap.
     ///
     /// Returns a new IndexMap.
     pub const fn new() -> Self {
         Self {
             data: [const { None }; N],
+            phantom: core::marker::PhantomData,
         }
     }
 
@@ -24,7 +26,9 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// `index` - The index to get the element from.
     ///
     /// Returns `Some(&T)` if the index is in-bounds, otherwise `None`.
-    pub fn get(&self, index: usize) -> Option<&T> {
+    pub fn get(&self, index: &K) -> Option<&V> {
+        let index = *index.borrow();
+
         if index < N {
             self.data[index].as_ref()
         } else {
@@ -37,7 +41,9 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// `index` - The index to get the element from.
     ///
     /// Returns `Some(&mut T)` if the index is in-bounds, otherwise `None`.
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+    pub fn get_mut(&mut self, index: &K) -> Option<&mut V> {
+        let index = *index.borrow();
+
         if index < N {
             self.data[index].as_mut()
         } else {
@@ -51,7 +57,9 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// `value` - The value to insert.
     ///
     /// Returns `Ok(())` if the index was in-bounds, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn insert(&mut self, index: usize, value: T) -> Result<(), KernelError> {
+    pub fn insert(&mut self, index: &K, value: V) -> Result<(), KernelError> {
+        let index = *index.borrow();
+
         if index < N {
             self.data[index] = Some(value);
             Ok(())
@@ -65,7 +73,7 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// `value` - The value to insert.
     ///
     /// Returns `Ok(index)` if the value was inserted, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn insert_next(&mut self, value: T) -> Result<usize, KernelError> {
+    pub fn insert_next(&mut self, value: V) -> Result<usize, KernelError> {
         for (i, slot) in self.data.iter_mut().enumerate() {
             if slot.is_none() {
                 *slot = Some(value);
@@ -81,7 +89,9 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// `index` - The index to remove the value from.
     ///
     /// Returns the value if it was removed, otherwise `None`.
-    pub fn remove(&mut self, index: usize) -> Option<T> {
+    pub fn remove(&mut self, index: &K) -> Option<V> {
+        let index = *index.borrow();
+
         if index < N {
             self.data[index].take()
         } else {
@@ -92,7 +102,7 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// Get an iterator over the elements in the map.
     ///
     /// Returns an iterator over the elements in the map.
-    pub fn iter(&self) -> impl Iterator<Item = &Option<T>> {
+    pub fn iter(&self) -> impl Iterator<Item = &Option<V>> {
         self.data.iter()
     }
 
@@ -101,8 +111,8 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// `index` - The index to start the iterator from.
     ///
     /// Returns an iterator over the elements in the map.
-    pub fn iter_from_cycle(&self, index: usize) -> impl Iterator<Item = &Option<T>> {
-        self.data.iter().cycle().skip(index + 1)
+    pub fn iter_from_cycle(&self, index: &K) -> impl Iterator<Item = &Option<V>> {
+        self.data.iter().cycle().skip(index.borrow() + 1)
     }
 
     /// Get the next index that contains a value (this will cycle).
@@ -110,12 +120,23 @@ impl<T, const N: usize> IndexMap<T, N> {
     /// `index` - The index to start the search from.
     ///
     /// Returns the next index (potentially < index) that contains a value, otherwise `None`.
-    pub fn next(&self, index: Option<usize>) -> Option<usize> {
-        let index = index.unwrap_or(0);
+    pub fn next(&self, index: Option<&K>) -> Option<usize> {
+        let default = K::default();
+        let index = index.unwrap_or(&default);
 
         for (i, elem) in self.iter_from_cycle(index).enumerate() {
             if elem.is_some() {
-                return Some((index + i + 1) % N);
+                return Some((index.borrow() + i + 1) % N);
+            }
+        }
+
+        None
+    }
+
+    pub fn find_empty(&self) -> Option<usize> {
+        for (i, slot) in self.data.iter().enumerate() {
+            if slot.is_none() {
+                return Some(i);
             }
         }
 
@@ -438,4 +459,10 @@ impl<T, const N: usize> Drop for Vec<T, N> {
             }
         }
     }
+}
+
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
 }

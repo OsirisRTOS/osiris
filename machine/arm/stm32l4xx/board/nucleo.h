@@ -1,3 +1,0 @@
-
-
-#define DBG_UART LPUART1

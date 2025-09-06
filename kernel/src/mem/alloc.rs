@@ -6,10 +6,10 @@ use core::{ops::Range, ptr::NonNull};
 use crate::{BUG_ON, utils};
 
 #[cfg(target_pointer_width = "64")]
-const MAX_ADDR: usize = 2_usize.pow(48);
+pub const MAX_ADDR: usize = 2_usize.pow(48);
 
 #[cfg(target_pointer_width = "32")]
-const MAX_ADDR: usize = usize::MAX;
+pub const MAX_ADDR: usize = usize::MAX;
 
 /// Allocator trait that provides a way to allocate and free memory.
 /// Normally you don't need to use this directly, rather use the `boxed::Box` type.
@@ -21,8 +21,8 @@ const MAX_ADDR: usize = usize::MAX;
 /// Each range added to the allocator must be valid for the whole lifetime of the allocator and must not overlap with any other range.
 /// The lifetime of any allocation is only valid as long as the allocator is valid. (A pointer must not be used after the allocator is dropped.)
 pub trait Allocator {
-    fn malloc(&mut self, size: usize, align: usize) -> Result<NonNull<u8>, utils::KernelError>;
-    unsafe fn free(&mut self, ptr: NonNull<u8>, size: usize);
+    fn malloc<T>(&mut self, size: usize, align: usize) -> Result<NonNull<T>, utils::KernelError>;
+    unsafe fn free<T>(&mut self, ptr: NonNull<T>, size: usize);
 }
 
 /// The metadata that is before any block in the BestFitAllocator.
@@ -44,6 +44,8 @@ pub struct BestFitAllocator {
 
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
+    pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
+    
     /// Creates a new BestFitAllocator.
     ///
     /// Returns the new BestFitAllocator.
@@ -60,6 +62,7 @@ impl BestFitAllocator {
     /// # Safety
     ///
     /// The range must be valid, 128bit aligned and must not overlapping with any other current or future range.
+    /// The range must also be at least as large as `MIN_RANGE_SIZE`.
     /// Also the range must stay valid, for the whole lifetime of the allocator. Also the lifetime of any allocation is only valid as long as the allocator is valid.
     pub unsafe fn add_range(&mut self, range: Range<usize>) -> Result<(), utils::KernelError> {
         let ptr = range.start;
@@ -97,7 +100,7 @@ impl BestFitAllocator {
     /// Calculates the padding required to align the block. Note: We only align to 128bit.
     ///
     /// Returns the padding in bytes.
-    fn align_up() -> usize {
+    const fn align_up() -> usize {
         let meta = size_of::<BestFitMeta>();
         let align = align_of::<u128>();
         // Calculate the padding required to align the block.
@@ -178,7 +181,7 @@ impl Allocator for BestFitAllocator {
     /// `align` - The alignment of the block.
     ///
     /// Returns the user pointer to the block if successful, otherwise an error.
-    fn malloc(&mut self, size: usize, align: usize) -> Result<NonNull<u8>, utils::KernelError> {
+    fn malloc<T>(&mut self, size: usize, align: usize) -> Result<NonNull<T>, utils::KernelError> {
         // Check if the alignment is valid.
         if align > align_of::<u128>() {
             return Err(utils::KernelError::InvalidAlign);
@@ -189,6 +192,8 @@ impl Allocator for BestFitAllocator {
             return Err(utils::KernelError::InvalidSize);
         }
 
+        // For some cfg this warning is correct. But for others its not.
+        #[allow(clippy::absurd_extreme_comparisons)]
         if size >= MAX_ADDR {
             return Err(utils::KernelError::InvalidSize);
         }
@@ -278,15 +283,15 @@ impl Allocator for BestFitAllocator {
         }
 
         // Return the user pointer.
-        Ok(unsafe { Self::user_ptr(block) })
+        Ok(unsafe { Self::user_ptr(block).cast() })
     }
 
     /// Frees a block of memory.
     ///
     /// `ptr` - The pointer to the block.
     /// `size` - The size of the block. (This is used to check if the size of the block is correct.)
-    unsafe fn free(&mut self, ptr: NonNull<u8>, size: usize) {
-        let block = unsafe { Self::control_ptr(ptr) };
+    unsafe fn free<T>(&mut self, ptr: NonNull<T>, size: usize) {
+        let block = unsafe { Self::control_ptr(ptr.cast()) };
         let meta = unsafe { block.cast::<BestFitMeta>().as_mut() };
 
         // The next block of a free block is always the current head. We essentially insert the block at the beginning of the list.

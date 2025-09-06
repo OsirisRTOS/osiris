@@ -21,7 +21,7 @@ fn select_arch() {
         "x86" => println!("cargo:rustc-cfg=feature=\"x86\""),
         "riscv" => println!("cargo:rustc-cfg=feature=\"riscv\""),
         _ => {
-            println!("cargo:error=Unknown architecture '{}'", arch);
+            println!("cargo:error=Unknown architecture '{arch}'");
             std::process::exit(1);
         }
     }
@@ -33,7 +33,7 @@ fn main() {
     println!("cargo:rerun-if-changed=kernel/src/syscalls.rs");
     println!("cargo:rerun-if-env-changed=ARCH");
 
-    select_arch();
+    //select_arch();
 
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
 

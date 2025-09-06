@@ -1,7 +1,5 @@
 //! Synchronization primitives.
 
-use crate::hal;
-
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicBool;

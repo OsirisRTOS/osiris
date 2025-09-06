@@ -7,23 +7,54 @@ project(HAL C ASM)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
+# Turn all cache variables starting with OSIRIS_ into compile definitions
+get_cmake_property(_cache_vars CACHE_VARIABLES)
+set(CONFIG_DEFINES "")
+foreach(var ${_cache_vars})
+  if(var MATCHES "^OSIRIS_")
+    if(DEFINED ${var})
+      # Quote value if it contains non-identifier chars
+      if("${${var}}" MATCHES "^[0-9A-Za-z_]+$")
+        add_compile_definitions(${var}=${${var}})
+        list(APPEND CONFIG_DEFINES -D${var}=${${var}})
+      else()
+        # Escape quotes
+        string(REPLACE "\"" "\\\"" _esc "${${var}}")
+        add_compile_definitions(${var}=\"${_esc}\")
+        list(APPEND CONFIG_DEFINES -D${var}=\"${_esc}\")
+      endif()
+      # Ensure rebuild if any value changes
+      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${var}")
+    endif()
+  endif()
+endforeach()
+
+
 # this will compile our chip_stm32l4xx library
-add_subdirectory(${MCU})
+add_subdirectory(${OSIRIS_STM32L4XX_MCU})
 
 # HAL
 add_subdirectory(hal)
 add_subdirectory(device)
 
-# Put link.ld.in through the C preprocessor to generate link.ld
+# Put link.ld through the C preprocessor
 # Add CONFIG_DEFINES to the preprocessor command
+set(LINKER_SCRIPT_IN  ${CMAKE_CURRENT_SOURCE_DIR}/link.ld)
+set(LINKER_SCRIPT_OUT ${OUT_DIR}/link.ld)
+
 add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/link.ld
-  COMMAND ${CMAKE_C_COMPILER} -E -P -x c ${CMAKE_CURRENT_SOURCE_DIR}/link.ld -o ${OUT_DIR}/link.ld -D${MCU} -DMCU_HEADER="\\\"${MCU}/link.ld\\\""
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/link.ld
-  COMMENT "Generating link.ld from link.ld.in"
+  OUTPUT  ${LINKER_SCRIPT_OUT}
+  COMMAND ${CMAKE_C_COMPILER} -E -P -x c
+          ${CONFIG_DEFINES}
+          -DMCU_HEADER=\"${OSIRIS_STM32L4XX_MCU}/link.ld\"
+          ${LINKER_SCRIPT_IN}
+          -o ${LINKER_SCRIPT_OUT}
+  DEPENDS ${LINKER_SCRIPT_IN}
+  COMMENT "Generating link.ld"
+  VERBATIM
 )
 
-add_custom_target(link_ld ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/link.ld)
+add_custom_target(link_ld ALL DEPENDS ${LINKER_SCRIPT_OUT})
 
 add_dependencies(hal_native link_ld)
 target_link_libraries(hal_native PUBLIC device_native)

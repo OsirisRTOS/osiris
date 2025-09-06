@@ -1,6 +1,7 @@
-#![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std, no_main)]
+#![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
+#![no_main]
 
-use kernel::hal;
+use hal::Machinelike;
 
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
@@ -22,5 +23,5 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
     kernel::kprintln!("**************************** PANIC ****************************");
 
-    hal::panic::panic_handler(info);
+    hal::Machine::panic_handler(info);
 }

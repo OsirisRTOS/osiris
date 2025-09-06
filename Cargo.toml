@@ -2,11 +2,7 @@
 resolver = "3"
 
 members = [
-    "kernel", "xtask"
-]
-
-exclude = [
-    "tools/config",
+    "kernel", "xtask", "tools/config",
 ]
 
 default-members = ["kernel"]

@@ -3,9 +3,6 @@
 
 #![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
 
-#[cfg(feature = "arm")]
-pub use hal_arm as hal;
-
 #[macro_use]
 pub mod macros;
 #[macro_use]
@@ -21,6 +18,8 @@ pub mod time;
 pub mod uspace;
 
 use core::ffi::c_char;
+
+use hal::Machinelike;
 
 /// The memory map entry type.
 ///
@@ -57,9 +56,11 @@ pub struct BootInfo {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize basic hardware and the logging system.
-    hal::init();
+    hal::Machine::init();
 
-    hal::bench_start();
+    //hal::asm::disable_interrupts();
+
+    hal::Machine::bench_start();
 
     let boot_info = unsafe { &*boot_info };
 
@@ -67,16 +68,16 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     print::print_boot_info(boot_info);
 
     // Initialize the memory allocator.
-    if let Err(_e) = mem::init_memory(boot_info) {
-        panic!("[Kernel] Error: failed to initialize memory allocator.");
+    if let Err(e) = mem::init_memory(boot_info) {
+        panic!("[Kernel] Error: failed to initialize memory allocator. Error: {:?}", e);
     }
 
     // Initialize the services.
-    if let Err(_e) = services::init_services() {
-        panic!("[Kernel] Error: failed to initialize services.");
+    if let Err(e) = services::init_services() {
+        panic!("[Kernel] Error: failed to initialize services. Error: {:?}", e);
     }
 
-    let (cyc, ns) = hal::bench_end();
+    let (cyc, ns) = hal::Machine::bench_end();
     kprintln!(
         "[Osiris] Init took {} cycles taking {} ms",
         cyc,
@@ -84,6 +85,8 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     );
 
     sched::enable_scheduler();
+
+    //hal::asm::enable_interrupts();
 
     loop {}
 }

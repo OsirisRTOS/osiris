@@ -42,10 +42,9 @@ pub fn service(
         #item
 
         impl #service_name {
-            pub fn task_desc() -> crate::sched::task::TaskDesc {
-                crate::sched::task::TaskDesc {
+            pub fn task_desc() -> crate::sched::task::TaskDescriptor {
+                crate::sched::task::TaskDescriptor {
                     mem_size: #mem_size_ident,
-                    stack_size: #stack_size_ident,
                 }
             }
         }
@@ -153,8 +152,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
         return syn::Error::new(
             item.sig.ident.span(),
             format!(
-                "syscall_handler: function {} has too many arguments (max is {})",
-                name, SYSCALL_MAX_ARGS
+                "syscall_handler: function {name} has too many arguments (max is {SYSCALL_MAX_ARGS})"
             ),
         )
         .to_compile_error();
@@ -171,8 +169,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
                 return syn::Error::new(
                     item.sig.ident.span(),
                     format!(
-                        "syscall_handler: function {} has too many arguments (max is {})",
-                        name, SYSCALL_MAX_ARGS
+                        "syscall_handler: function {name} has too many arguments (max is {SYSCALL_MAX_ARGS})"
                     ),
                 )
                 .to_compile_error();

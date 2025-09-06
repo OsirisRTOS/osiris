@@ -7,5 +7,21 @@ description = "Configure/enable features for debugging."
 
 [debug.runtimesymbols]
 name = "Runtime Symbols"
-description = "Enables runtime symbols for debugging. This will increase the binary size by potentially a lot. When enabled backtraces will display function names."
+description = "Enables runtime symbols for debugging. This will increase the binary size by potentially a lot. When enabled e.g. backtraces can display function names."
 type = "Boolean"
+
+[debug.uart]
+name = "Debug UART"
+description = "Select the UART peripheral to use for debug output."
+type = { type = "String", allowed_values = ["LPUART1"] }
+default = "LPUART1"
+
+[tuning]
+name = "Tuning"
+description = "Configure/enable features for tuning and performance measurements."
+
+[tuning.enablefpu]
+name = "Enable FPU"
+description = "Enables the Floating Point Unit (FPU). This is required for applications that use floating point operations. Enabling the FPU increases context switch time and stack usage."
+type = "Boolean"
+default = false

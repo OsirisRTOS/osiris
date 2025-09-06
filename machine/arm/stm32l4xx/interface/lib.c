@@ -21,7 +21,9 @@ static void init_systick(void) {
 }
 
 void init_hal(void) {
+#if OSIRIS_TUNING_ENABLEFPU
   init_fpu();
+#endif
   HAL_Init();
 
   enable_faults();

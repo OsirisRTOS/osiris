@@ -129,7 +129,7 @@ impl<'a> ConfigState<'a> {
 
                 // Note: qualified paths start with a leading dot, we remove it.
                 let key = key.to_uppercase().replace('.', "_")[1..].to_string();
-                table.insert(&key, Item::Value(value.clone().into()));
+                table.insert(&format!("OSIRIS_{key}"), Item::Value(value.clone().into()));
             }
         }
         Ok(())
@@ -143,7 +143,18 @@ impl<'a> ConfigState<'a> {
                 for (key, item) in table.iter() {
                     let key = table.key(key).unwrap(); // Safe unwrap we iterate through the keys.
 
-                    let key_str = format!(".{}", key.to_lowercase().replace('_', "."));
+                    // Remove the OSIRIS_ prefix if it exists. Otherwise skip the key.
+                    let key_str = if let Some(stripped) = key
+                        .to_string()
+                        .strip_prefix("OSIRIS_")
+                    {
+                        stripped.to_string()
+                    } else {
+                        continue;
+                    };
+
+                    let key_str = format!(".{}", key_str.to_lowercase().replace('_', "."));
+
 
                     let node = state
                         .nodes

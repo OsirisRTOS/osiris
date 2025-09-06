@@ -60,23 +60,23 @@ impl ExcepBacktrace {
 
 impl Display for ExcepBacktrace {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
+        writeln!(
             f,
-            "---------------------------------------------------------------\n"
+            "---------------------------------------------------------------"
         )?;
-        write!(f, "{}\n", self.stack_frame)?;
-        write!(
+        writeln!(f, "{}", self.stack_frame)?;
+        writeln!(
             f,
-            "---------------------------------------------------------------\n"
+            "---------------------------------------------------------------"
         )?;
 
         let mut fp = self.initial_fp;
         write!(f, "\nBacktrace:\n")?;
 
         if let Some(symbol) = crate::debug::find_nearest_symbol(self.stack_frame.pc as usize) {
-            write!(f, "0:     {} (0x{:08x})\n", symbol, self.stack_frame.pc)?;
+            writeln!(f, "0:     {} (0x{:08x})", symbol, self.stack_frame.pc)?;
         } else {
-            write!(f, "0:     0x{:08x}\n", self.stack_frame.pc)?;
+            writeln!(f, "0:     0x{:08x}", self.stack_frame.pc)?;
         }
 
         for i in 1..BACKTRACE_MAX_FRAMES {
@@ -91,10 +91,10 @@ impl Display for ExcepBacktrace {
 
             // Print the return address.
 
-            if let Some(symbol) = crate::debug::find_nearest_symbol(ret_addr as usize) {
-                write!(f, "{}:     {} (0x{:08x})\n", i, symbol, ret_addr)?;
+            if let Some(symbol) = crate::debug::find_nearest_symbol(ret_addr) {
+                writeln!(f, "{i}:     {symbol} (0x{ret_addr:08x})")?;
             } else {
-                write!(f, "{}:     0x{:08x}\n", i, ret_addr)?;
+                writeln!(f, "{i}:     0x{ret_addr:08x}")?;
             }
 
             // If the next frame pointer is 0 or 1. (thumb mode adds +1 to the address)
@@ -106,10 +106,25 @@ impl Display for ExcepBacktrace {
             fp = next_fp as *const usize;
 
             if i == BACKTRACE_MAX_FRAMES - 1 {
-                write!(f, "{}:     ...\n", i)?;
+                writeln!(f, "{i}:     ...")?;
             }
         }
 
-        write!(f, "\n")
+        writeln!(f)
+    }
+}
+
+pub struct FaultStatus {
+    pub fault: hal_api::Fault,
+}
+
+impl Display for FaultStatus {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.fault {
+            hal_api::Fault::Hard => write!(f, "Hard Fault - No additional info"),
+            hal_api::Fault::MemManage => crate::debug::print_mem_manage_fault_status(f),
+            hal_api::Fault::Bus => crate::debug::print_bus_fault_status(f),
+            hal_api::Fault::Usage => crate::debug::print_usage_fault_status(f),
+        }
     }
 }

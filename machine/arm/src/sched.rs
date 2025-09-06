@@ -1,60 +1,126 @@
 //! Module: sched
 
-use crate::bindings;
+use core::{
+    ffi::c_void,
+    num::NonZero,
+    ops::{Add, AddAssign, Range},
+    ptr::NonNull,
+};
 
-/// Type: CtxPtr
-pub type CtxPtr = *const u32;
+use hal_api::{Result, stack::StackDescriptor};
 
-/// Struct: ThreadDesc
-pub struct ThreadDesc {
-    /// The number of arguments passed to the thread.
-    pub argc: usize,
-
-    /// The arguments passed to the thread.
-    pub argv: *const u8,
-
-    /// The finalizer function to call when the thread is done.
-    pub finalizer: extern "C" fn(),
-
-    /// The entry point of the thread.
-    pub entry: extern "C" fn(argc: usize, argv: *const *const u8),
+// A default finalizer used if none is supplied: just spins forever.
+#[inline(never)]
+extern "C" fn default_finalizer() -> ! {
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
-/// Struct: ThreadContext
-#[derive(Debug, Clone, Copy)]
-pub struct ThreadContext {
-    ptr: CtxPtr,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StackPtr {
+    offset: usize,
 }
 
-impl ThreadContext {
-    /// Function: new
-    /// Precondition: ptr is a valid pointer to a thread context.
-    ///     Especially ptr must satisfy the following conditions:
-    ///    - It points to the bottom of the stack of the corresponding thread.
-    ///    - The stack must be 4-byte aligned.
-    ///    - The layout of the stack must be as follows (from bottom to top):
-    ///       r11, r10, r9, r8, r7, r6, r5, r4, r0, r1, r2, r3, r12, lr, pc, xpsr, (if fpu -> s16-31)
-    /// Postcondition: A ThreadContext object is returned.
-    pub unsafe fn new(ctx: CtxPtr) -> Self {
-        ThreadContext { ptr: ctx }
+impl StackPtr {
+    fn as_ptr(&self, top: NonNull<u32>) -> NonNull<u32> {
+        unsafe { top.sub(self.offset) }
     }
 
-    pub fn pc(&self) -> usize {
-        // The PC register is the second last register in the stack.
-        unsafe { *self.ptr.byte_add(15 * core::mem::size_of::<usize>()) as usize }
+    fn checked_add(&self, rhs: usize) -> Option<Self> {
+        self.offset.checked_add(rhs).map(|offset| Self { offset })
     }
 
-    /// Function: from_empty
-    /// Precondition: stack is a valid pointer to the top of the stack of the thread.
-    ///    Especially stack must satisfy the following conditions:
-    ///   - The stack must be 4-byte aligned.
-    ///   - The stack must be empty.
-    ///   - The stack must be large enough to hold all the registers.
-    /// Postcondition: A ThreadContext object is returned.
-    ///   The stack is initialized with the default values for the registers.
-    ///   The stack pointer can be safely used as a return value for an exception handler.
-    pub unsafe fn from_empty(stack: *mut u8, desc: ThreadDesc) -> Self {
-        // The stack has to contain all the caller-saved registers.
+    fn offset(&self) -> usize {
+        self.offset
+    }
+}
+
+impl AddAssign<usize> for StackPtr {
+    fn add_assign(&mut self, rhs: usize) {
+        self.offset += rhs;
+    }
+}
+
+impl Add<usize> for StackPtr {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        Self {
+            offset: self.offset + rhs,
+        }
+    }
+}
+
+/// A stack on arm is 4 byte aligned and grows downwards.
+pub struct ArmStack {
+    /// The top of the stack (highest address).
+    /// Safety: NonNull<u32> can safely be covariant over u32.
+    top: NonNull<u32>,
+    /// The current offset from the top of the stack (in 4 byte steps).
+    sp: StackPtr,
+    /// The size of the stack (in 4 byte steps).
+    size: NonZero<usize>,
+}
+
+impl ArmStack {
+    fn does_fit(&self, size: usize) -> bool {
+        size <= (self.size.get() - self.sp.offset()) * size_of::<u32>()
+    }
+
+    fn is_call_aligned(sp: StackPtr) -> bool {
+        (sp.offset % 2) == 0
+    }
+
+    fn in_bounds(&self, sp: *mut u32) -> Option<usize> {
+        if let Some(sp) = NonNull::new(sp) {
+            if sp > self.top {
+                return None;
+            }
+
+            if sp < unsafe { self.top.sub(self.size.get()) } {
+                return None;
+            }
+
+            return Some(unsafe { self.top.as_ptr().offset_from(sp.as_ptr()) as usize });
+        }
+
+        None
+    }
+
+    #[inline(always)]
+    unsafe fn push(sp: &mut NonNull<u32>, value: u32) {
+        unsafe {
+            *sp = sp.sub(1);
+            *sp.as_ptr() = value;
+        };
+    }
+
+    fn push_irq_ret_fn(
+        &mut self,
+        f: extern "C" fn(),
+        fin: Option<extern "C" fn() -> !>,
+    ) -> Result<()> {
+        const FRAME_WORDS: usize = 17;
+        const WORD: usize = core::mem::size_of::<u32>();
+
+        // TODO: find out if this is Cortex-M4 specific
+        const EXEC_RETURN_THREAD_PSP: u32 = 0xFFFFFFFD;
+        // TODO: this is thumb specific
+        const XPSR_THUMB: u32 = 1 << 24;
+
+        let needed_size = FRAME_WORDS * WORD;
+
+        if !self.does_fit(needed_size) {
+            return Err(hal_api::Error::OutOfMemory(needed_size));
+        }
+
+        // We push an odd number of words, so if the stack is already call-aligned (DOUBLEWORD), we need to add padding.
+        if Self::is_call_aligned(self.sp) {
+            self.sp = self.sp.checked_add(1).ok_or(hal_api::Error::default())?;
+        }
+
+        // Pushes a function context onto the stack, which will be executed when the IRQ returns.
         // The layout is as follows:
         // xPSR
         // PC (entry point)
@@ -62,81 +128,91 @@ impl ThreadContext {
         // R12 (scratch register)
         // R3 (argument to the function - 0)
         // R2 (argument to the function - 0)
-        // R1 (argument to the function - argv)
-        // R0 (argument to the function - argc)
+        // R1 (argument to the function - 0)
+        // R0 (argument to the function - 0)
         // LR (EXEC_RETURN)
         // R11 - R4 (scratch - 0)
 
-        let mut stack = stack as *mut usize;
+        unsafe {
+            let mut write_index = self.sp.as_ptr(self.top);
 
-        //stack = unsafe { stack.sub(1) }; // Reserve space for the caller-saved registers.
+            Self::push(&mut write_index, XPSR_THUMB);
+            // Function pointer on arm is a 32bit address.
+            Self::push(&mut write_index, f as usize as u32);
+            let finalizer = fin.unwrap_or(default_finalizer);
+            Self::push(&mut write_index, finalizer as usize as u32);
 
-        // Set the xPSR register to the default value. (Only the thumb-state bit is set)
-        unsafe { *stack = 1 << 24 };
+            // R12 - R0
+            for _ in 0..5 {
+                Self::push(&mut write_index, 0);
+            }
 
-        // Set the PC register to the entry point of the thread.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = desc.entry as usize };
+            // Tells the hw to return to thread mode and use the PSP after the exception.
+            Self::push(&mut write_index, EXEC_RETURN_THREAD_PSP);
 
-        // Set the LR register to the function to return to after the thread is done.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = desc.finalizer as usize };
+            // R11 - R4
+            for _ in 0..8 {
+                Self::push(&mut write_index, 0);
+            }
 
-        // Set the R12 register to a scratch register.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = 0 };
+            // We should have written exactly FRAME_WORDS words.
+            debug_assert!(write_index == self.top.sub(self.sp.offset() + FRAME_WORDS));
 
-        // Set the R3 register to 0.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = 0 };
-
-        // Set the R2 register to 0.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = 0 };
-
-        // Set the R1 register to argv.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = desc.argv as usize };
-
-        // Set the R0 register to argc.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = desc.argc };
-
-        // Set the LR register to return to thread and PSP.
-        stack = unsafe { stack.sub(1) };
-        unsafe { *stack = 0xFFFFFFFD };
-
-        // Set the remaining registers to 0.
-        for _ in 0..8 {
-            stack = unsafe { stack.sub(1) };
-            unsafe { *stack = 0 };
+            self.sp += FRAME_WORDS;
         }
 
-        Self {
-            ptr: stack as CtxPtr,
+        // The returned stack pointer must be call-aligned.
+        debug_assert!(Self::is_call_aligned(self.sp));
+        Ok(())
+    }
+}
+
+impl hal_api::stack::Stacklike for ArmStack {
+    type ElemSize = u32;
+    type StackPtr = StackPtr;
+
+    unsafe fn new(desc: StackDescriptor) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let StackDescriptor {
+            top,
+            size,
+            entry,
+            fin,
+        } = desc;
+
+        let mut stack = Self {
+            top,
+            sp: StackPtr {
+                offset: 0,
+            },
+            size,
+        };
+
+        stack.push_irq_ret_fn(entry, fin)?;
+        Ok(stack)
+    }
+
+    fn create_sp(&self, ptr: *mut c_void) -> Result<StackPtr> {
+        if let Some(offset) = self.in_bounds(ptr as *mut u32) {
+            return Ok(StackPtr { offset });
         }
+
+        Err(hal_api::Error::OutOfBoundsPtr(
+            ptr as usize,
+            Range {
+                start: self.top.as_ptr() as usize - self.size.get() * size_of::<u32>(),
+                end: self.top.as_ptr() as usize,
+            },
+        ))
     }
-}
 
-impl From<CtxPtr> for ThreadContext {
-    fn from(ctx: CtxPtr) -> Self {
-        unsafe { ThreadContext::new(ctx) }
+    fn set_sp(&mut self, sp: StackPtr) {
+        self.sp = sp;
     }
-}
 
-impl From<ThreadContext> for CtxPtr {
-    fn from(ctx: ThreadContext) -> Self {
-        ctx.ptr
+    fn sp(&self) -> *mut c_void {
+        self.sp.as_ptr(self.top).as_ptr() as *mut c_void
     }
-}
-
-/// Reschedule the tasks.
-#[cfg(not(feature = "host"))]
-pub fn reschedule() {
-    unsafe { bindings::reschedule() };
-}
-
-#[cfg(feature = "host")]
-pub fn reschedule() {
-    // Do nothing for now. TODO: Actual simulation.
 }
