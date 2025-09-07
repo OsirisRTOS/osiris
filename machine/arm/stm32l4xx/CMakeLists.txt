@@ -42,6 +42,10 @@ add_subdirectory(device)
 set(LINKER_SCRIPT_IN  ${CMAKE_CURRENT_SOURCE_DIR}/link.ld)
 set(LINKER_SCRIPT_OUT ${OUT_DIR}/link.ld)
 
+# We track environment variables that start with OSIRIS_ as dependencies as they can change the output of the compilation
+set(DEPS_FILE ${OUT_DIR}/deps.txt)
+file(WRITE ${DEPS_FILE} "${CONFIG_DEFINES}")
+
 add_custom_command(
   OUTPUT  ${LINKER_SCRIPT_OUT}
   COMMAND ${CMAKE_C_COMPILER} -E -P -x c
@@ -49,7 +53,7 @@ add_custom_command(
           -DMCU_HEADER=\"${OSIRIS_STM32L4XX_MCU}/link.ld\"
           ${LINKER_SCRIPT_IN}
           -o ${LINKER_SCRIPT_OUT}
-  DEPENDS ${LINKER_SCRIPT_IN}
+  DEPENDS ${LINKER_SCRIPT_IN} ${DEPS_FILE}
   COMMENT "Generating link.ld"
   VERBATIM
 )

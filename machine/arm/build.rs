@@ -115,7 +115,7 @@ fn generate_bindings(out: &str, hal: &str) -> Result<()> {
 
     bindgen.write_to_file(format!("{out}/bindings.rs"))?;
 
-    println!("cargo:rerun-if-changed={hal}");
+    println!("cargo:rerun-if-changed={hal}"); 
     Ok(())
 }
 
