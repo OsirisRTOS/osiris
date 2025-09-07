@@ -77,6 +77,8 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
         panic!("[Kernel] Error: failed to initialize services. Error: {:?}", e);
     }
 
+    sched::enable_scheduler(false);
+
     let (cyc, ns) = hal::Machine::bench_end();
     kprintln!(
         "[Osiris] Init took {} cycles taking {} ms",
@@ -84,9 +86,9 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
         ns / 1e6f32
     );
 
-    sched::enable_scheduler();
+    sched::enable_scheduler(true);
 
-    //hal::asm::enable_interrupts();
-
-    loop {}
+    loop {
+        hal::asm::nop!();
+    }
 }

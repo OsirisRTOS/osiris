@@ -41,7 +41,9 @@ pub trait Machinelike {
     fn bench_end() -> (u32, f32);
 
     type ExcepBacktrace: Display;
+    type ExcepStackFrame: Display;
     fn backtrace(initial_fp: *const usize, stack_ptr: *const usize) -> Self::ExcepBacktrace;
+    fn stack_frame(stack_ptr: *const usize) -> Self::ExcepStackFrame;
 
     type FaultStatus: Display;
     fn get_fault_status(fault: Fault) -> Self::FaultStatus;

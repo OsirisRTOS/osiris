@@ -16,7 +16,7 @@ static void enable_faults(void) {
 
 static void init_systick(void) {
   HAL_SYSTICK_Config(SystemCoreClock /
-                     100); // Configure SysTick to interrupt every 1 ms
+                     10); // Configure SysTick to interrupt every 1 ms
   HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
 }
 

@@ -5,9 +5,12 @@ use core::{
     num::NonZero,
     ops::{Add, AddAssign, Range},
     ptr::NonNull,
+    fmt
 };
 
-use hal_api::{Result, stack::StackDescriptor};
+use hal_api::{stack::StackDescriptor, Machinelike, Result};
+
+use crate::print::{print, println};
 
 // A default finalizer used if none is supplied: just spins forever.
 #[inline(never)]
@@ -101,7 +104,7 @@ impl ArmStack {
         f: extern "C" fn(),
         fin: Option<extern "C" fn() -> !>,
     ) -> Result<()> {
-        const FRAME_WORDS: usize = 17;
+        const FRAME_WORDS: usize = 18;
         const WORD: usize = core::mem::size_of::<u32>();
 
         // TODO: find out if this is Cortex-M4 specific
@@ -116,7 +119,7 @@ impl ArmStack {
         }
 
         // We push an odd number of words, so if the stack is already call-aligned (DOUBLEWORD), we need to add padding.
-        if Self::is_call_aligned(self.sp) {
+        if !Self::is_call_aligned(self.sp) {
             self.sp = self.sp.checked_add(1).ok_or(hal_api::Error::default())?;
         }
 
@@ -133,14 +136,16 @@ impl ArmStack {
         // LR (EXEC_RETURN)
         // R11 - R4 (scratch - 0)
 
+        println!("Pushing IRQ return frame: sp offset {}, top: {:p}\n", self.sp.offset(), self.top);
+
         unsafe {
             let mut write_index = self.sp.as_ptr(self.top);
 
             Self::push(&mut write_index, XPSR_THUMB);
             // Function pointer on arm is a 32bit address.
-            Self::push(&mut write_index, f as usize as u32);
+            Self::push(&mut write_index, f as usize as u32 | 1);
             let finalizer = fin.unwrap_or(default_finalizer);
-            Self::push(&mut write_index, finalizer as usize as u32);
+            Self::push(&mut write_index, finalizer as usize as u32 | 1);
 
             // R12 - R0
             for _ in 0..5 {
@@ -150,8 +155,8 @@ impl ArmStack {
             // Tells the hw to return to thread mode and use the PSP after the exception.
             Self::push(&mut write_index, EXEC_RETURN_THREAD_PSP);
 
-            // R11 - R4
-            for _ in 0..8 {
+            // R12 (dummy for alignment), R11 - R4
+            for _ in 0..9 {
                 Self::push(&mut write_index, 0);
             }
 

@@ -1,15 +1,18 @@
 //! The scheduler module is responsible for managing the tasks and threads in the system.
 //! It provides the necessary functions to create tasks and threads, and to switch between them.
 
-use core::ffi::c_void;
+use core::{ffi::c_void, sync::atomic::{AtomicBool}};
 
 use super::task::{Task, TaskId};
 use crate::{
     mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue}, sched::{task::TaskDescriptor, thread::{RunState, ThreadDescriptor, ThreadMap, ThreadUId, Timing}}, sync::spinlock::SpinLocked, utils
 };
 
+use hal::Machinelike;
+
 /// The global scheduler instance.
 pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
+static SCHEDULER_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// The scheduler struct. It keeps track of the tasks and threads in the system.
 /// This scheduler is a simple Rate Monotonic Scheduler (RMS) implementation.
@@ -28,8 +31,6 @@ pub struct Scheduler {
     callbacks: Queue<(ThreadUId, usize), 32>,
     /// The progression of the time interval of the scheduler.
     time: usize,
-    /// Whether the scheduler is enabled or not.
-    enabled: bool,
 }
 
 impl Scheduler {
@@ -43,14 +44,7 @@ impl Scheduler {
             queue: BinaryHeap::new(),
             callbacks: Queue::new(),
             time: 0,
-            enabled: false,
         }
-    }
-
-    pub fn enable(&mut self) {
-        hal::asm::disable_interrupts();
-        self.enabled = true;
-        hal::asm::enable_interrupts();
     }
 
     pub fn create_task(&mut self, desc: TaskDescriptor) -> Result<TaskId, utils::KernelError> {
@@ -68,7 +62,9 @@ impl Scheduler {
 
         if let Some(task) = self.user_tasks.get_mut(&task_idx) {
             let desc = task.create_thread(entry, fin, timing)?;
-            self.threads.create(desc)
+            let id = self.threads.create(desc)?;
+            self.queue.push((timing.period, id))?;
+            Ok(id)
         } else {
             Err(utils::KernelError::InvalidArgument)
         }
@@ -80,7 +76,7 @@ impl Scheduler {
     fn update_current_ctx(&mut self, ctx: *mut c_void) {
         if let Some(id) = self.current {
             if let Some(thread) = self.threads.get_mut(&id) {
-                thread.update_sp(ctx);
+                thread.update_sp(ctx).expect("Failed to update thread context");
             }
         }
     }
@@ -119,7 +115,7 @@ impl Scheduler {
                 self.current = Some(id);
 
                 // Return the new thread context.
-                return Some(thread.sp() as *mut c_void);
+                return Some(thread.sp());
             }
         }
 
@@ -153,11 +149,6 @@ impl Scheduler {
 
     /// Ticks the scheduler. This function is called every time the system timer ticks.
     pub fn tick(&mut self) -> bool {
-        if !self.enabled {
-            // If the scheduler is not enabled, we do nothing.
-            return false;
-        }
-
         self.time += 1;
 
         // If a thread was fired, we need to reschedule.
@@ -175,13 +166,20 @@ impl Scheduler {
     }
 }
 
+pub fn enabled() -> bool {
+    SCHEDULER_ENABLED.load(core::sync::atomic::Ordering::Acquire)
+}
+
+pub fn set_enabled(enabled: bool) {
+    SCHEDULER_ENABLED.store(enabled, core::sync::atomic::Ordering::Release);
+}
+
 /// cbindgen:ignore
 /// cbindgen:no-export
 #[unsafe(no_mangle)]
 pub extern "C" fn sched_enter(ctx: *mut c_void) -> *mut c_void {
     {
         let mut scheduler = SCHEDULER.lock();
-
         // Update the current context.
         scheduler.update_current_ctx(ctx);
 

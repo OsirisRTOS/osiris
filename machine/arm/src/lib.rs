@@ -10,6 +10,8 @@ pub mod excep;
 pub mod panic;
 pub mod sched;
 
+mod print;
+
 mod bindings {
     #![allow(non_upper_case_globals)]
     #![allow(non_camel_case_types)]
@@ -63,10 +65,15 @@ impl hal_api::Machinelike for ArmMachine {
     }
 
     type ExcepBacktrace = excep::ExcepBacktrace;
+    type ExcepStackFrame = excep::ExcepStackFrame;
 
     fn backtrace(initial_fp: *const usize, stack_ptr: *const usize) -> Self::ExcepBacktrace {
         let frame = excep::ExcepStackFrame::new(stack_ptr);
         excep::ExcepBacktrace::new(frame, initial_fp)
+    }
+
+    fn stack_frame(stack_ptr: *const usize) -> Self::ExcepStackFrame {
+        excep::ExcepStackFrame::new(stack_ptr)
     }
 
     fn panic_handler(info: &core::panic::PanicInfo) -> ! {

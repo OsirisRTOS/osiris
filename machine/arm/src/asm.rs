@@ -123,3 +123,21 @@ macro_rules! __macro_startup_trampoline {
 }
 
 pub use crate::__macro_startup_trampoline as startup_trampoline;
+
+#[cfg(not(feature = "host"))]
+#[macro_export]
+macro_rules! __macro_delay {
+    ($cycles:expr) => {{
+        for _ in 0..$cycles {
+            $crate::asm::nop!();
+        }
+    }};
+}
+
+#[cfg(feature = "host")]
+#[macro_export]
+macro_rules! __macro_delay {
+    ($cycles:expr) => {{}};
+}
+
+pub use crate::__macro_delay as delay;

@@ -118,9 +118,10 @@ impl Task {
         let stack_size = NonZero::new(4096usize).unwrap();
         // TODO: Revert if error occurs
         let stack_mem = self.alloc.malloc(stack_size.into(), align_of::<u128>())?;
+        let stack_top = unsafe { stack_mem.byte_add(stack_size.get()) };
 
         let stack = hal::stack::StackDescriptor {
-            top: stack_mem,
+            top: stack_top,
             size: stack_size,
             entry,
             fin,

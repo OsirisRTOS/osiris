@@ -28,7 +28,7 @@ enum Subcommand {
         release: bool,
         #[arg(long, default_value_t = String::from("Kernel"))]
         binary: String,
-    }
+    },
 }
 
 

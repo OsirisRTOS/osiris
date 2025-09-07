@@ -37,7 +37,7 @@ pub fn find_nearest_symbol(addr: usize) -> Option<&'static str> {
     let mut current = syms_start;
     let strtab_start = syms_start + size;
 
-    while current < syms_start + size {
+    while current < syms_start + size - 1 {
         let entry = unsafe { &*(current as *const SymtabEntry) };
 
         // Calculate the distance from the address to the symbol value.

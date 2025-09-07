@@ -86,6 +86,7 @@ pub struct ThreadDescriptor {
 
 
 /// The timing information for a thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timing {
     /// The period of the thread after which it should run again.
     pub period: usize,

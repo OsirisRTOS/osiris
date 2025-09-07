@@ -27,12 +27,17 @@ pendsv_hndlr:
     vstmdbeq r0!, {s16-s31}
 #endif
 
-    stmdb r0!, {r4-r11, lr}
+    stmdb r0!, {r4-r11, r12, lr}
+
+    @ Commit the stack pointer change if we come from msp, as sched_enter will use msp.
+    tst lr, #4
+    it eq
+    msreq msp, r0
 
     @ This function takes a pointer to the thread's context as the first argument.
     blx sched_enter
 
-    ldmia r0!, {r4-r11, lr}
+    ldmia r0!, {r4-r11, r12, lr}
 
     @ Check if we need to restore the floating point registers.
 #if OSIRIS_TUNING_ENABLEFPU
@@ -53,43 +58,11 @@ pendsv_hndlr:
     @ Return to the thread
     bx lr
     .align 2
-    .ltorg
 
 .thumb_func
 .global irq_enter_no_switch_fp
 irq_enter_no_switch_fp:
-    @ Check which stack we need to use.
-    tst lr, #4
-    ite eq
-    mrseq r0, msp
-    mrsne r0, psp
-
-    @ Check if we need to save the floating point registers.
-    @tst lr, #10
-    @ite eq
-    @vstmdbeq r0!, {s16-s31}
-    
-    @ Save the EXEC_RETURN of this thread.
-    stmdb r0, {r4-r11, lr}
-
-    @ This function takes a pointer to the thread's context as the first argument.
-    blx sched_enter
-
-    @ Restore the EXEC_RETURN of the new thread.
-    ldmia r0!, {r4-r11, lr}
-
-    @ Check if we need to restore the floating point registers.
-    @tst lr, #10
-    @ite eq
-    @vldmiaeq r0!, {s16-s31}
-
-    @ Check which stack we need to use.
-    tst lr, #4
-    ite eq
-    msreq msp, r0
-    msrne psp, r0
-
-    @ Return to the thread
+    @ Do nothing, just return.
     bx lr
 
 .thumb_func
