@@ -7,7 +7,7 @@ pub fn init_log(level: log::LevelFilter) {
     log::set_max_level(level);
 
     let formatter = Box::new(PatternFormatter::new(pattern!(
-        "[{time_short}] [{^{level}}] {payload}{eol}"
+        "[{^{level}}] {payload}{eol}"
     )));
 
     for sink in spdlog::default_logger().sinks() {

@@ -3,7 +3,7 @@
 
 use core::{ops::Range, ptr::NonNull};
 
-use crate::{BUG_ON, utils};
+use crate::{utils, BUG_ON};
 
 #[cfg(target_pointer_width = "64")]
 pub const MAX_ADDR: usize = 2_usize.pow(48);

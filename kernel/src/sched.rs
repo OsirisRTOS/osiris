@@ -6,7 +6,7 @@ pub mod thread;
 
 use hal::Schedable;
 
-use crate::{sched::task::TaskDescriptor, utils::KernelError};
+use crate::utils::KernelError;
 
 /// Reschedule the tasks.
 pub fn reschedule() {

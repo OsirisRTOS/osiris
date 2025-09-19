@@ -45,7 +45,7 @@ fn host_triple() -> Result<String> {
 
 fn init_tracing() {
     let filter = EnvFilter::try_from_env("XTASK_LOG")
-        .or_else(|_| EnvFilter::try_new("warn"))
+        .or_else(|_| EnvFilter::try_new("info"))
         .unwrap();
 
     let event_fmt = tracing_subscriber::fmt::format()
@@ -93,7 +93,7 @@ fn run_inject_syms(target: Option<String>, release: bool, binary: String) -> Res
         bail!("Target binary does not exist: {}", binary_file.display());
     }
 
-    println!("Injecting symbols into binary: {}", binary_file.display());
+    tracing::info!("injecting symbols into binary: {}", binary_file.display());
 
     let status = Command::new("python3")
         .arg("tools/injector/inject_syms.py")

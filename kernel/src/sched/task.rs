@@ -65,8 +65,6 @@ pub struct Task {
     pub id: TaskId,
     /// The memory of the task.
     memory: TaskMemory,
-    /// The allocator for the task's memory.
-    alloc: BestFitAllocator,
     /// The counter for the thread ids.
     tid_cntr: usize,
     /// The threads associated with the task.
@@ -83,18 +81,9 @@ impl Task {
         let memory = TaskMemory::new(memory_size)?;
         let threads = mem::array::Vec::new();
 
-        let mut alloc = BestFitAllocator::new();
-        let range = Range {
-            start: memory.begin.as_ptr() as usize,
-            end: memory.begin.as_ptr() as usize + memory.size,
-        };
-
-        unsafe { alloc.add_range(range) }?;
-
         Ok(Self {
             id,
             memory,
-            alloc,
             tid_cntr: 0,
             threads,
         })
@@ -117,7 +106,7 @@ impl Task {
         // TODO: Make this configurable
         let stack_size = NonZero::new(4096usize).unwrap();
         // TODO: Revert if error occurs
-        let stack_mem = self.alloc.malloc(stack_size.into(), align_of::<u128>())?;
+        let stack_mem = self.memory.malloc(stack_size.into(), align_of::<u128>())?;
         let stack_top = unsafe { stack_mem.byte_add(stack_size.get()) };
 
         let stack = hal::stack::StackDescriptor {
@@ -153,6 +142,9 @@ pub struct TaskMemory {
     begin: NonNull<u8>,
     /// The size of the memory.
     size: usize,
+
+    /// The allocator for the task's memory.
+    alloc: BestFitAllocator,
 }
 
 impl TaskMemory {
@@ -163,6 +155,32 @@ impl TaskMemory {
     /// Returns a new task memory if the memory was created successfully, or an error if the memory could not be created.
     pub fn new(size: usize) -> Result<Self, KernelError> {
         let begin = mem::malloc(size, align_of::<u128>()).ok_or(KernelError::OutOfMemory)?;
-        Ok(Self { begin, size })
+
+        let mut alloc = BestFitAllocator::new();
+        let range = Range {
+            start: begin.as_ptr() as usize,
+            end: begin.as_ptr() as usize + size,
+        };
+
+        if let Err(e) = unsafe { alloc.add_range(range) } {
+            unsafe { mem::free(begin, size) };
+            return Err(e);
+        }
+
+        Ok(Self { begin, size, alloc })
+    }
+
+    pub fn malloc<T>(&mut self, size: usize, align: usize) -> Result<NonNull<T>, KernelError> {
+        self.alloc.malloc(size, align)
+    }
+
+    pub fn free<T>(&mut self, ptr: NonNull<T>, size: usize) {
+        unsafe { self.alloc.free(ptr, size) }
+    }
+}
+
+impl Drop for TaskMemory {
+    fn drop(&mut self) {
+        unsafe { mem::free(self.begin, self.size) };
     }
 }

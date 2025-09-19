@@ -1,6 +1,5 @@
 //! This module provides the core userspace services of the microkernel.
 
-use crate::{args_from_raw, kprintln};
 use macros::service;
 
 /// The init service.

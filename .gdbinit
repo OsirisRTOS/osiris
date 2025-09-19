@@ -1,4 +1,3 @@
-# --- Rust-friendly defaults ---
 set language rust
 set print pretty on
 set print demangle on
@@ -7,7 +6,6 @@ set pagination off
 set confirm off
 set disassemble-next-line on
 
-# --- Auto-pick newest Kernel under target/ ---
 python
 import os, traceback
 
@@ -18,7 +16,7 @@ def newest_kernel():
     cands = []
     for dirpath, _, filenames in os.walk(TARGET_DIR):
         for fn in filenames:
-            if fn == "Kernel":  # only files named exactly Kernel
+            if fn == "Kernel":
                 p = os.path.join(dirpath, fn)
                 if os.path.isfile(p):
                     cands.append(p)
@@ -28,7 +26,6 @@ def newest_kernel():
     return cands[0]
 
 try:
-    # Allow manual override via env var RUST_ELF
     elf = os.environ.get("RUST_ELF")
     if elf and not os.path.isabs(elf):
         elf = os.path.join(ROOT, elf)

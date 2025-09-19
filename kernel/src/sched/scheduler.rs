@@ -5,10 +5,8 @@ use core::{ffi::c_void, sync::atomic::{AtomicBool}};
 
 use super::task::{Task, TaskId};
 use crate::{
-    mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue}, sched::{task::TaskDescriptor, thread::{RunState, ThreadDescriptor, ThreadMap, ThreadUId, Timing}}, sync::spinlock::SpinLocked, utils
+    mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue}, sched::{task::TaskDescriptor, thread::{RunState, ThreadMap, ThreadUId, Timing}}, sync::spinlock::SpinLocked, utils
 };
-
-use hal::Machinelike;
 
 /// The global scheduler instance.
 pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());

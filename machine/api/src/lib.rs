@@ -1,6 +1,6 @@
 #![cfg_attr(not(test), no_std)]
 
-use core::{f32::consts::E, fmt::Display, ops::Range};
+use core::{fmt::Display, ops::Range};
 
 pub mod stack;
 

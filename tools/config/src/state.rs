@@ -129,7 +129,8 @@ impl<'a> ConfigState<'a> {
 
                 // Note: qualified paths start with a leading dot, we remove it.
                 let key = key.to_uppercase().replace('.', "_")[1..].to_string();
-                table.insert(&format!("OSIRIS_{key}"), Item::Value(value.clone().into()));
+                // We always convert to strings for environment variables.
+                table.insert(&format!("OSIRIS_{key}"), Item::Value(Value::from(value.to_string())));
             }
         }
         Ok(())
@@ -180,6 +181,32 @@ impl<'a> ConfigState<'a> {
                             }
                             (Item::Value(Value::Float(value)), ConfigType::Float(_, _)) => {
                                 Value::from(*value.value()).into()
+                            },
+                            (Item::Value(Value::String(value)), typ) => {
+                                // If we expect a non-string type, try to parse the string.
+                                let res = match typ {
+                                    ConfigType::Boolean(_) => {
+                                        let parsed = value.value().parse::<bool>()?;
+                                        Ok(Value::from(parsed).into())
+                                    },
+                                    ConfigType::Integer(_, _) => {
+                                        let parsed = value.value().parse::<i64>()?;
+                                        Ok(Value::from(parsed).into())
+                                    },
+                                    ConfigType::Float(_, _) => {
+                                        let parsed = value.value().parse::<f64>()?;
+                                        Ok(Value::from(parsed).into())
+                                    },
+                                    _ => Err(anyhow!("Invalid type conversion")),
+                                };
+                                res.map_err(|e| {
+                                    Report::from_spanned(
+                                        asn::Level::Error,
+                                        Some(key),
+                                        item,
+                                        format!("invalid item type, expected: {}", e),
+                                    )
+                                })?
                             }
                             _ => {
                                 return Err(Report::from_spanned(

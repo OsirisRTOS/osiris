@@ -5,12 +5,11 @@ use core::{
     num::NonZero,
     ops::{Add, AddAssign, Range},
     ptr::NonNull,
-    fmt
 };
 
-use hal_api::{stack::StackDescriptor, Machinelike, Result};
+use hal_api::{stack::StackDescriptor, Result};
 
-use crate::print::{print, println};
+use crate::print::println;
 
 // A default finalizer used if none is supplied: just spins forever.
 #[inline(never)]

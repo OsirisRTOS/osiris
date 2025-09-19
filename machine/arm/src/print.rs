@@ -2,6 +2,7 @@ use core::fmt::{self, Write};
 
 use hal_api::Machinelike;
 
+#[allow(unused_macros)]
 macro_rules! print {
     ($($arg:tt)*) => ({
         use core::fmt::Write;
@@ -11,8 +12,10 @@ macro_rules! print {
     });
 }
 
+#[allow(unused_imports)]
 pub(crate) use print;
 
+#[allow(unused_macros)]
 macro_rules! println {
     ($($arg:tt)*) => ({
         use core::fmt::Write;
@@ -23,6 +26,7 @@ macro_rules! println {
     });
 }
 
+#[allow(unused_imports)]
 pub(crate) use println;
 
 pub struct Printer;

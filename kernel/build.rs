@@ -10,23 +10,6 @@ use walkdir::WalkDir;
 
 extern crate cbindgen;
 
-fn select_arch() {
-    let arch = std::env::var("ARCH").unwrap_or_else(|_| 
-    {
-        println!("cargo:error=ARCH environment variable not set. Please choose a target.");
-        std::process::exit(1);
-    });
-    match arch.as_str() {
-        "arm" => println!("cargo:rustc-cfg=feature=\"arm\""),
-        "x86" => println!("cargo:rustc-cfg=feature=\"x86\""),
-        "riscv" => println!("cargo:rustc-cfg=feature=\"riscv\""),
-        _ => {
-            println!("cargo:error=Unknown architecture '{arch}'");
-            std::process::exit(1);
-        }
-    }
-}
-
 fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=build.rs");

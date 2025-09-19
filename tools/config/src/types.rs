@@ -221,3 +221,10 @@ impl From<ConfigType> for ConfigValue {
         }
     }
 }
+
+impl From<&str> for ConfigValue {
+    fn from(s: &str) -> Self {
+        // TODO type conversions
+        ConfigValue::String(s.to_string())
+    }
+}

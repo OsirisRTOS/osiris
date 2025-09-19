@@ -15,6 +15,7 @@ pub mod queue;
 /// The possible types of memory. Which is compatible with the multiboot2 memory map.
 /// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
 #[repr(C)]
+#[allow(unused)]
 enum MemoryTypes {
     /// Memory that is available for use.
     Available = 1,
@@ -23,7 +24,7 @@ enum MemoryTypes {
     /// Memory that is reclaimable after ACPI tables are read.
     ACPIReclaimable = 3,
     /// ACPI Non-volatile-sleeping memory.
-    NVS = 4,
+    Nvs = 4,
     /// Memory that is bad.
     BadMemory = 5,
 }

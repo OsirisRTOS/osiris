@@ -108,8 +108,9 @@ SECTIONS
         . = ALIGN(4);
         __syms_area_start = .;
         KEEP(*(.syms_area))
-        BYTE(0x00); /* make sure the section is not empty */
-        . += __syms_size;
+        FILL(0x00);
+        /* BYTE(0x00); make sure the section is not empty */
+        . = . + __syms_size;
         __syms_area_end = .;
     } > FLASH
 

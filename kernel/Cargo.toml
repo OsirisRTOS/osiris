@@ -21,8 +21,7 @@ hal-testing = { path = "../machine/testing", features = [] }
 
 [features]
 default = []
-
-unstable = []
+nightly = []
 no-atomic-cas = []
 multi-core = []
 

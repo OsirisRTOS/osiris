@@ -1,6 +1,6 @@
 //! This module provides task management related syscalls.
 
-use core::{ffi::{c_int, c_void}, str};
+use core::ffi::c_int;
 
 use crate::sched;
 use macros::syscall_handler;

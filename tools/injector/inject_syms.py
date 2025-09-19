@@ -25,8 +25,13 @@ def inject_section(file_path, section_name, new_data):
             exit(1)
         data = section.data()
 
+        # we compiled without support for runtime symbols, so silently ignore
+        if len(data) <= 4:
+            print(f"warning: binary compiled without runtime symbols support. skipping.")
+            return
+
         if len(new_data) > len(data):
-            print(f"error: new data size exceeds original section size.")
+            print(f"error: new data size exceeds original section size. {len(new_data)} > {len(data)}")
             exit(1)
         f.seek(section['sh_offset'])
         f.write(new_data)
@@ -49,7 +54,6 @@ def main():
         return
     blob = build_symtab_strtab_blob(symtab, strtab)
     inject_section(args.file, ".syms_area", blob)
-    print("info: symtab and strtab sections injected into .syms_area section.")
 
 if __name__ == "__main__":
     main()

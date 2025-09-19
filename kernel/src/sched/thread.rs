@@ -41,6 +41,12 @@ pub struct ThreadUId {
     tid: ThreadId,
 }
 
+impl ThreadUId {
+    pub fn tid(&self) -> ThreadId {
+        self.tid
+    }
+}
+
 impl PartialEq for ThreadUId {
     fn eq(&self, other: &Self) -> bool {
         self.uid == other.uid
@@ -155,6 +161,10 @@ impl Thread {
 
     pub fn sp(&self) -> *mut c_void {
         self.state.stack.sp()
+    }
+
+    pub fn tuid(&self) -> ThreadUId {
+        self.tuid
     }
 }
 

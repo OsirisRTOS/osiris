@@ -30,7 +30,9 @@ pub enum Error {
     InvalidToml(#[from] Report),
     Io(#[from] std::io::Error),
     Fmt(#[from] std::fmt::Error),
-
+    ParseInt(#[from] std::num::ParseIntError),
+    ParseFloat(#[from] std::num::ParseFloatError),
+    ParseBool(#[from] std::str::ParseBoolError),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -41,6 +43,9 @@ impl Display for Error {
             Error::InvalidToml(report) => write!(f, "{}", report),
             Error::Io(err) => write!(f, "{err}"),
             Error::Fmt(err) => write!(f, "{err}"),
+            Error::ParseInt(err) => write!(f, "{err}"),
+            Error::ParseFloat(err) => write!(f, "{err}"),
+            Error::ParseBool(err) => write!(f, "{err}"),
             Error::Other(err) => write!(f, "{err}"),
         }
     }
