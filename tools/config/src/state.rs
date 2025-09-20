@@ -184,26 +184,32 @@ impl<'a> ConfigState<'a> {
                             (Item::Value(Value::String(value)), typ) => {
                                 // If we expect a non-string type, try to parse the string.
                                 let res = match typ {
-                                    ConfigType::Boolean(_) => {
-                                        let parsed = value.value().parse::<bool>()?;
-                                        Ok(Value::from(parsed).into())
-                                    }
-                                    ConfigType::Integer(_, _) => {
-                                        let parsed = value.value().parse::<i64>()?;
-                                        Ok(Value::from(parsed).into())
-                                    }
-                                    ConfigType::Float(_, _) => {
-                                        let parsed = value.value().parse::<f64>()?;
-                                        Ok(Value::from(parsed).into())
-                                    }
-                                    _ => Err(anyhow!("Invalid type conversion")),
+                                    ConfigType::Boolean(_) => value
+                                        .value()
+                                        .parse::<bool>()
+                                        .map(|parsed| Value::from(parsed).into())
+                                        .map_err(|_| ()),
+                                    ConfigType::Integer(_, _) => value
+                                        .value()
+                                        .parse::<i64>()
+                                        .map(|parsed| Value::from(parsed).into())
+                                        .map_err(|_| ()),
+                                    ConfigType::Float(_, _) => value
+                                        .value()
+                                        .parse::<f64>()
+                                        .map(|parsed| Value::from(parsed).into())
+                                        .map_err(|_| ()),
+                                    _ => Err(()),
                                 };
-                                res.map_err(|e| {
+                                res.map_err(|_| {
                                     Report::from_spanned(
                                         asn::Level::Error,
                                         Some(key),
                                         item,
-                                        format!("invalid item type, expected: {}", e),
+                                        format!(
+                                            "invalid item type, expected: {}, got: String",
+                                            opt.typ
+                                        ),
                                     )
                                 })?
                             }
