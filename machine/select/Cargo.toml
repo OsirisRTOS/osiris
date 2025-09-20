@@ -10,5 +10,8 @@ hal-api  = { path = "../api" }
 [target.'cfg(target_arch = "arm")'.dependencies]
 hal-arm = { path = "../arm" }
 
-[dev-dependencies]
+[target.'cfg(target_arch = "x86_64")'.dependencies]
 hal-testing = { path = "../testing" }
+
+[build-dependencies]
+cfg_aliases = "0.2.1"

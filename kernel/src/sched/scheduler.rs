@@ -1,11 +1,17 @@
 //! The scheduler module is responsible for managing the tasks and threads in the system.
 //! It provides the necessary functions to create tasks and threads, and to switch between them.
 
-use core::{ffi::c_void, sync::atomic::{AtomicBool}};
+use core::{ffi::c_void, sync::atomic::AtomicBool};
 
 use super::task::{Task, TaskId};
 use crate::{
-    mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue}, sched::{task::TaskDescriptor, thread::{RunState, ThreadMap, ThreadUId, Timing}}, sync::spinlock::SpinLocked, utils
+    mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue},
+    sched::{
+        task::TaskDescriptor,
+        thread::{RunState, ThreadMap, ThreadUId, Timing},
+    },
+    sync::spinlock::SpinLocked,
+    utils,
 };
 
 /// The global scheduler instance.
@@ -47,7 +53,10 @@ impl Scheduler {
 
     pub fn create_task(&mut self, desc: TaskDescriptor) -> Result<TaskId, utils::KernelError> {
         let size = mem::align_up(desc.mem_size);
-        let idx = self.user_tasks.find_empty().ok_or(utils::KernelError::OutOfMemory)?;
+        let idx = self
+            .user_tasks
+            .find_empty()
+            .ok_or(utils::KernelError::OutOfMemory)?;
         let task_id = TaskId::new_user(idx);
 
         let task = Task::new(size, task_id)?;
@@ -55,7 +64,13 @@ impl Scheduler {
         Ok(task_id)
     }
 
-    pub fn create_thread(&mut self, entry: extern "C" fn(), fin: Option<extern "C" fn() -> !>, timing: Timing, task_id: TaskId) -> Result<ThreadUId, utils::KernelError> {
+    pub fn create_thread(
+        &mut self,
+        entry: extern "C" fn(),
+        fin: Option<extern "C" fn() -> !>,
+        timing: Timing,
+        task_id: TaskId,
+    ) -> Result<ThreadUId, utils::KernelError> {
         let task_idx: usize = task_id.into();
 
         if let Some(task) = self.user_tasks.get_mut(&task_idx) {
@@ -74,7 +89,9 @@ impl Scheduler {
     fn update_current_ctx(&mut self, ctx: *mut c_void) {
         if let Some(id) = self.current {
             if let Some(thread) = self.threads.get_mut(&id) {
-                thread.update_sp(ctx).expect("Failed to update thread context");
+                thread
+                    .update_sp(ctx)
+                    .expect("Failed to update thread context");
             }
         }
     }
@@ -131,7 +148,7 @@ impl Scheduler {
                 self.callbacks.pop_front();
                 if let Some(thread) = self.threads.get_mut(&id) {
                     thread.update_run_state(RunState::Ready);
-    
+
                     let _ = self.queue.push((thread.timing().exec_time, id));
                     found = true;
                 }

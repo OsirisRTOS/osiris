@@ -4,10 +4,12 @@ pub mod asm;
 
 pub use hal_api::*;
 
-#[cfg(all(not(test), target_arch = "arm"))]
-pub type Machine = hal_arm::ArmMachine;
-#[cfg(all(not(test), target_arch = "arm"))]
-pub type Stack = hal_arm::sched::ArmStack;
+#[cfg(all(freestanding, target_arch = "arm"))]
+pub mod arm;
+#[cfg(all(freestanding, target_arch = "arm"))]
+pub use arm::*;
 
-#[cfg(test)]
-pub type Machine = hal_testing::TestingMachine;
+#[cfg(not(freestanding))]
+pub mod testing;
+#[cfg(not(freestanding))]
+pub use testing::*;

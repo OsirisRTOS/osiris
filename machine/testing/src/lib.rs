@@ -1,6 +1,8 @@
-use hal_api::{Result, Schedable};
 use core::result::Result::Ok;
+use hal_api::{Result, Schedable};
 
+pub mod asm;
+pub mod sched;
 
 pub struct TestingMachine;
 
@@ -25,10 +27,28 @@ impl hal_api::Machinelike for TestingMachine {
     }
 
     type ExcepBacktrace = String;
+    type ExcepStackFrame = String;
 
     fn backtrace(_initial_fp: *const usize, _stack_ptr: *const usize) -> Self::ExcepBacktrace {
         // Return a dummy backtrace in testing.
         "Backtrace not available in testing.".to_string()
+    }
+
+    fn stack_frame(_stack_ptr: *const usize) -> Self::ExcepStackFrame {
+        // Return a dummy stack frame in testing.
+        "Stack frame not available in testing.".to_string()
+    }
+
+    type FaultStatus = String;
+    fn get_fault_status(_fault: hal_api::Fault) -> Self::FaultStatus {
+        // Return a dummy fault status in testing.
+        "Fault status not available in testing.".to_string()
+    }
+
+    fn panic_handler(info: &core::panic::PanicInfo) -> ! {
+        // Print the panic information and abort in testing.
+        eprintln!("Panic occurred: {}", info);
+        std::process::abort();
     }
 }
 

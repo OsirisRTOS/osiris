@@ -7,7 +7,7 @@ use core::{
     ptr::NonNull,
 };
 
-use hal_api::{stack::StackDescriptor, Result};
+use hal_api::{Result, stack::StackDescriptor};
 
 use crate::print::println;
 
@@ -135,7 +135,11 @@ impl ArmStack {
         // LR (EXEC_RETURN)
         // R11 - R4 (scratch - 0)
 
-        println!("Pushing IRQ return frame: sp offset {}, top: {:p}\n", self.sp.offset(), self.top);
+        println!(
+            "Pushing IRQ return frame: sp offset {}, top: {:p}\n",
+            self.sp.offset(),
+            self.top
+        );
 
         unsafe {
             let mut write_index = self.sp.as_ptr(self.top);
@@ -188,9 +192,7 @@ impl hal_api::stack::Stacklike for ArmStack {
 
         let mut stack = Self {
             top,
-            sp: StackPtr {
-                offset: 0,
-            },
+            sp: StackPtr { offset: 0 },
             size,
         };
 

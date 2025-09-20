@@ -1,7 +1,7 @@
 //! This module provides the basic task and thread structures for the scheduler.
 use core::num::NonZero;
 use core::ops::Range;
-use core::{ptr::NonNull};
+use core::ptr::NonNull;
 
 use hal::Stack;
 
@@ -51,7 +51,6 @@ impl Into<usize> for TaskId {
         }
     }
 }
-
 
 /// Descibes a task.
 pub struct TaskDescriptor {

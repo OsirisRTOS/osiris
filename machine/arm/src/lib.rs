@@ -42,7 +42,8 @@ impl hal_api::Machinelike for ArmMachine {
         use crate::asm;
         asm::disable_interrupts();
 
-        if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0) {
+        if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0)
+        {
             asm::enable_interrupts();
             Ok(())
         } else {

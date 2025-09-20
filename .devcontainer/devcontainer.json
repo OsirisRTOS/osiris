@@ -13,8 +13,6 @@
 	"capAdd": [
 		// Permissions for accessing host USB devices
 		"SYS_RAWIO", "CAP_MKNOD",
-		// Allow debugging
-		"SYS_PTRACE"
 	],
 	"customizations": {
 		"vscode": {

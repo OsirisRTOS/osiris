@@ -66,7 +66,9 @@ pub fn find_nearest_symbol(_addr: usize) -> Option<&'static str> {
 }
 
 #[cfg(all(not(feature = "host"), cm4))]
-pub fn print_mem_manage_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+pub fn print_mem_manage_fault_status(
+    f: &mut core::fmt::Formatter<'_>,
+) -> Result<(), core::fmt::Error> {
     let cfsr = unsafe { core::ptr::read_volatile(0xE000ED28 as *const u32) };
 
     writeln!(f, "CFSR: 0x{cfsr:08x}")?;
@@ -83,10 +85,16 @@ pub fn print_mem_manage_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result
         writeln!(f, "  MSTKERR: MemManage fault on stacking")?;
     }
     if cfsr & 0x20 != 0 {
-        writeln!(f, "  MLSPERR: MemManage fault during floating-point lazy state preservation")?;
+        writeln!(
+            f,
+            "  MLSPERR: MemManage fault during floating-point lazy state preservation"
+        )?;
     }
     if cfsr & 0x80 != 0 {
-        writeln!(f, "  MMARVALID: MemManage Fault Address Register (MMAR) is valid")?;
+        writeln!(
+            f,
+            "  MMARVALID: MemManage Fault Address Register (MMAR) is valid"
+        )?;
     }
 
     Ok(())
@@ -96,7 +104,10 @@ pub fn print_mem_manage_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result
 pub fn print_bus_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
     let cfsr = unsafe { core::ptr::read_volatile(0xE000ED28 as *const u32) };
 
-    writeln!(f, "---------------------------------------------------------------")?;
+    writeln!(
+        f,
+        "---------------------------------------------------------------"
+    )?;
 
     writeln!(f, "CFSR: 0x{cfsr:08x}")?;
     if cfsr & 0x100 != 0 {
@@ -115,7 +126,10 @@ pub fn print_bus_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), co
         writeln!(f, "  STKERR: Bus fault on stacking")?;
     }
     if cfsr & 0x2000 != 0 {
-        writeln!(f, "  LSPERR: Bus fault during floating-point lazy state preservation")?;
+        writeln!(
+            f,
+            "  LSPERR: Bus fault during floating-point lazy state preservation"
+        )?;
     }
     if cfsr & 0x8000 != 0 {
         writeln!(f, "  BFARVALID: Bus Fault Address Register (BFAR) is valid")?;
@@ -128,10 +142,13 @@ pub fn print_bus_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), co
 pub fn print_usage_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
     let cfsr = unsafe { core::ptr::read_volatile(0xE000ED28 as *const u32) };
 
-    writeln!(f, "---------------------------------------------------------------")?;
+    writeln!(
+        f,
+        "---------------------------------------------------------------"
+    )?;
 
     writeln!(f, "CFSR: 0x{cfsr:08x}")?;
-    if cfsr & 0x10000 != 0 {    
+    if cfsr & 0x10000 != 0 {
         writeln!(f, "  UNDEFINSTR: Undefined instruction")?;
     }
     if cfsr & 0x20000 != 0 {
@@ -154,7 +171,9 @@ pub fn print_usage_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), 
 }
 
 #[cfg(any(feature = "host", not(cm4)))]
-pub fn print_mem_manage_fault_status(_f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+pub fn print_mem_manage_fault_status(
+    _f: &mut core::fmt::Formatter<'_>,
+) -> Result<(), core::fmt::Error> {
     Ok(())
 }
 

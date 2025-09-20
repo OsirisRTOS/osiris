@@ -39,11 +39,10 @@ fn forward_env_vars(config: &mut Config) {
             // Instruct cargo to rerun the build script if this environment variable changes.
             println!("cargo:rerun-if-env-changed={key}");
 
-        
             match var.as_str() {
                 "0" | "false" | "off" => {
                     config.define(key, "0");
-                },
+                }
                 "1" | "true" | "on" => {
                     config.define(key, "1");
                 }
@@ -61,12 +60,12 @@ fn forward_env_vars(config: &mut Config) {
 
 fn forward_fpu_config(config: &mut Config) -> Result<()> {
     let target = env::var("TARGET").context("TARGET environment variable not set")?;
-    
+
     // Check if FPU is enabled via config
     let fpu_enabled = env::var("OSIRIS_TUNING_ENABLEFPU")
         .map(|v| matches!(v.as_str(), "1" | "true" | "on"))
         .unwrap_or(false);
-    
+
     // Determine FPU and float ABI based on target and config
     let (fpu_type, float_abi) = if target.starts_with("thumbv7em") {
         if fpu_enabled {
@@ -79,7 +78,7 @@ fn forward_fpu_config(config: &mut Config) -> Result<()> {
                 ("fpv4-sp-d16", "softfp")
             }
         } else {
-            return Ok(())
+            return Ok(());
         }
     } else if target.starts_with("thumbv8m.main") {
         if fpu_enabled {
@@ -89,11 +88,11 @@ fn forward_fpu_config(config: &mut Config) -> Result<()> {
                 ("fpv5-sp-d16", "softfp")
             }
         } else {
-            return Ok(())
+            return Ok(());
         }
     } else {
         // Cortex-M0/M0+/M3 - no FPU
-        return Ok(())
+        return Ok(());
     };
 
     config.cflag(format!("-mfpu={fpu_type}"));
@@ -102,7 +101,7 @@ fn forward_fpu_config(config: &mut Config) -> Result<()> {
     config.asmflag(format!("-mfloat-abi={float_abi}"));
 
     println!("cargo:info=ARM FPU: {fpu_type}, Float ABI: {float_abi}");
-    
+
     Ok(())
 }
 
@@ -115,7 +114,7 @@ fn generate_bindings(out: &str, hal: &str) -> Result<()> {
 
     bindgen.write_to_file(format!("{out}/bindings.rs"))?;
 
-    println!("cargo:rerun-if-changed={hal}"); 
+    println!("cargo:rerun-if-changed={hal}");
     Ok(())
 }
 

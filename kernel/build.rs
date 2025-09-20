@@ -4,6 +4,7 @@ extern crate rand;
 extern crate syn;
 extern crate walkdir;
 
+use cfg_aliases::cfg_aliases;
 use std::io::Write;
 use syn::{Attribute, LitInt};
 use walkdir::WalkDir;
@@ -14,9 +15,6 @@ fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=kernel/src/syscalls.rs");
-    println!("cargo:rerun-if-env-changed=ARCH");
-
-    //select_arch();
 
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
 
@@ -27,7 +25,9 @@ fn main() {
         println!("cargo:warning=LD_SCRIPT_PATH environment variable not set.");
     }
 
-    // Check if the target is an arm architecture
+    cfg_aliases! {
+        freestanding: { all(not(test), not(doctest), not(doc), not(kani), any(target_os = "none", target_os = "unknown")) },
+    }
 }
 
 fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {

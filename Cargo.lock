@@ -230,6 +230,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9555578bc9e57714c812a1f84e4fc5b4d21fcb063490c624de019f7464c91268"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
+
+[[package]]
 name = "chrono"
 version = "0.4.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -539,6 +545,7 @@ dependencies = [
 name = "hal-select"
 version = "0.1.0"
 dependencies = [
+ "cfg_aliases",
  "hal-api",
  "hal-arm",
  "hal-testing",
@@ -711,6 +718,7 @@ version = "0.1.0"
 dependencies = [
  "bindgen 0.69.5",
  "cbindgen",
+ "cfg_aliases",
  "hal-select",
  "hal-testing",
  "macros",

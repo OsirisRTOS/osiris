@@ -461,7 +461,6 @@ impl<T, const N: usize> Drop for Vec<T, N> {
     }
 }
 
-
 #[cfg(kani)]
 mod verification {
     use super::*;

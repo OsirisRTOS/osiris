@@ -38,8 +38,7 @@ pub fn load_files(root: &Path, filename: &str) -> Vec<Result<File>> {
             continue;
         }
 
-        if path.file_name().is_some_and(|f| f == filename)
-        {
+        if path.file_name().is_some_and(|f| f == filename) {
             let file = load_file(&path);
             files.push(file);
         }

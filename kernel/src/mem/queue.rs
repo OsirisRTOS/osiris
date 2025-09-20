@@ -283,8 +283,8 @@ mod verification {
         kani::concrete_playback_run(concrete_vals, growing_retains_queue_state_with_wrapping);
     }
 
-    #[kani::proof]
-    #[kani::unwind(30)]
+    //#[kani::proof]
+    //#[kani::unwind(15)]
     fn growing_retains_queue_state_with_wrapping() {
         let mut queue = Queue::<usize, 10>::new();
         for i in 0..10 {

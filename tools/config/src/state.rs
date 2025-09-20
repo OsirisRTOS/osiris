@@ -130,7 +130,10 @@ impl<'a> ConfigState<'a> {
                 // Note: qualified paths start with a leading dot, we remove it.
                 let key = key.to_uppercase().replace('.', "_")[1..].to_string();
                 // We always convert to strings for environment variables.
-                table.insert(&format!("OSIRIS_{key}"), Item::Value(Value::from(value.to_string())));
+                table.insert(
+                    &format!("OSIRIS_{key}"),
+                    Item::Value(Value::from(value.to_string())),
+                );
             }
         }
         Ok(())
@@ -145,17 +148,13 @@ impl<'a> ConfigState<'a> {
                     let key = table.key(key).unwrap(); // Safe unwrap we iterate through the keys.
 
                     // Remove the OSIRIS_ prefix if it exists. Otherwise skip the key.
-                    let key_str = if let Some(stripped) = key
-                        .to_string()
-                        .strip_prefix("OSIRIS_")
-                    {
+                    let key_str = if let Some(stripped) = key.to_string().strip_prefix("OSIRIS_") {
                         stripped.to_string()
                     } else {
                         continue;
                     };
 
                     let key_str = format!(".{}", key_str.to_lowercase().replace('_', "."));
-
 
                     let node = state
                         .nodes
@@ -181,22 +180,22 @@ impl<'a> ConfigState<'a> {
                             }
                             (Item::Value(Value::Float(value)), ConfigType::Float(_, _)) => {
                                 Value::from(*value.value()).into()
-                            },
+                            }
                             (Item::Value(Value::String(value)), typ) => {
                                 // If we expect a non-string type, try to parse the string.
                                 let res = match typ {
                                     ConfigType::Boolean(_) => {
                                         let parsed = value.value().parse::<bool>()?;
                                         Ok(Value::from(parsed).into())
-                                    },
+                                    }
                                     ConfigType::Integer(_, _) => {
                                         let parsed = value.value().parse::<i64>()?;
                                         Ok(Value::from(parsed).into())
-                                    },
+                                    }
                                     ConfigType::Float(_, _) => {
                                         let parsed = value.value().parse::<f64>()?;
                                         Ok(Value::from(parsed).into())
-                                    },
+                                    }
                                     _ => Err(anyhow!("Invalid type conversion")),
                                 };
                                 res.map_err(|e| {

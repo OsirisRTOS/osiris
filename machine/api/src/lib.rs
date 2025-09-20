@@ -25,7 +25,11 @@ impl Display for Error {
             Error::Generic => write!(f, "Generic"),
             Error::OutOfMemory(size) => write!(f, "Out of memory (requested {size} bytes)"),
             Error::OutOfBoundsPtr(ptr, range) => {
-                write!(f, "Pointer {:p} out of bounds (expected in {:p}..{:p})", *ptr as *const u8, range.start as *const u8, range.end as *const u8)
+                write!(
+                    f,
+                    "Pointer {:p} out of bounds (expected in {:p}..{:p})",
+                    *ptr as *const u8, range.start as *const u8, range.end as *const u8
+                )
             }
         }
     }

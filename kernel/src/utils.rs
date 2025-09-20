@@ -11,7 +11,6 @@ pub(crate) use core::convert::{identity as likely, identity as unlikely};
 #[cfg(feature = "nightly")]
 pub(crate) use core::hint::{likely, unlikely};
 
-
 /// This is a macro that is used to panic when a bug is detected.
 /// It is similar to the BUG() macro in the Linux kernel. Link: [https://www.kernel.org/]()
 #[macro_export]
@@ -28,24 +27,20 @@ macro_rules! BUG {
 /// It is similar to the BUG_ON() macro in the Linux kernel.  Link: [https://www.kernel.org/]()
 #[macro_export]
 macro_rules! BUG_ON {
-    ($cond:expr) => {
-        {
-            let cond = $cond;
-            #[allow(unused_unsafe)]
-            if unsafe { $crate::utils::unlikely(cond) } {
-                BUG!();
-            }
+    ($cond:expr) => {{
+        let cond = $cond;
+        #[allow(unused_unsafe)]
+        if unsafe { $crate::utils::unlikely(cond) } {
+            BUG!();
         }
-    };
-    ($cond:expr, $msg:expr) => {
-        {
-            let cond = $cond;
-            #[allow(unused_unsafe)]
-            if unsafe { $crate::utils::unlikely(cond) } {
-                BUG!($msg);
-            }
+    }};
+    ($cond:expr, $msg:expr) => {{
+        let cond = $cond;
+        #[allow(unused_unsafe)]
+        if unsafe { $crate::utils::unlikely(cond) } {
+            BUG!($msg);
         }
-    };
+    }};
 }
 
 /// The error type that is returned when an error in the kernel occurs.

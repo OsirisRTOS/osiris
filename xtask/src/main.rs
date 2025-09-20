@@ -1,7 +1,5 @@
-
-
+use anyhow::{Context, Ok, Result, bail};
 use std::{path::PathBuf, process::Command};
-use anyhow::{bail, Context, Ok, Result};
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
@@ -10,14 +8,14 @@ use tracing_subscriber::EnvFilter;
 #[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    cmd: Subcommand
+    cmd: Subcommand,
 }
 
 #[derive(clap::Subcommand, Debug)]
 enum Subcommand {
     Config {
         #[arg(trailing_var_arg = true)]
-        args: Vec<String>
+        args: Vec<String>,
     },
     /// Inject symbols into the given target binary.
     InjectSyms {
@@ -31,13 +29,15 @@ enum Subcommand {
     },
 }
 
-
 fn host_triple() -> Result<String> {
-    let out = Command::new("rustc").arg("-vV").output()
+    let out = Command::new("rustc")
+        .arg("-vV")
+        .output()
         .context("Failed to get host triple")?;
 
     let s = String::from_utf8(out.stdout)?;
-    let triple = s.lines()
+    let triple = s
+        .lines()
         .find_map(|l| l.strip_prefix("host: ").map(str::to_owned))
         .context("could not parse host triple")?;
     Ok(triple)
@@ -69,9 +69,12 @@ fn main() {
 
     if let Err(err) = match cli.cmd {
         Subcommand::Config { args } => run_config(args),
-        Subcommand::InjectSyms { target, release, binary } => run_inject_syms(target, release, binary),
-    }
-    {
+        Subcommand::InjectSyms {
+            target,
+            release,
+            binary,
+        } => run_inject_syms(target, release, binary),
+    } {
         tracing::error!("{:?}", err);
         std::process::exit(1);
     }
@@ -80,7 +83,7 @@ fn main() {
 fn run_inject_syms(target: Option<String>, release: bool, binary: String) -> Result<()> {
     let target = match target {
         Some(t) => t,
-        None => host_triple()?
+        None => host_triple()?,
     };
 
     // find the target directory
@@ -111,12 +114,7 @@ fn run_inject_syms(target: Option<String>, release: bool, binary: String) -> Res
 
 fn run_config(args: Vec<String>) -> Result<()> {
     let status = Command::new("cargo")
-        .args([
-            "run",
-            "--manifest-path", 
-            "tools/config/Cargo.toml",
-            "--",
-        ])
+        .args(["run", "--manifest-path", "tools/config/Cargo.toml", "--"])
         .args(&args)
         .status()
         .context("failed to run config")?;

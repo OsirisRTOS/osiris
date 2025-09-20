@@ -1,8 +1,6 @@
-#![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
-#![no_main]
+#![cfg_attr(freestanding, no_std, no_main)]
 
-use hal::Machinelike;
-
+#[cfg(freestanding)]
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
 pub extern "C" fn _start() -> ! {
@@ -10,9 +8,11 @@ pub extern "C" fn _start() -> ! {
 }
 
 /// The panic handler.
-#[cfg(all(not(test), not(doctest), not(doc), target_os = "none"))]
+#[cfg(freestanding)]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
+    use hal::Machinelike;
+
     kernel::kprintln!("**************************** PANIC ****************************");
     kernel::kprintln!("");
     kernel::kprintln!("Message: {}", info.message());
@@ -24,4 +24,9 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     kernel::kprintln!("**************************** PANIC ****************************");
 
     hal::Machine::panic_handler(info);
+}
+
+#[cfg(not(freestanding))]
+fn main() {
+    println!("Hello from Osiris!");
 }

@@ -16,8 +16,7 @@ pub extern "C" fn handle_mem_manage_fault(stack: *const usize, initial_fp: *cons
     // TODO extract other diagnostic information
     panic!(
         "A memory management fault has been triggered.\n{}{}",
-        backtrace,
-        fault_status
+        backtrace, fault_status
     );
 }
 
@@ -27,7 +26,10 @@ pub extern "C" fn handle_bus_fault(stack: *const usize, initial_fp: *const usize
     let fault_status = hal::Machine::get_fault_status(hal::Fault::Bus);
 
     // TODO extract other diagnostic information
-    panic!("A bus fault has been triggered.\n{}{}", backtrace, fault_status);
+    panic!(
+        "A bus fault has been triggered.\n{}{}",
+        backtrace, fault_status
+    );
 }
 
 #[unsafe(no_mangle)]
@@ -36,5 +38,8 @@ pub extern "C" fn handle_usage_fault(stack: *const usize, initial_fp: *const usi
     let fault_status = hal::Machine::get_fault_status(hal::Fault::Usage);
 
     // TODO extract other diagnostic information
-    panic!("A usage fault has been triggered.\n{}{}", backtrace, fault_status);
+    panic!(
+        "A usage fault has been triggered.\n{}{}",
+        backtrace, fault_status
+    );
 }

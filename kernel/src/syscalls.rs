@@ -10,8 +10,7 @@ use file::*;
 use tasks::*;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn handle_syscall(number: usize, args: *const c_uint) -> c_int
-{
+pub extern "C" fn handle_syscall(number: usize, args: *const c_uint) -> c_int {
     // All functions that are annotated with the #[syscall_handler(num = X)] macro are syscalls.
     // build.rs will generate a match statement that matches the syscall number to the function which is then included here.
     include!(concat!(env!("OUT_DIR"), "/syscall_dispatcher.in"))

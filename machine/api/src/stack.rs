@@ -13,7 +13,9 @@ pub trait Stacklike {
     type ElemSize: Copy;
     type StackPtr;
 
-    unsafe fn new(desc: StackDescriptor) -> Result<Self> where Self: Sized;
+    unsafe fn new(desc: StackDescriptor) -> Result<Self>
+    where
+        Self: Sized;
 
     fn create_sp(&self, ptr: *mut c_void) -> Result<Self::StackPtr>;
     fn set_sp(&mut self, sp: Self::StackPtr);
@@ -30,7 +32,7 @@ pub trait ThreadArgument: Send + 'static {}
 
 impl<T> ThreadArgument for T where T: Send + 'static {}
 
-/* 
+/*
 macro_rules! impl_thread_arg {
     ($($t:ty),+) => { $(unsafe impl ThreadArgument for $t {})+ };
 }

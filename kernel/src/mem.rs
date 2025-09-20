@@ -106,9 +106,12 @@ mod verification {
             let length = kani::any();
             let addr = kani::any();
 
-            kani::assume(length < alloc::MAX_ADDR as u64 && length > alloc::BestFitAllocator::MIN_RANGE_SIZE as u64);
+            kani::assume(
+                length < alloc::MAX_ADDR as u64
+                    && length > alloc::BestFitAllocator::MIN_RANGE_SIZE as u64,
+            );
             kani::assume(addr < alloc::MAX_ADDR as u64 - length && addr > 0);
-            
+
             MemMapEntry {
                 size,
                 addr,
@@ -123,7 +126,7 @@ mod verification {
     }
 
     fn mock_ptr_write<T>(dst: *mut T, src: T) {
-       // Just a noop
+        // Just a noop
     }
 
     #[kani::proof]
@@ -142,7 +145,10 @@ mod verification {
             // Ensure non overlapping entries
             for other in mmap.iter() {
                 if entry.addr != other.addr {
-                    kani::assume(entry.addr + entry.length <= other.addr || other.addr + other.length <= entry.addr);
+                    kani::assume(
+                        entry.addr + entry.length <= other.addr
+                            || other.addr + other.length <= entry.addr,
+                    );
                 }
             }
         }

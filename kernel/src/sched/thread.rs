@@ -1,5 +1,3 @@
-
-
 // ----------------------------------- Identifiers -----------------------------------
 
 use core::{borrow::Borrow, ffi::c_void};
@@ -74,7 +72,7 @@ impl PartialOrd for ThreadUId {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
-}   
+}
 
 impl Ord for ThreadUId {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
@@ -89,7 +87,6 @@ pub struct ThreadDescriptor {
     pub stack: Stack,
     pub timing: Timing,
 }
-
 
 /// The timing information for a thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,7 +164,6 @@ impl Thread {
         self.tuid
     }
 }
-
 
 pub struct ThreadMap<const N: usize> {
     map: IndexMap<ThreadUId, Thread, N>,

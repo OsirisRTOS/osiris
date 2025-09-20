@@ -1,7 +1,7 @@
 //! This is the default kernel of the osiris operating system.
 //! The kernel is organized as a microkernel.
 
-#![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
+#![cfg_attr(freestanding, no_std)]
 
 #[macro_use]
 pub mod macros;
@@ -69,12 +69,18 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
 
     // Initialize the memory allocator.
     if let Err(e) = mem::init_memory(boot_info) {
-        panic!("[Kernel] Error: failed to initialize memory allocator. Error: {:?}", e);
+        panic!(
+            "[Kernel] Error: failed to initialize memory allocator. Error: {:?}",
+            e
+        );
     }
 
     // Initialize the services.
     if let Err(e) = services::init_services() {
-        panic!("[Kernel] Error: failed to initialize services. Error: {:?}", e);
+        panic!(
+            "[Kernel] Error: failed to initialize services. Error: {:?}",
+            e
+        );
     }
 
     sched::enable_scheduler(false);

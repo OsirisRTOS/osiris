@@ -3,7 +3,7 @@
 
 use core::{ops::Range, ptr::NonNull};
 
-use crate::{utils, BUG_ON};
+use crate::{BUG_ON, utils};
 
 #[cfg(target_pointer_width = "64")]
 pub const MAX_ADDR: usize = 2_usize.pow(48);
@@ -45,7 +45,7 @@ pub struct BestFitAllocator {
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
     pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
-    
+
     /// Creates a new BestFitAllocator.
     ///
     /// Returns the new BestFitAllocator.
@@ -427,7 +427,7 @@ mod tests {
             ptrs.push(ptr);
         }
 
-        let ptr = allocator.malloc(SIZE, 1);
+        let ptr = allocator.malloc::<u8>(SIZE, 1);
         assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
     }
 
@@ -496,7 +496,7 @@ mod tests {
 
         let mut ptrs = Vec::new();
 
-        let ptr = allocator.malloc(SIZE, 1).unwrap();
+        let ptr = allocator.malloc::<u8>(SIZE, 1).unwrap();
 
         for _ in 0..CNT - 1 {
             let ptr = allocator.malloc(SIZE, 1).unwrap();
@@ -539,7 +539,7 @@ mod tests {
             ptrs.push((ptr, SIZE));
         }
 
-        let ptr = allocator.malloc(SIZE, 1);
+        let ptr = allocator.malloc::<u8>(SIZE, 1);
         assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
 
         verify_ptrs_not_overlaping(ptrs.as_slice());
