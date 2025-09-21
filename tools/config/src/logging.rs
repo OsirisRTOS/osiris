@@ -1,4 +1,3 @@
-use log::info;
 use spdlog::formatter::{PatternFormatter, pattern};
 
 pub fn init_log(level: log::LevelFilter) {
@@ -13,6 +12,4 @@ pub fn init_log(level: log::LevelFilter) {
     for sink in spdlog::default_logger().sinks() {
         sink.set_formatter(formatter.clone());
     }
-
-    info!("Logger initialized with level: {level}");
 }

@@ -1,0 +1,8 @@
+# This is the default configuration for the STM32L4R5ZI MCU.
+
+[env]
+OSIRIS_TUNING_ENABLEFPU = "false"
+OSIRIS_DEBUG_UART = "LPUART1"
+OSIRIS_ARM_HAL = "stm32l4xx"
+OSIRIS_ARM_STM32L4XX_MCU = "r5zi"
+OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"

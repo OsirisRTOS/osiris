@@ -344,6 +344,7 @@ version = "0.1.0"
 dependencies = [
  "annotate-snippets",
  "anyhow",
+ "clap",
  "colored",
  "crossterm 0.27.0",
  "enum_dispatch",

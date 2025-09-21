@@ -8,8 +8,8 @@ release target:
     cargo xtask inject-syms --target {{target}} --release
     cargo objcopy --target {{target}} --release -- -O binary Kernel.bin
 
-config:
-    cargo run -p config
+config *args:
+    cargo run -p config -- {{args}}
 
 fmt *args:
     cargo fmt {{args}}

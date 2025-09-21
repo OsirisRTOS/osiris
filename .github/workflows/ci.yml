@@ -73,6 +73,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set testing config
+        run: just config load test_def
+
       - name: Run test coverage
         run: just cov
 
@@ -110,10 +113,13 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set testing config
+        run: just config load test_def
+
       - name: Run Kani
         run: just verify
 
-  build-stm32-nucleo-l4r5zi:
+  build-stm32-l4r5zi-def:
     name: Build for the STM32 Nucleo L4R5ZI
     needs: [container]
     runs-on: ubuntu-latest
@@ -124,6 +130,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Set stm32l4r5zi config
+        run: just config load stm32l4r5zi_def
 
       - name: Build
         run: just build thumbv7em-none-eabi
