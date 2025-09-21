@@ -36,6 +36,18 @@ Configure all build components. The configuration is stored in `.cargo/config.to
 $ just config
 ```
 
+or load a preset via:
+
+```sh
+$ just config load <preset_name> [--no-confirm]
+```
+
+if you want to reset the configuration run:
+
+```sh
+$ just config clean [--no-confirm]
+```
+
 #### **Build the kernel.** 
 Build the kernel for your target architecture. The target triple selects the top-level HAL (e.g., ARM). Select the specific machine HAL via the configuration tool.
 
