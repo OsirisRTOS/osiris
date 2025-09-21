@@ -115,11 +115,14 @@ pub fn load_toml_mut(toml: &Path) -> Result<DocumentMut, Error> {
     let path = path.to_string_lossy();
     let diag = Diagnostic::new(&path, Some(&content));
 
-    let doc = content.parse::<DocumentMut>().map_err(Report::from).map_err(|rep| {
-        let msg = diag.msg(&rep);
-        log::error!("{}", asn::Renderer::styled().render(msg));
-        Error::InvalidToml(rep)
-    })?;
+    let doc = content
+        .parse::<DocumentMut>()
+        .map_err(Report::from)
+        .map_err(|rep| {
+            let msg = diag.msg(&rep);
+            log::error!("{}", asn::Renderer::styled().render(msg));
+            Error::InvalidToml(rep)
+        })?;
 
     Ok(doc)
 }
@@ -130,11 +133,14 @@ pub fn load_toml(toml: &Path) -> Result<ImDocument<String>, Error> {
     let path = path.to_string_lossy();
     let diag = Diagnostic::new(&path, Some(&content));
 
-    let doc = content.parse::<ImDocument<String>>().map_err(Report::from).map_err(|rep| {
-        let msg = diag.msg(&rep);
-        log::error!("{}", asn::Renderer::styled().render(msg));
-        Error::InvalidToml(rep)
-    })?;
+    let doc = content
+        .parse::<ImDocument<String>>()
+        .map_err(Report::from)
+        .map_err(|rep| {
+            let msg = diag.msg(&rep);
+            log::error!("{}", asn::Renderer::styled().render(msg));
+            Error::InvalidToml(rep)
+        })?;
 
     Ok(doc)
 }
@@ -156,10 +162,22 @@ pub fn apply_preset(config: &mut DocumentMut, preset: &ImDocument<String>) -> Re
 
                 Ok(())
             } else {
-                return Err(Report::from_spanned(Level::Error, None::<&Key>, config_env, "expected 'env' to be a table.").into());
+                return Err(Report::from_spanned(
+                    Level::Error,
+                    None::<&Key>,
+                    config_env,
+                    "expected 'env' to be a table.",
+                )
+                .into());
             }
         } else {
-            return Err(Report::from_spanned(Level::Error, None::<&Key>, preset_env, "expected 'env' to be a table.").into());
+            return Err(Report::from_spanned(
+                Level::Error,
+                None::<&Key>,
+                preset_env,
+                "expected 'env' to be a table.",
+            )
+            .into());
         }
     } else {
         return Err(anyhow!("preset does not contain an 'env' section.").into());
