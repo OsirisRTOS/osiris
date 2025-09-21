@@ -15,6 +15,7 @@ pub mod queue;
 /// The possible types of memory. Which is compatible with the multiboot2 memory map.
 /// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
 #[repr(C)]
+#[allow(unused)]
 enum MemoryTypes {
     /// Memory that is available for use.
     Available = 1,
@@ -23,7 +24,7 @@ enum MemoryTypes {
     /// Memory that is reclaimable after ACPI tables are read.
     ACPIReclaimable = 3,
     /// ACPI Non-volatile-sleeping memory.
-    NVS = 4,
+    Nvs = 4,
     /// Memory that is bad.
     BadMemory = 5,
 }
@@ -94,7 +95,75 @@ pub fn align_up(size: usize) -> usize {
 // VERIFICATION -------------------------------------------------------------------------------------------------------
 #[cfg(kani)]
 mod verification {
+    use crate::MemMapEntry;
+
     use super::*;
+    use kani::Arbitrary;
+
+    impl Arbitrary for MemMapEntry {
+        fn any() -> Self {
+            let size = size_of::<MemMapEntry>() as u32;
+            let length = kani::any();
+            let addr = kani::any();
+
+            kani::assume(
+                length < alloc::MAX_ADDR as u64
+                    && length > alloc::BestFitAllocator::MIN_RANGE_SIZE as u64,
+            );
+            kani::assume(addr < alloc::MAX_ADDR as u64 - length && addr > 0);
+
+            MemMapEntry {
+                size,
+                addr,
+                length,
+                ty: kani::any(),
+            }
+        }
+
+        fn any_array<const MAX_ARRAY_LENGTH: usize>() -> [Self; MAX_ARRAY_LENGTH] {
+            [(); MAX_ARRAY_LENGTH].map(|_| Self::any())
+        }
+    }
+
+    fn mock_ptr_write<T>(dst: *mut T, src: T) {
+        // Just a noop
+    }
+
+    #[kani::proof]
+    #[kani::stub(core::ptr::write, mock_ptr_write)]
+    fn proof_init_allocator_good() {
+        let mmap: [MemMapEntry; _] = kani::any();
+
+        kani::assume(mmap.len() > 0 && mmap.len() <= 8);
+        for entry in mmap.iter() {
+            // Ensure aligned.
+            kani::assume(entry.addr % align_of::<u128>() as u64 == 0);
+            // Ensure valid range.
+            kani::assume(entry.addr > 0);
+            kani::assume(entry.length > 0);
+
+            // Ensure non overlapping entries
+            for other in mmap.iter() {
+                if entry.addr != other.addr {
+                    kani::assume(
+                        entry.addr + entry.length <= other.addr
+                            || other.addr + other.length <= entry.addr,
+                    );
+                }
+            }
+        }
+
+        let mmap_len = mmap.len();
+
+        let boot_info = BootInfo {
+            implementer: core::ptr::null(),
+            variant: core::ptr::null(),
+            mmap,
+            mmap_len,
+        };
+
+        assert!(init_memory(&boot_info).is_ok());
+    }
 
     #[kani::proof]
     fn check_align_up() {

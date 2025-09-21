@@ -1,36 +1,40 @@
 //! The scheduler module is responsible for managing the tasks and threads in the system.
 //! It provides the necessary functions to create tasks and threads, and to switch between them.
 
-use super::task::{Task, TaskDesc, TaskId, Thread, ThreadId, ThreadState, Timing};
+use core::{ffi::c_void, sync::atomic::AtomicBool};
+
+use super::task::{Task, TaskId};
 use crate::{
     mem::{self, array::IndexMap, heap::BinaryHeap, queue::Queue},
+    sched::{
+        task::TaskDescriptor,
+        thread::{RunState, ThreadMap, ThreadUId, Timing},
+    },
     sync::spinlock::SpinLocked,
     utils,
 };
-use hal::sched::{CtxPtr, ThreadDesc};
 
 /// The global scheduler instance.
 pub static SCHEDULER: SpinLocked<Scheduler> = SpinLocked::new(Scheduler::new());
+static SCHEDULER_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// The scheduler struct. It keeps track of the tasks and threads in the system.
 /// This scheduler is a simple Rate Monotonic Scheduler (RMS) implementation.
 pub struct Scheduler {
     /// The current running thread.
-    current: Option<ThreadId>,
+    current: Option<ThreadUId>,
     /// Fast interval store. This gets updated every time a new thread is selected.
     current_interval: usize,
     /// Stores the tasks in the system.
-    tasks: IndexMap<Task, 8>,
+    user_tasks: IndexMap<usize, Task, 8>,
     /// Stores the threads in the system.
-    threads: IndexMap<Thread, 32>,
+    threads: ThreadMap<8>,
     /// The priority queue that yields the next thread to run.
-    queue: BinaryHeap<(usize, ThreadId), 32>,
+    queue: BinaryHeap<(usize, ThreadUId), 32>,
     /// The callbacks queue that stores the threads that need to be fired in the future.
-    callbacks: Queue<(ThreadId, usize), 32>,
+    callbacks: Queue<(ThreadUId, usize), 32>,
     /// The progression of the time interval of the scheduler.
     time: usize,
-    /// Whether the scheduler is enabled or not.
-    enabled: bool,
 }
 
 impl Scheduler {
@@ -39,64 +43,55 @@ impl Scheduler {
         Self {
             current: None,
             current_interval: 0,
-            tasks: IndexMap::new(),
-            threads: IndexMap::new(),
+            user_tasks: IndexMap::new(),
+            threads: ThreadMap::new(),
             queue: BinaryHeap::new(),
             callbacks: Queue::new(),
             time: 0,
-            enabled: false,
         }
     }
 
-    pub fn enable(&mut self) {
-        hal::asm::disable_interrupts();
-        self.enabled = true;
-        hal::asm::enable_interrupts();
+    pub fn create_task(&mut self, desc: TaskDescriptor) -> Result<TaskId, utils::KernelError> {
+        let size = mem::align_up(desc.mem_size);
+        let idx = self
+            .user_tasks
+            .find_empty()
+            .ok_or(utils::KernelError::OutOfMemory)?;
+        let task_id = TaskId::new_user(idx);
+
+        let task = Task::new(size, task_id)?;
+        self.user_tasks.insert(&idx, task)?;
+        Ok(task_id)
     }
 
-    /// Create a new task in the system.
-    ///
-    /// `desc` - The task descriptor.
-    /// `main_desc` - The main thread descriptor.
-    /// `main_timing` - The timing information for the main thread.
-    ///
-    /// Returns the task ID if the task was created successfully, or an error if the task could not be created.
-    pub fn create_task(
+    pub fn create_thread(
         &mut self,
-        desc: TaskDesc,
-        main_desc: ThreadDesc,
-        main_timing: Timing,
-    ) -> Result<TaskId, utils::KernelError> {
-        let size = mem::align_up(desc.mem_size) + mem::align_up(desc.stack_size);
-        let mut task = Task::new(size)?;
+        entry: extern "C" fn(),
+        fin: Option<extern "C" fn() -> !>,
+        timing: Timing,
+        task_id: TaskId,
+    ) -> Result<ThreadUId, utils::KernelError> {
+        let task_idx: usize = task_id.into();
 
-        let period = main_timing.period;
-
-        let thread_ctx = task.create_thread_ctx(main_desc)?;
-        let thread = Thread::new(thread_ctx, main_timing);
-
-        let thread_id = self.threads.insert_next(thread)?;
-        task.register_thread(thread_id)?;
-
-        let task_id = self.tasks.insert_next(task)?;
-
-        self.queue.push((period, thread_id))?;
-
-        if let Some(task) = self.tasks.get_mut(task_id) {
-            task.id = task_id.into();
-            return Ok(task_id.into());
+        if let Some(task) = self.user_tasks.get_mut(&task_idx) {
+            let desc = task.create_thread(entry, fin, timing)?;
+            let id = self.threads.create(desc)?;
+            self.queue.push((timing.period, id))?;
+            Ok(id)
+        } else {
+            Err(utils::KernelError::InvalidArgument)
         }
-
-        Err(utils::KernelError::OutOfMemory)
     }
 
     /// Updates the current thread context with the given context.
     ///
     /// `ctx` - The new context to update the current thread with.
-    fn update_current_ctx(&mut self, ctx: CtxPtr) {
+    fn update_current_ctx(&mut self, ctx: *mut c_void) {
         if let Some(id) = self.current {
-            if let Some(thread) = self.threads.get_mut(id) {
-                thread.context = ctx.into();
+            if let Some(thread) = self.threads.get_mut(&id) {
+                thread
+                    .update_sp(ctx)
+                    .expect("Failed to update thread context");
             }
         }
     }
@@ -106,36 +101,36 @@ impl Scheduler {
     /// The new thread will be selected based on the priority queue.
     ///
     /// Returns the context of the new thread to run, or `None` if no thread is available.
-    fn select_new_thread(&mut self) -> Option<CtxPtr> {
+    fn select_new_thread(&mut self) -> Option<*mut c_void> {
         if let Some(id) = self.queue.pop().map(|(_, id)| id) {
             // Set the previous thread as ready. And add a callback from now.
             if let Some(id) = self.current {
-                if let Some(thread) = self.threads.get_mut(id) {
-                    thread.state = ThreadState::Ready;
+                if let Some(thread) = self.threads.get_mut(&id) {
+                    thread.update_run_state(RunState::Ready);
                     // The delay that is already in the queue.
                     let delay = self.callbacks.back().map(|(_, delay)| *delay).unwrap_or(0);
                     // Check if the period is already passed.
-                    if thread.timing.period > (self.time + delay) {
+                    if thread.timing().period > (self.time + delay) {
                         // Add the callback to the queue. If it fails, we can't do much.
                         let _ = self
                             .callbacks
-                            .push_back((id, thread.timing.period - (self.time + delay)));
+                            .push_back((id, thread.timing().period - (self.time + delay)));
                     } else {
                         // If the period is already passed, add it to the queue immediately.
-                        let _ = self.queue.push((thread.timing.exec_time, id));
+                        let _ = self.queue.push((thread.timing().exec_time, id));
                     }
                 }
             }
 
-            if let Some(thread) = self.threads.get_mut(id) {
-                thread.state = ThreadState::Runs;
+            if let Some(thread) = self.threads.get_mut(&id) {
+                thread.update_run_state(RunState::Runs);
 
                 // Set the new thread as the current one.
-                self.current_interval = thread.timing.exec_time;
+                self.current_interval = thread.timing().exec_time;
                 self.current = Some(id);
 
                 // Return the new thread context.
-                return Some(thread.context.into());
+                return Some(thread.sp());
             }
         }
 
@@ -151,9 +146,10 @@ impl Scheduler {
             // If the delay is 0, we can fire the thread.
             if cnt - 1 == 0 {
                 self.callbacks.pop_front();
-                if let Some(thread) = self.threads.get_mut(id) {
-                    thread.state = ThreadState::Ready;
-                    let _ = self.queue.push((thread.timing.exec_time, id));
+                if let Some(thread) = self.threads.get_mut(&id) {
+                    thread.update_run_state(RunState::Ready);
+
+                    let _ = self.queue.push((thread.timing().exec_time, id));
                     found = true;
                 }
             } else {
@@ -168,11 +164,6 @@ impl Scheduler {
 
     /// Ticks the scheduler. This function is called every time the system timer ticks.
     pub fn tick(&mut self) -> bool {
-        if !self.enabled {
-            // If the scheduler is not enabled, we do nothing.
-            return false;
-        }
-
         self.time += 1;
 
         // If a thread was fired, we need to reschedule.
@@ -190,13 +181,20 @@ impl Scheduler {
     }
 }
 
+pub fn enabled() -> bool {
+    SCHEDULER_ENABLED.load(core::sync::atomic::Ordering::Acquire)
+}
+
+pub fn set_enabled(enabled: bool) {
+    SCHEDULER_ENABLED.store(enabled, core::sync::atomic::Ordering::Release);
+}
+
 /// cbindgen:ignore
 /// cbindgen:no-export
 #[unsafe(no_mangle)]
-pub extern "C" fn sched_enter(ctx: CtxPtr) -> CtxPtr {
+pub extern "C" fn sched_enter(ctx: *mut c_void) -> *mut c_void {
     {
         let mut scheduler = SCHEDULER.lock();
-
         // Update the current context.
         scheduler.update_current_ctx(ctx);
 

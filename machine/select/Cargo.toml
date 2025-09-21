@@ -1,0 +1,17 @@
+[package]
+name = "hal-select"
+version = "0.1.0"
+edition = "2024"
+links = "hal"
+
+[dependencies]
+hal-api  = { path = "../api" }
+
+[target.'cfg(target_arch = "arm")'.dependencies]
+hal-arm = { path = "../arm" }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+hal-testing = { path = "../testing" }
+
+[build-dependencies]
+cfg_aliases = "0.2.1"

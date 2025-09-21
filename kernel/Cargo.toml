@@ -1,0 +1,39 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "Kernel"
+path = "src/main.rs"
+
+[dependencies]
+hal = { package = "hal-select", path = "../machine/select" }
+
+macros = { path = "macros" }
+
+[dev-dependencies]
+# This is a host-compatible HAL which will be used for running tests and verification on the host.
+hal-testing = { path = "../machine/testing", features = [] }
+
+
+[features]
+default = []
+nightly = []
+no-atomic-cas = []
+multi-core = []
+
+[build-dependencies]
+cbindgen = "0.28.0"
+bindgen = "0.69.5"
+walkdir = "2.5.0"
+syn = "2.0.100"
+quote = "1.0.40"
+rand = "0.8.5"
+cfg_aliases = "0.2.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

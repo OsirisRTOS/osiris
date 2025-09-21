@@ -1,18 +1,24 @@
 [package]
-name = "hal"
+name = "hal-arm"
 version = "0.1.0"
 rust-version = "1.85.0"
 authors = ["Thomas Wachter"]
 edition = "2024"
 build = "build.rs"
+# Through this we can access env variables set by the build script through DEP_HAL_<VAR_NAME>
+# It has nothing to do with native libraries.
+links = "halarm"
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
+hal-api = { path = "../api" }
 
 [build-dependencies]
 bindgen = "0.72.0"
+cmake = "0.1.54"
+anyhow = "1.0.99"
 
 [features]
 # This enables the host implementation of the HAL. Mainly used for testing.
@@ -21,4 +27,4 @@ panic-exit = []
 panic-uart = []
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cm4)']}

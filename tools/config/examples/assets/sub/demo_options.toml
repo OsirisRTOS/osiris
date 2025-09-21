@@ -1,0 +1,13 @@
+[metadata]
+parent = ".democategory.demosubcategory"
+
+
+[subcategory]
+name = "Demo Subcategory"
+description = "This is a demo subcategory to show how subcategories work."
+depends_on = [{ key = ".democategory.demooption4", value = "value1" }]
+
+[subcategory.demooption]
+name = "Demo Option"
+description = "This is a demo option in a subcategory."
+type = "String"

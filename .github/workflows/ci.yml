@@ -62,7 +62,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.container.outputs.container_name }}
-      options: --user root --privileged
     permissions:
       contents: read
       issues: write
@@ -74,13 +73,16 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Run tests
-        run: make test
+      - name: Set testing config
+        run: just config load test_def --no-confirm
+
+      - name: Run test coverage
+        run: just cov
 
       - name: Report code coverage
         uses: xarantolus/github-actions-report-lcov@v5
         with:
-          coverage-files: kernel/lcov.info
+          coverage-files: lcov.info
           github-token: ${{ secrets.GITHUB_TOKEN }}
           update-comment: true
 
@@ -90,7 +92,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.container.outputs.container_name }}
-      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -98,7 +99,7 @@ jobs:
           submodules: recursive
 
       - name: Check formatting for all Cargo manifests
-        run: make check-format
+        run: just fmt --check
 
   kani:
     name: Kani verification
@@ -106,28 +107,32 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.container.outputs.container_name }}
-      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Run Kani
-        run: make verify
+      - name: Set testing config
+        run: just config load test_def --no-confirm
 
-  build-stm32-nucleo-l4r5zi:
+      - name: Run Kani
+        run: just verify
+
+  build-stm32-l4r5zi-def:
     name: Build for the STM32 Nucleo L4R5ZI
     needs: [container]
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.container.outputs.container_name }}
-      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - name: Set stm32l4r5zi config
+        run: just config load stm32l4r5zi_def --no-confirm
+
       - name: Build
-        run: make osiris
+        run: just build thumbv7em-none-eabi

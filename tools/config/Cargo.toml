@@ -1,0 +1,18 @@
+[package]
+name = "config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ratatui = "0.29.0"
+crossterm = "0.27"
+walkdir = "2.3"
+spdlog-rs = { version = "0.4.3", features = ["log"] }
+colored = "3.0.0"
+thiserror = "2.0.12"
+log = "0.4.27"
+toml_edit = "0.22.26"
+annotate-snippets = "0.11.5"
+anyhow = "1.0.99"
+enum_dispatch = "0.3.13"
+clap = { version = "4.5.47", features = ["derive"] }

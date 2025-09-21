@@ -6,3 +6,4 @@ qemu/
 target
 **.info
 symbols.map
+*.bin

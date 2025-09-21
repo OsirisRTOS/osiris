@@ -1,4 +1,4 @@
 #!/bin/bash
 set -eoux pipefail
 
-make check-format
+just fmt --check

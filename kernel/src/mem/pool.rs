@@ -9,7 +9,7 @@ use core::{
 
 /// Meta information for a block in the pool.
 struct SizedPoolMeta {
-    size: usize,
+    _size: usize,
     next: Option<NonZeroUsize>,
 }
 
@@ -17,6 +17,12 @@ struct SizedPoolMeta {
 pub struct SizedPool<T: Default> {
     head: Option<NonZeroUsize>,
     _marker: PhantomData<T>,
+}
+
+impl<T: Default> Default for SizedPool<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: Default> SizedPool<T> {
@@ -64,7 +70,7 @@ impl<T: Default> SizedPool<T> {
     /// The caller must ensure that the pointer is valid and that the block is at least the size of `T` + `SizedPoolMeta` + Padding for `T`.
     unsafe fn add_block(&mut self, ptr: usize) {
         let meta = SizedPoolMeta {
-            size: size_of::<T>(),
+            _size: size_of::<T>(),
             next: self.head,
         };
 

@@ -1,11 +1,15 @@
-ENTRY(reset_hndlr)
+ENTRY(_start)
 
-#include "config/config.ldconf"
+#ifndef MCU_HEADER
+#error "MCU_HEADER is not defined."
+#endif
+
+#include MCU_HEADER
 
 __ram_start = ORIGIN(RAM);
 __ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
-#ifdef CONFIG_RUNTIME_SYMBOLS
+#if OSIRIS_DEBUG_RUNTIMESYMBOLS
 /* at least 250kb for the symbol table */
 __syms_size = 0x3e800;
 #else
@@ -104,8 +108,9 @@ SECTIONS
         . = ALIGN(4);
         __syms_area_start = .;
         KEEP(*(.syms_area))
-        BYTE(0x00); /* make sure the section is not empty */
-        . = __syms_size;
+        FILL(0x00);
+        /* BYTE(0x00); make sure the section is not empty */
+        . = . + __syms_size;
         __syms_area_end = .;
     } > FLASH
 
