@@ -1,10 +1,10 @@
 [env]
-OSIRIS_HAL = "stm32l4xx"
-OSIRIS_DEBUG_RUNTIMESYMBOLS = "true"
-OSIRIS_DEBUG_UART = "LPUART1"
-OSIRIS_STM32L4XX_MCU = "r5zi"
-OSIRIS_STM32L4XX_BOARD = "nucleo"
 OSIRIS_TUNING_ENABLEFPU = "false"
+OSIRIS_DEBUG_UART = "LPUART1"
+OSIRIS_ARM_HAL = "stm32l4xx"
+OSIRIS_ARM_STM32L4XX_MCU = "r5zi"
+OSIRIS_DEBUG_RUNTIMESYMBOLS = "true"
+OSIRIS_ARM_STM32L4XX_BOARD = "nucleo"
 
 [alias]
 xtask = "run --manifest-path xtask/Cargo.toml --release --"

@@ -1,5 +1,5 @@
 [metadata]
-parent = ".stm32l4xx"
+parent = ".arm.stm32l4xx"
 
 [mcu]
 name = "Microcontroller"

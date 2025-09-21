@@ -31,7 +31,7 @@ endforeach()
 
 
 # this will compile our chip_stm32l4xx library
-add_subdirectory(${OSIRIS_STM32L4XX_MCU})
+add_subdirectory(${OSIRIS_ARM_STM32L4XX_MCU})
 
 # HAL
 add_subdirectory(hal)
@@ -50,7 +50,7 @@ add_custom_command(
   OUTPUT  ${LINKER_SCRIPT_OUT}
   COMMAND ${CMAKE_C_COMPILER} -E -P -x c
           ${CONFIG_DEFINES}
-          -DMCU_HEADER=\"${OSIRIS_STM32L4XX_MCU}/link.ld\"
+          -DMCU_HEADER=\"${OSIRIS_ARM_STM32L4XX_MCU}/link.ld\"
           ${LINKER_SCRIPT_IN}
           -o ${LINKER_SCRIPT_OUT}
   DEPENDS ${LINKER_SCRIPT_IN} ${DEPS_FILE}

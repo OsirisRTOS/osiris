@@ -150,8 +150,8 @@ fn fail_on_error<T>(res: Result<T>) -> T {
 fn main() {
     let out = env::var("OUT_DIR").unwrap_or("src".to_string());
 
-    let hal = fail_on_error(env::var("OSIRIS_HAL").with_context(
-        || "HAL environment variable not set. Please set it to the path of the ARM HAL.",
+    let hal = fail_on_error(env::var("OSIRIS_ARM_HAL").with_context(
+        || "OSIRIS_ARM_HAL environment variable not set. Please set it to the path of the ARM HAL.",
     ));
 
     fail_on_error(generate_bindings(&out, &hal));

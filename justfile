@@ -1,10 +1,12 @@
 build target:
-    cargo objcopy --target {{target}} -- -O binary Kernel.bin
+    cargo build --target {{target}}
     cargo xtask inject-syms --target {{target}}
+    cargo objcopy --target {{target}} -- -O binary Kernel.bin
 
 release target:
-    cargo objcopy --target {{target}} --release -- -O binary Kernel.bin
+    cargo build --target {{target}} --release
     cargo xtask inject-syms --target {{target}} --release
+    cargo objcopy --target {{target}} --release -- -O binary Kernel.bin
 
 config:
     cargo run -p config
