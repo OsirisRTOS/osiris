@@ -63,12 +63,12 @@ macro_rules! __macro_syscall {
 
 pub use crate::__macro_syscall as syscall;
 
-use core::arch::asm;
-use core::sync::atomic::compiler_fence;
-
 #[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn disable_interrupts() {
+    use core::arch::asm;
+    use core::sync::atomic::compiler_fence;
+
     unsafe { asm!("cpsid f", options(nomem, nostack, preserves_flags)) };
     compiler_fence(core::sync::atomic::Ordering::SeqCst);
 }
@@ -80,6 +80,8 @@ pub fn disable_interrupts() {}
 #[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn are_interrupts_enabled() -> bool {
+    use core::arch::asm;
+
     let primask: u32;
     unsafe {
         asm!("mrs {}, primask", out(reg) primask, options(nomem, nostack, preserves_flags));
@@ -96,6 +98,9 @@ pub fn are_interrupts_enabled() -> bool {
 #[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn enable_interrupts() {
+    use core::arch::asm;
+    use core::sync::atomic::compiler_fence;
+
     unsafe { asm!("cpsie f", options(nomem, nostack, preserves_flags)) };
     compiler_fence(core::sync::atomic::Ordering::SeqCst);
 }
@@ -141,3 +146,29 @@ macro_rules! __macro_delay {
 }
 
 pub use crate::__macro_delay as delay;
+
+
+#[cfg(not(feature = "host"))]
+#[macro_export]
+macro_rules! __macro_switch_to_user_priv{
+    () => {
+        use core::arch::asm;
+        asm!("
+            mrs r0, CONTROL
+            orr r0, r0, #1
+            msr CONTROL, r0
+            isb
+        ",
+        out("r0") _,
+        options(nostack, preserves_flags)
+        )
+    };
+}
+
+#[cfg(feature = "host")]
+#[macro_export]
+macro_rules! __macro_switch_to_user_priv {
+    () => {{}};
+}
+
+pub use crate::__macro_switch_to_user_priv as switch_to_user_priv;

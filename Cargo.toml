@@ -2,7 +2,7 @@
 resolver = "3"
 
 members = [
-    "kernel", "xtask", "tools/config",
+    "kernel", "xtask", "tools/config", "tools/bundler",
 ]
 
 default-members = ["kernel"]

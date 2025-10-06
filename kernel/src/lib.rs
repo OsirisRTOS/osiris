@@ -16,10 +16,13 @@ pub mod sync;
 pub mod syscalls;
 pub mod time;
 pub mod uspace;
+pub mod cmdline;
 
 use core::ffi::c_char;
 
 use hal::Machinelike;
+
+use crate::cmdline::Args;
 
 /// The memory map entry type.
 ///
@@ -48,6 +51,8 @@ pub struct BootInfo {
     pub mmap: [MemMapEntry; 8],
     /// The length of the memory map.
     pub mmap_len: usize,
+    /// The command line arguments.
+    pub args: Args,
 }
 
 /// The kernel initialization function.
@@ -57,11 +62,13 @@ pub struct BootInfo {
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize basic hardware and the logging system.
     hal::Machine::init();
-
-    //hal::asm::disable_interrupts();
-
     hal::Machine::bench_start();
 
+    if !boot_info.is_null() || !boot_info.is_aligned() {
+        panic!("[Kernel] Error: boot_info pointer is null or unaligned.");
+    }
+
+    // Safety: We trust the bootloader to provide a valid boot_info structure.
     let boot_info = unsafe { &*boot_info };
 
     print::print_header();
@@ -70,16 +77,14 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize the memory allocator.
     if let Err(e) = mem::init_memory(boot_info) {
         panic!(
-            "[Kernel] Error: failed to initialize memory allocator. Error: {:?}",
-            e
+            "[Kernel] Error: failed to initialize memory allocator. Error: {e:?}"
         );
     }
 
     // Initialize the services.
     if let Err(e) = services::init_services() {
         panic!(
-            "[Kernel] Error: failed to initialize services. Error: {:?}",
-            e
+            "[Kernel] Error: failed to initialize services. Error: {e:?}"
         );
     }
 
@@ -87,12 +92,15 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
 
     let (cyc, ns) = hal::Machine::bench_end();
     kprintln!(
-        "[Osiris] Init took {} cycles taking {} ms",
+        "[Osiris] Kernel init took {} cycles taking {} ms",
         cyc,
         ns / 1e6f32
     );
 
-    sched::enable_scheduler(true);
+    // Start the init application.
+    if let Err(e) = uspace::init_app(boot_info) {
+        panic!("[Kernel] Error: failed to start init application. Error: {e:?}");
+    }
 
     loop {
         hal::asm::nop!();

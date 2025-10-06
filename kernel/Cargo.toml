@@ -12,8 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 hal = { package = "hal-select", path = "../machine/select" }
-
 macros = { path = "macros" }
+envparse = "0.1.0"
 
 [dev-dependencies]
 # This is a host-compatible HAL which will be used for running tests and verification on the host.
