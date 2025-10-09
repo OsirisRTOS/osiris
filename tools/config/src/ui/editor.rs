@@ -1,11 +1,11 @@
 use anyhow::anyhow;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 
 use crate::{
@@ -14,12 +14,12 @@ use crate::{
     state::ConfigState,
     types::{ConfigNodelike, ConfigType, ConfigValue},
     ui::{
+        ConfigUI,
         types::{ModalCmd, Modallike},
         widget::{
-            button::{Button, ButtonState, BUTTON_GREEN, BUTTON_RED},
+            button::{BUTTON_GREEN, BUTTON_RED, Button, ButtonState},
             dropdown::{Dropdown, DropdownState},
         },
-        ConfigUI,
     },
 };
 
