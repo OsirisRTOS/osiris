@@ -87,7 +87,7 @@ impl Modallike for SaveConfirmationModal {
         }
     }
 
-    fn draw(&self, f: &mut Frame) {
+    fn draw(&mut self, f: &mut Frame) {
         let area = ConfigUI::centered_rect_sized(40, 6, f.area());
         // Clear our modal area
         f.render_widget(Clear, area);
@@ -209,7 +209,7 @@ impl Modallike for ExitConfirmationModal {
         }
     }
 
-    fn draw(&self, f: &mut Frame) {
+    fn draw(&mut self, f: &mut Frame) {
         let area = ConfigUI::centered_rect_sized(40, 6, f.area());
         // Clear our modal area
         f.render_widget(Clear, area);

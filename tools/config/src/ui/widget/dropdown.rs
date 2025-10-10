@@ -8,7 +8,7 @@ use ratatui::{
 
 #[derive(Debug, Clone)]
 pub struct Dropdown<'a> {
-    items: &'a Vec<String>,
+    items: &'a [String],
     style: Style,
     highlight_style: Style,
 }
@@ -21,7 +21,7 @@ pub struct DropdownState {
 }
 
 impl<'a> Dropdown<'a> {
-    pub fn new(items: &'a Vec<String>) -> Self {
+    pub fn new(items: &'a [String]) -> Self {
         Self {
             items,
             style: Style::default(),

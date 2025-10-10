@@ -139,15 +139,13 @@ impl EditorModal {
         f.render_widget(input_box, area);
     }
 
-    fn draw_content(&self, f: &mut Frame, area: Rect) {
+    fn draw_content(&mut self, f: &mut Frame, area: Rect) {
         // Check if we should use dropdown
         if let (ConfigType::String(Some(allowed_values), _), Some(dropdown_state)) =
-            (&self.config_type, &self.dropdown_state)
+            (&self.config_type, &mut self.dropdown_state)
         {
             let dropdown = Dropdown::new(allowed_values);
-
-            let mut state = dropdown_state.clone();
-            f.render_stateful_widget(dropdown, area, &mut state);
+            f.render_stateful_widget(dropdown, area, dropdown_state);
         } else {
             // Use regular text input
             let content = vec![Line::from(vec![
@@ -237,11 +235,8 @@ impl Modallike for EditorModal {
         }
     }
 
-    fn draw(&self, f: &mut Frame) {
-        let dropdown = match &self.config_type {
-            ConfigType::String(Some(_), _) => true,
-            _ => false,
-        };
+    fn draw(&mut self, f: &mut Frame) {
+        let dropdown = matches!(self.config_type, ConfigType::String(Some(_), _));
         let area = ConfigUI::centered_rect_sized(40, 6 + dropdown as u16 * 2, f.area());
 
         let block = Block::default()

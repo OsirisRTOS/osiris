@@ -144,7 +144,7 @@ impl<'a> ConfigUI<'a> {
     }
 
     fn draw(&mut self, f: &mut Frame) {
-        match &self.modal {
+        match &mut self.modal {
             Some(modal) => {
                 self.base.draw(f, Some(&modal.footer_text()), &self.state);
                 modal.draw(f);
