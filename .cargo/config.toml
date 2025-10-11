@@ -2,3 +2,7 @@
 
 [alias]
 xtask = "run --manifest-path xtask/Cargo.toml --release --"
+
+[build]
+# Enable position-independent code for Rust to match C code compilation
+rustflags = ["-C", "relocation-model=pic"]
