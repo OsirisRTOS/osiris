@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 hal = { package = "hal-select", path = "../machine/select" }
 macros = { path = "macros" }
+interface = { path = "../interface" }
 envparse = "0.1.0"
 
 [dev-dependencies]

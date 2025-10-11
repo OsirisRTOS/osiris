@@ -1,7 +1,6 @@
 #include <stdint.h>
 
-#include <kernel/lib.h>
-
+#include <bindings.h>
 #include <stdint.h>
 
 /*

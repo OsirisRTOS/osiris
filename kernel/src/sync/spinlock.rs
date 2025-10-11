@@ -6,6 +6,7 @@ use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 
 /// A mutual exclusion primitive, facilitating busy-waiting.
+#[derive(Debug)]
 pub struct SpinLock {
     lock: AtomicBool,
 }
@@ -54,6 +55,7 @@ impl SpinLock {
 }
 
 /// A guard that releases the SpinLock when dropped.
+#[derive(Debug)]
 pub struct SpinLockGuard<'a, T: ?Sized> {
     lock: &'a SpinLock,
     value: NonNull<T>,

@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "mem.h"
 
-#include <kernel/lib.h>
+#include <bindings.h>
 
 extern uintptr_t __bss_start;
 extern uintptr_t __bss_end;
@@ -23,6 +23,17 @@ extern void init_boot_info(BootInfo *boot_info);
 
 extern int main(void);
 
+__attribute__((section(".bootinfo"), used, aligned(4)))
+BootInfo _boot_info = {
+    .magic = BOOT_INFO_MAGIC,
+    .version = 1,
+    .implementer = "Unknown",
+    .variant = "Unknown",
+    .mmap = {0},
+    .mmap_len = 0,
+    .args = {.init = {0}},
+};
+
 void call_constructors(void)
 {
     for (func_t *func = &__init_array_start; func < &__init_array_end; func++)
@@ -41,6 +52,9 @@ void call_destructors(void)
 
 void _main(void)
 {
+    // Inline asm that sets r9 to &__data
+    __asm__ volatile ("mov r9, %0" :: "r"(&__data_start) : "r9");
+
     // zero bss section
     size_t bss_len = (uintptr_t)&__bss_end - (uintptr_t)&__bss_start;
 
@@ -59,12 +73,14 @@ void _main(void)
 
     call_constructors();
 
-    // Init boot info
-    BootInfo boot_info;
-    memset(&boot_info, 0, sizeof(BootInfo));
-    init_boot_info(&boot_info);
+    // We need a full barrier here to ensure that all operations are completed
+    // and we can safely access global variables like _boot_info.
+    __sync_synchronize();
+
+    // Now we can actually access bootinfo.
+    init_boot_info(&_boot_info);
 
     // Boot!
-    kernel_init(&boot_info);
+    kernel_init(&_boot_info);
     unreachable();
 }

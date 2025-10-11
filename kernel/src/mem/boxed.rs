@@ -9,6 +9,7 @@ use core::{
 };
 
 /// A heap-allocated memory block.
+#[derive(Debug)]
 pub struct Box<T: ?Sized> {
     /// Pointer to the heap-allocated memory.
     /// This is uniquely owned, so no covariance issues.

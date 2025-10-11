@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.28)
 add_library(chip_native STATIC lib.c)
 
 target_include_directories(chip_native PUBLIC
-    ../../../../kernel/include
+    ../../../../interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

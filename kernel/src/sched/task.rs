@@ -59,6 +59,7 @@ pub struct TaskDescriptor {
 }
 
 /// The struct representing a task.
+#[derive(Debug)]
 pub struct Task {
     /// The unique identifier of the task.
     pub id: TaskId,
@@ -136,6 +137,7 @@ impl Task {
 }
 
 /// The memory of a task.
+#[derive(Debug)]
 pub struct TaskMemory {
     /// The beginning of the memory.
     begin: NonNull<u8>,

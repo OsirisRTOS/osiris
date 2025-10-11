@@ -100,6 +100,7 @@ pub struct Timing {
 }
 
 /// The state of a thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunState {
     /// The thread is currently using the cpu.
     Runs,
@@ -109,12 +110,14 @@ pub enum RunState {
     Waits,
 }
 
+#[derive(Debug)]
 pub struct ThreadState {
     run_state: RunState,
     stack: Stack,
 }
 
 /// The struct representing a thread.
+#[derive(Debug)]
 pub struct Thread {
     /// The current state of the thread.
     state: ThreadState,
@@ -165,6 +168,7 @@ impl Thread {
     }
 }
 
+#[derive(Debug)]
 pub struct ThreadMap<const N: usize> {
     map: IndexMap<ThreadUId, Thread, N>,
 }

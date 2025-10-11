@@ -9,3 +9,6 @@ OSIRIS_TUNING_APPSTACKSIZE = "2048"
 
 [alias]
 xtask = "run --manifest-path xtask/Cargo.toml --release --"
+
+[target.thumbv7em-none-eabi]
+rustflags = ["-C", "relocation-model=ropi-rwpi"]

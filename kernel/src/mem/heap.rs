@@ -4,6 +4,7 @@ use super::array::Vec;
 use crate::utils::KernelError;
 
 /// An array-based binary heap, with N elements stored inline.
+#[derive(Debug)]
 pub struct BinaryHeap<T, const N: usize> {
     vec: Vec<T, N>,
 }

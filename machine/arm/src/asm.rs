@@ -114,7 +114,10 @@ pub fn enable_interrupts() {}
 macro_rules! __macro_startup_trampoline {
     () => {{
         use core::arch::naked_asm;
-        naked_asm!("ldr r1,=__stack_top", "mov sp, r1", "b _main")
+        naked_asm!(
+            "ldr r1,=__stack_top",
+            "mov sp, r1",
+            "b _main")
     }};
 }
 
@@ -146,7 +149,6 @@ macro_rules! __macro_delay {
 }
 
 pub use crate::__macro_delay as delay;
-
 
 #[cfg(not(feature = "host"))]
 #[macro_export]

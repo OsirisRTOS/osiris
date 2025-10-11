@@ -27,6 +27,8 @@ foreach(var ${_cache_vars})
   endif()
 endforeach()
 
+add_compile_options(-msingle-pic-base -mpic-register=r9 -mno-pic-data-is-text-relative -ffixed-r9)
+
 set_property(SOURCE ivt.S APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")
 set_property(SOURCE irq.S APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")
 
@@ -38,7 +40,7 @@ add_library(common STATIC
 )
 
 target_include_directories(common PUBLIC
-    ../../../kernel/include
+    ../../../interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

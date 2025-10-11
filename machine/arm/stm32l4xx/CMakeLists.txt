@@ -29,6 +29,7 @@ foreach(var ${_cache_vars})
   endif()
 endforeach()
 
+add_compile_options(-msingle-pic-base -mpic-register=r9 -mno-pic-data-is-text-relative -ffixed-r9)
 
 # this will compile our chip_stm32l4xx library
 add_subdirectory(${OSIRIS_ARM_STM32L4XX_MCU})

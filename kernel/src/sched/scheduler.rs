@@ -1,7 +1,7 @@
 //! The scheduler module is responsible for managing the tasks and threads in the system.
 //! It provides the necessary functions to create tasks and threads, and to switch between them.
 
-use core::{ffi::c_void, sync::atomic::AtomicBool};
+use core::{ffi::c_void, ops::Deref, sync::atomic::AtomicBool};
 
 use super::task::{Task, TaskId};
 use crate::{
@@ -20,6 +20,7 @@ static SCHEDULER_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// The scheduler struct. It keeps track of the tasks and threads in the system.
 /// This scheduler is a simple Rate Monotonic Scheduler (RMS) implementation.
+#[derive(Debug)]
 pub struct Scheduler {
     /// The current running thread.
     current: Option<ThreadUId>,
@@ -195,6 +196,15 @@ pub fn set_enabled(enabled: bool) {
 pub extern "C" fn sched_enter(ctx: *mut c_void) -> *mut c_void {
     {
         let mut scheduler = SCHEDULER.lock();
+
+        // Print r9 for debugging.
+        let r9: u32;
+        unsafe { core::arch::asm!("mov {}, r9", out(reg) r9) };
+        //kprintln!("[Scheduler] Entering scheduler from thread with r9 = {:#X}", r9);
+
+        // Print scheduler state for debugging.
+        //kprintln!("[Scheduler] Current state: {:?}", scheduler.deref());
+
         // Update the current context.
         scheduler.update_current_ctx(ctx);
 
