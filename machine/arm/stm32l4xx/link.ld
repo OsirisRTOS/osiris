@@ -90,6 +90,29 @@ SECTIONS
         __data_end = .;
     } > RAM AT > FLASH
 
+    /* Global Offset Table (GOT) for position-independent code */
+    __got_load = LOADADDR(.got);
+    .got :
+    {
+        . = ALIGN(4);
+        __got_start = .;
+        *(.got)
+        *(.got.plt)
+        . = ALIGN(4);
+        __got_end = .;
+    } > RAM AT > FLASH
+
+    /* Dynamic relocations */
+    __rel_dyn_load = LOADADDR(.rel.dyn);
+    .rel.dyn :
+    {
+        . = ALIGN(4);
+        __rel_dyn_start = .;
+        *(.rel.dyn)
+        . = ALIGN(4);
+        __rel_dyn_end = .;
+    } > RAM AT > FLASH
+
     .bss (NOLOAD):
     {
         . = ALIGN(4);

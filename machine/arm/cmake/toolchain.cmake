@@ -12,6 +12,11 @@ set(CMAKE_SIZE ${TOOLCHAIN_PREFIX}-size)
 
 add_compile_options(-mfloat-abi=softfp)
 
+# Enable position-independent code for relocatable binary
+add_compile_options(-fpic)
+add_compile_options(-msingle-pic-base)
+add_compile_options(-mpic-register=r9)
+
 # Implement syscalls as stubs, as we are on bare metal.
 set(CMAKE_EXE_LINKER_FLAGS "--specs=nosys.specs" CACHE INTERNAL "")
 
