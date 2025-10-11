@@ -2,7 +2,7 @@ use ratatui::widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     widgets::{List, ListItem, ListState, StatefulWidget},
 };
 
@@ -14,6 +14,7 @@ pub struct Dropdown<'a> {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct DropdownState {
     length: usize,
     list_state: ListState,
@@ -24,21 +25,15 @@ impl<'a> Dropdown<'a> {
     pub fn new(items: &'a [String]) -> Self {
         Self {
             items,
-            style: Style::default(),
-            highlight_style: Style::default().add_modifier(Modifier::REVERSED),
+            style: Style::default().fg(Color::White),
+            highlight_style: Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         }
     }
 }
 
-impl Default for DropdownState {
-    fn default() -> Self {
-        Self {
-            length: 0,
-            list_state: ListState::default(),
-            vertical_scroll_state: ScrollbarState::default(),
-        }
-    }
-}
 
 impl DropdownState {
     pub fn new(length: usize) -> Self {
@@ -102,9 +97,26 @@ impl<'a> StatefulWidget for Dropdown<'a> {
             .highlight_style(self.highlight_style)
             .highlight_symbol("❯ ");
 
-        StatefulWidget::render(list, area, buf, &mut state.list_state);
+        // Split area to reserve space for scrollbar
+        let list_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width.saturating_sub(1),
+            height: area.height,
+        };
 
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-        StatefulWidget::render(scrollbar, area, buf, &mut state.vertical_scroll_state);
+        let scrollbar_area = Rect {
+            x: area.x + area.width.saturating_sub(1),
+            y: area.y,
+            width: 1,
+            height: area.height,
+        };
+
+        StatefulWidget::render(list, list_area, buf, &mut state.list_state);
+
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+        StatefulWidget::render(scrollbar, scrollbar_area, buf, &mut state.vertical_scroll_state);
     }
 }
