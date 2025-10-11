@@ -30,6 +30,6 @@ pub enum ModalCmd {
 #[enum_dispatch]
 pub trait Modallike {
     fn handle_key_event(&mut self, key: KeyEvent, state: &mut ConfigState) -> Result<ModalCmd>;
-    fn draw(&self, f: &mut Frame);
+    fn draw(&mut self, f: &mut Frame);
     fn footer_text(&self) -> String;
 }

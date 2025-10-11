@@ -35,4 +35,4 @@ name = "Demo Option 4"
 description = "This is a demo option in a category."
 # String with allowed values
 type = { type = "String", allowed_values = ["value1", "value2", "value3"] }
-default = "value2"
+default = "value1"
