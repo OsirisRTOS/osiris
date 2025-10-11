@@ -55,6 +55,8 @@ typedef struct {
 
 #define ELF32_R_TYPE(info) ((info) & 0xff)
 #define R_ARM_RELATIVE 23
+#define R_ARM_GLOB_DAT 21
+#define R_ARM_JUMP_SLOT 22
 
 // Relocate GOT entries for position-independent code
 void relocate_got(void)
@@ -95,6 +97,12 @@ void relocate_got(void)
         uint32_t type = ELF32_R_TYPE(rel->r_info);
         if (type == R_ARM_RELATIVE)
         {
+            uint32_t *ptr = (uint32_t *)rel->r_offset;
+            *ptr += offset;
+        }
+        else if (type == R_ARM_GLOB_DAT || type == R_ARM_JUMP_SLOT)
+        {
+            // These relocations also need the offset applied
             uint32_t *ptr = (uint32_t *)rel->r_offset;
             *ptr += offset;
         }

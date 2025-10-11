@@ -98,6 +98,7 @@ SECTIONS
         __got_start = .;
         *(.got)
         *(.got.plt)
+        *(.igot.plt)
         . = ALIGN(4);
         __got_end = .;
     } > RAM AT > FLASH
@@ -109,6 +110,7 @@ SECTIONS
         . = ALIGN(4);
         __rel_dyn_start = .;
         *(.rel.dyn)
+        *(.rel.plt)
         . = ALIGN(4);
         __rel_dyn_end = .;
     } > RAM AT > FLASH
