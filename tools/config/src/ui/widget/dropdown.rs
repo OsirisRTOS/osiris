@@ -13,8 +13,7 @@ pub struct Dropdown<'a> {
     highlight_style: Style,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct DropdownState {
     length: usize,
     list_state: ListState,
@@ -33,7 +32,6 @@ impl<'a> Dropdown<'a> {
         }
     }
 }
-
 
 impl DropdownState {
     pub fn new(length: usize) -> Self {
@@ -117,6 +115,11 @@ impl<'a> StatefulWidget for Dropdown<'a> {
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))
             .end_symbol(Some("↓"));
-        StatefulWidget::render(scrollbar, scrollbar_area, buf, &mut state.vertical_scroll_state);
+        StatefulWidget::render(
+            scrollbar,
+            scrollbar_area,
+            buf,
+            &mut state.vertical_scroll_state,
+        );
     }
 }
