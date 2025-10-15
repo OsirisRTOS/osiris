@@ -1,4 +1,4 @@
-#include <nlib/core.h>
+#include "mem.h"
 
 #if defined(__GNUC__) || defined(__GNUG__)
 

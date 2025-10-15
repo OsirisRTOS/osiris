@@ -7,3 +7,5 @@ target
 **.info
 symbols.map
 *.bin
+compile_commands.json
+.cache/
