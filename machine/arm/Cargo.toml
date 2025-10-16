@@ -19,6 +19,7 @@ hal-api = { path = "../api" }
 bindgen = "0.72.0"
 cmake = "0.1.54"
 anyhow = "1.0.99"
+serde_json = "1.0.145"
 
 [features]
 # This enables the host implementation of the HAL. Mainly used for testing.

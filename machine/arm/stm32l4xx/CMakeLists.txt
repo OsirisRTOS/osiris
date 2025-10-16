@@ -6,6 +6,7 @@ set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchain.cmake)
 project(HAL C ASM)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Turn all cache variables starting with OSIRIS_ into compile definitions
 get_cmake_property(_cache_vars CACHE_VARIABLES)
