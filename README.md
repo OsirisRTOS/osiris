@@ -1,3 +1,4 @@
+
 # Osiris
 An RTOS designed and verified to enable reliable software updates and operation for embedded systems.
 
@@ -63,3 +64,8 @@ After the build a binary named ```Kernel.bin``` will be created at the source ro
 $ just hooks
 ```
 
+## License
+
+Rust is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
+
+See [LICENSE-APACHE](LICENSE_APACHE) and [LICENSE-MIT](LICENSE-MIT) for details.
