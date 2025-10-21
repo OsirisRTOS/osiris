@@ -66,6 +66,6 @@ $ just hooks
 
 ## License
 
-Rust is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
+Osiris is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
 
 See [LICENSE-APACHE](LICENSE_APACHE) and [LICENSE-MIT](LICENSE-MIT) for details.
