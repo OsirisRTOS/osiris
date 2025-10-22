@@ -16,7 +16,10 @@ use crate::{
     ui::{
         ConfigUI,
         types::{ModalCmd, Modallike},
-        widget::button::{BUTTON_GREEN, BUTTON_RED, Button, ButtonState},
+        widget::{
+            button::{BUTTON_GREEN, BUTTON_RED, Button, ButtonState},
+            dropdown::{Dropdown, DropdownState},
+        },
     },
 };
 
@@ -31,11 +34,26 @@ pub struct EditorModal {
     /// Error message if validation fails
     error_message: Option<String>,
     selected_button: usize, // 0 = Yes, 1 = No
+    dropdown_state: Option<DropdownState>,
 }
 impl EditorModal {
     pub fn new(node: &ConfigOption, state: &ConfigState) -> Option<Self> {
         let default = node.default_value();
         let value = state.value(&node.id()).unwrap_or(&default);
+
+        let mut dropdown_state = None;
+
+        // Initialize dropdown state if we have allowed values
+        if let ConfigType::String(Some(allowed_values), _) = &node.typ {
+            let mut ds = DropdownState::new(allowed_values.len());
+            // Find current value index in allowed values
+            if let ConfigValue::String(current_str) = value {
+                if let Some(index) = allowed_values.iter().position(|v| current_str == v) {
+                    ds.select(index);
+                }
+            }
+            dropdown_state = Some(ds);
+        }
 
         Some(Self {
             id: node.id(),
@@ -43,6 +61,7 @@ impl EditorModal {
             config_type: node.typ.clone(),
             error_message: None,
             selected_button: 0,
+            dropdown_state,
         })
     }
 
@@ -110,9 +129,7 @@ impl EditorModal {
             Some(_) => EditorModal::new(opt, state)
                 .ok_or(anyhow!("Failed to create editor modal").into())
                 .map(Some),
-            None => {
-                return Err(anyhow!("Selected option has no value").into());
-            }
+            None => Err(anyhow!("Selected option has no value").into()),
         }
     }
 
@@ -122,24 +139,32 @@ impl EditorModal {
         f.render_widget(input_box, area);
     }
 
-    fn draw_content(&self, f: &mut Frame, area: Rect) {
-        let content = vec![Line::from(vec![
-            Span::styled(
-                self.input_buffer.clone(),
-                Style::default().fg(Color::Cyan).bg(Color::Black),
-            ),
-            Span::styled(
-                "▌",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .bg(Color::Black)
-                    .slow_blink(),
-            ),
-        ])];
+    fn draw_content(&mut self, f: &mut Frame, area: Rect) {
+        // Check if we should use dropdown
+        if let (ConfigType::String(Some(allowed_values), _), Some(dropdown_state)) =
+            (&self.config_type, &mut self.dropdown_state)
+        {
+            let dropdown = Dropdown::new(allowed_values);
+            f.render_stateful_widget(dropdown, area, dropdown_state);
+        } else {
+            // Use regular text input
+            let content = vec![Line::from(vec![
+                Span::styled(
+                    self.input_buffer.clone(),
+                    Style::default().fg(Color::Cyan).bg(Color::Black),
+                ),
+                Span::styled(
+                    "▌",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .bg(Color::Black)
+                        .slow_blink(),
+                ),
+            ])];
 
-        let input_text = Paragraph::new(content).wrap(Wrap { trim: true });
-
-        f.render_widget(input_text, area);
+            let input_text = Paragraph::new(content).wrap(Wrap { trim: true });
+            f.render_widget(input_text, area);
+        }
     }
 }
 
@@ -152,6 +177,13 @@ impl Modallike for EditorModal {
                     return Ok(ModalCmd::Close);
                 }
 
+                // Update input buffer from dropdown selection if applicable
+                if let (ConfigType::String(Some(allowed_values), _), Some(dropdown_state)) =
+                    (&self.config_type, &self.dropdown_state)
+                {
+                    self.input_buffer = allowed_values[dropdown_state.selected()].to_string();
+                }
+
                 if self.validate_and_save_value(state).is_err() {
                     self.error_message = Some("Invalid value".to_string());
                     return Ok(ModalCmd::Nothing);
@@ -159,9 +191,24 @@ impl Modallike for EditorModal {
 
                 Ok(ModalCmd::Close)
             }
+            KeyCode::Up => {
+                if let Some(ref mut dropdown_state) = self.dropdown_state {
+                    dropdown_state.previous();
+                }
+                Ok(ModalCmd::Nothing)
+            }
+            KeyCode::Down => {
+                if let Some(ref mut dropdown_state) = self.dropdown_state {
+                    dropdown_state.next();
+                }
+                Ok(ModalCmd::Nothing)
+            }
             KeyCode::Backspace => {
-                self.input_buffer.pop();
-                self.error_message = None;
+                // Only allow backspace for non-dropdown inputs
+                if self.dropdown_state.is_none() {
+                    self.input_buffer.pop();
+                    self.error_message = None;
+                }
                 Ok(ModalCmd::Nothing)
             }
             KeyCode::Left => {
@@ -177,16 +224,20 @@ impl Modallike for EditorModal {
                 Ok(ModalCmd::Nothing)
             }
             KeyCode::Char(c) => {
-                self.input_buffer.push(c);
-                self.error_message = None;
+                // Only allow character input for non-dropdown inputs
+                if self.dropdown_state.is_none() {
+                    self.input_buffer.push(c);
+                    self.error_message = None;
+                }
                 Ok(ModalCmd::Nothing)
             }
             _ => Ok(ModalCmd::Nothing),
         }
     }
 
-    fn draw(&self, f: &mut Frame) {
-        let area = ConfigUI::centered_rect_sized(40, 8, f.area());
+    fn draw(&mut self, f: &mut Frame) {
+        let dropdown = matches!(self.config_type, ConfigType::String(Some(_), _));
+        let area = ConfigUI::centered_rect_sized(40, 6 + dropdown as u16 * 2, f.area());
 
         let block = Block::default()
             .borders(Borders::ALL)
@@ -210,15 +261,17 @@ impl Modallike for EditorModal {
         let layout_vert = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Fill(1),   // Description
-                Constraint::Length(1), // The input line
+                Constraint::Length(1), // Description
+                Constraint::Fill(1),   // The input line
                 Constraint::Length(1), // Space
                 Constraint::Length(1), // Buttons
             ])
             .split(area);
 
         let input_area = layout_vert[1].inner(Margin::new(0, 0));
-        Self::draw_input_box(f, input_area);
+        if !dropdown {
+            Self::draw_input_box(f, input_area);
+        }
         //self.draw_cursor(f, input_area);
         self.draw_content(f, input_area);
 
@@ -226,11 +279,8 @@ impl Modallike for EditorModal {
 
         // Add type-specific help
         match &self.config_type {
-            ConfigType::String(Some(allowed_values), _) => {
-                description.push(Line::from(format!(
-                    "Enter one of the following values: {}",
-                    allowed_values.join(", ")
-                )));
+            ConfigType::String(Some(_), _) => {
+                description.push(Line::from("Select one of the following values:"));
             }
             ConfigType::String(None, _) => {
                 description.push(Line::from("Enter a string value:"));

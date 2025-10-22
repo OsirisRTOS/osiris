@@ -32,7 +32,7 @@ impl Modallike for HelpModal {
         }
     }
 
-    fn draw(&self, f: &mut Frame) {
+    fn draw(&mut self, f: &mut Frame) {
         let area = ConfigUI::centered_rect(60, 70, f.area());
 
         let help_text = vec![

@@ -51,6 +51,7 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	cmake \
 	git \
 	make \
+	ninja-build \
 	clang \
 	libusb1-devel \
 	openssl-devel \
