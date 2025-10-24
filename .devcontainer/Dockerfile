@@ -110,4 +110,4 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 COPY --from=qemu-builder /usr/local/ /usr/local/
 
-ENTRYPOINT ["/bin/bash"]
+CMD ["/bin/bash"]
