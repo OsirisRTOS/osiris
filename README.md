@@ -75,3 +75,7 @@ See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT) for details.
 By submitting a pull request or otherwise contributing to this repository, you agree that your contributions are licensed under both the **Apache 2.0** and **MIT** licenses, the same as the Osiris project itself.
 
 Please ensure all commits comply with these licensing terms and include proper attribution where applicable.
+
+## Contact
+
+Osiris was created and is maintained by Thomas Wachter ([@thomasw04](https://github.com/thomasw04/)).
