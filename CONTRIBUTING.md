@@ -4,9 +4,9 @@ Thank you for your interest in contributing!
 
 ## License
 
-This project is dual-licensed under the **Apache License 2.0** and the **MIT License**.
+By submitting a pull request or otherwise contributing to this repository, you agree that your contributions are licensed under both the **Apache 2.0** and **MIT** licenses, the same as the Osiris project itself.
 
-By contributing to this repository, you agree that your contributions are licensed under these same terms.
+Please ensure all commits comply with these licensing terms and include proper attribution where applicable.
 
 ## How to contribute
 
