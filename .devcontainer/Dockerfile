@@ -66,7 +66,7 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	ln -sf /usr/bin/clang /usr/bin/cc && \
 	ln -sf /usr/bin/clang++ /usr/bin/c++
 
-RUN git clone --single-branch --depth 1 -b "testing" https://github.com/CreaxxOG/stlink.git /tmp/stlink
+RUN git clone --single-branch --depth 1 -b "develop" https://github.com/CreaxxOG/stlink.git /tmp/stlink
 RUN --mount=type=cache,target=/tmp/stlink/build \
     cd /tmp/stlink && \
     make -j release && \
