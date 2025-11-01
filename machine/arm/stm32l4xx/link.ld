@@ -109,11 +109,16 @@ SECTIONS
     } > FLASH :ro
 
     __data = LOADADDR(.data);
-    .data :
+    .bootinfo : 
     {
         __data_start = .;
-        *(.data .data.* .gnu.linkonce.d*)
         KEEP(*(.bootinfo))
+        . = ALIGN(4);
+    } > RAM AT > FLASH :data
+
+    .data :
+    {
+        *(.data .data.* .gnu.linkonce.d*)
         . = ALIGN(4);
         __data_end = .;
     } > RAM AT > FLASH :data

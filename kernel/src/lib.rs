@@ -29,9 +29,9 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     hal::Machine::init();
     hal::Machine::bench_start();
 
-    /*if !boot_info.is_null() || !boot_info.is_aligned() {
+    if !boot_info.is_null() || !boot_info.is_aligned() {
         panic!("[Kernel] Error: boot_info pointer is null or unaligned.");
-    }*/
+    }
 
     // Safety: We trust the bootloader to provide a valid boot_info structure.
     let boot_info = unsafe { &*boot_info };
@@ -61,9 +61,9 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     sched::enable_scheduler(true);
 
     // Start the init application.
-    /*if let Err(e) = uspace::init_app(boot_info) {
+    if let Err(e) = uspace::init_app(boot_info) {
         panic!("[Kernel] Error: failed to start init application. Error: {e:?}");
-    }*/
+    }
 
     loop {
         hal::asm::nop!();

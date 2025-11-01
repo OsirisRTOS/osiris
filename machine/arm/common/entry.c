@@ -24,7 +24,7 @@ extern void init_boot_info(BootInfo *boot_info);
 extern int main(void);
 
 __attribute__((section(".bootinfo"), used, aligned(4)))
-BootInfo _boot_info = {
+extern BootInfo _boot_info = {
     .magic = BOOT_INFO_MAGIC,
     .version = 1,
     .implementer = "Unknown",
