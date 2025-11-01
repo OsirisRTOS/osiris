@@ -24,7 +24,7 @@ An RTOS designed and verified to enable reliable software updates and operation 
 
 ### Development & Debugging Tools
 These tools are used for flashing, debugging, and other development tasks.
-*   `stlink`: For flashing and debugging on STM32 hardware.
+*   [stlink (Fork)](https://github.com/CreaxxOG/stlink): For flashing and debugging on STM32 hardware.
 *   `arm-none-eabi-gdb`: The GNU debugger for ARM targets.
 *   `cargo-binutils`: Provides `objdump`, `objcopy`, etc. for Rust.
 
