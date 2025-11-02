@@ -49,7 +49,7 @@ jobs:
         with:
           context: .devcontainer
           file: .devcontainer/Dockerfile
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.set_output.outputs.container_name }}
           cache-from: |
             type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
