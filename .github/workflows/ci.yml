@@ -38,11 +38,9 @@ jobs:
       - name: Set container name as output
         id: set_output
         run: |
-          BRANCH=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||' | tr '[:upper:]' '[:lower:]')
           REPO=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
-          CONTAINER_NAME="ghcr.io/${REPO}/devcontainer:${BRANCH//\//-}"
+          CONTAINER_NAME="ghcr.io/${REPO}/devcontainer:main"
           echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
-          echo "container_without_tag=ghcr.io/${REPO}/devcontainer" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
@@ -51,17 +49,15 @@ jobs:
           file: .devcontainer/Dockerfile
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.set_output.outputs.container_name }}
-          cache-from: |
-            type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
-            type=registry,ref=${{ steps.set_output.outputs.container_without_tag }}:main-cache
+          cache-from: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
           cache-to: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache,mode=max
 
   test:
     name: Testing
-    needs: [container]
     runs-on: ubuntu-latest
+    needs: [container]
     container:
-      image: ${{ needs.container.outputs.container_name }}
+      image: ghcr.io/${{ github.repository }}/devcontainer:main
     permissions:
       contents: read
       issues: write
@@ -88,10 +84,10 @@ jobs:
 
   fmt:
     name: Check formatting
-    needs: [container]
     runs-on: ubuntu-latest
+    needs: [container]
     container:
-      image: ${{ needs.container.outputs.container_name }}
+      image: ghcr.io/${{ github.repository }}/devcontainer:main
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -103,10 +99,10 @@ jobs:
 
   kani:
     name: Kani verification
-    needs: [container]
     runs-on: ubuntu-latest
+    needs: [container]
     container:
-      image: ${{ needs.container.outputs.container_name }}
+      image: ghcr.io/${{ github.repository }}/devcontainer:main
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -121,10 +117,10 @@ jobs:
 
   build-stm32-l4r5zi-def:
     name: Build for the STM32 Nucleo L4R5ZI
-    needs: [container]
     runs-on: ubuntu-latest
+    needs: [container]
     container:
-      image: ${{ needs.container.outputs.container_name }}
+      image: ghcr.io/${{ github.repository }}/devcontainer:main
     steps:
       - name: Checkout
         uses: actions/checkout@v4
