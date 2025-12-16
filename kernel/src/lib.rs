@@ -1,25 +1,25 @@
 //! This is the default kernel of the osiris operating system.
 //! The kernel is organized as a microkernel.
 
-#![cfg_attr(freestanding, no_std)]
+#![cfg_attr(all(not(test), not(doctest), not(doc), not(kani)), no_std)]
+extern crate alloc;
 
+mod macros;
 #[macro_use]
-pub mod macros;
-#[macro_use]
-pub mod utils;
-pub mod faults;
-pub mod mem;
-pub mod print;
-pub mod sched;
-pub mod services;
-pub mod sync;
-pub mod syscalls;
-pub mod time;
-pub mod uspace;
+mod utils;
+mod faults;
+mod mem;
+mod print;
+mod sched;
+mod services;
+mod sync;
+mod syscalls;
+mod time;
+mod uspace;
+
+mod modules;
 
 use core::ffi::c_char;
-
-use hal::Machinelike;
 
 /// The memory map entry type.
 ///
@@ -56,11 +56,9 @@ pub struct BootInfo {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize basic hardware and the logging system.
-    hal::Machine::init();
+    hal::init();
 
-    //hal::asm::disable_interrupts();
-
-    hal::Machine::bench_start();
+    hal::bench_start();
 
     let boot_info = unsafe { &*boot_info };
 
@@ -68,33 +66,40 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     print::print_boot_info(boot_info);
 
     // Initialize the memory allocator.
-    if let Err(e) = mem::init_memory(boot_info) {
-        panic!(
-            "[Kernel] Error: failed to initialize memory allocator. Error: {:?}",
-            e
-        );
+    if let Err(_e) = mem::init_memory(boot_info) {
+        panic!("[Kernel] Error: failed to initialize memory allocator.");
     }
 
     // Initialize the services.
-    if let Err(e) = services::init_services() {
-        panic!(
-            "[Kernel] Error: failed to initialize services. Error: {:?}",
-            e
-        );
+    if let Err(_e) = services::init_services() {
+        panic!("[Kernel] Error: failed to initialize services.");
     }
 
-    sched::enable_scheduler(false);
-
-    let (cyc, ns) = hal::Machine::bench_end();
+    let (cyc, ns) = hal::bench_end();
     kprintln!(
         "[Osiris] Init took {} cycles taking {} ms",
         cyc,
         ns / 1e6f32
     );
 
-    sched::enable_scheduler(true);
+    sched::enable_scheduler();
 
-    loop {
-        hal::asm::nop!();
+    loop {}
+}
+
+/// The panic handler.
+#[cfg(all(not(test), not(doctest), not(doc), target_os = "none"))]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    kprintln!("**************************** PANIC ****************************");
+    kprintln!("");
+    kprintln!("Message: {}", info.message());
+
+    if let Some(location) = info.location() {
+        kprintln!("Location: {}:{}", location.file(), location.line());
     }
+
+    kprintln!("**************************** PANIC ****************************");
+
+    hal::panic::panic_handler(info);
 }
