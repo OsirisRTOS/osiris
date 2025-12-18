@@ -1,5 +1,7 @@
+use quote::quote;
 use quote::{ToTokens, format_ident};
-use syn::parse_macro_input;
+use syn::{parse_macro_input, FnArg};
+use syn::ItemFn;
 
 use proc_macro2::TokenStream;
 
@@ -219,4 +221,62 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
         #ret_check
         #(#size_checks)*
     }
+}
+
+#[proc_macro_attribute]
+pub fn kernelmod_call(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input_fn = parse_macro_input!(item as ItemFn);
+
+    let fn_name = &input_fn.sig.ident;
+    let wrapper_name = format_ident!("{}_wrapper", fn_name);
+    let fn_body = &input_fn.block;
+    let vis = &input_fn.vis;
+    let sig = &input_fn.sig;
+
+    // Extract argument types and names
+    let mut arg_types = Vec::new();
+    let mut arg_names = Vec::new();
+
+    for input in &input_fn.sig.inputs {
+        if let FnArg::Typed(pat_type) = input {
+            arg_types.push(&pat_type.ty);
+            arg_names.push(&pat_type.pat);
+        }
+    }
+
+    // 1. Create a C-compatible struct for safely casting the pointer
+    let args_struct_name = format_ident!("_{}_Args", fn_name);
+    let args_struct = quote! {
+        #[repr(C)]
+        struct #args_struct_name {
+            #(#arg_names: #arg_types),*
+        }
+    };
+
+
+    let wrapper_fn = quote! {
+        #[doc(hidden)]
+        pub unsafe fn #wrapper_name(ptr: *const u8) {
+            let args = &*(ptr as *const #args_struct_name);
+            #fn_name( #( args.#arg_names ),* );
+        }
+    };
+
+    // 3. Output everything: The original function + The wrapper + The struct
+    let output = quote! {
+        #args_struct
+        
+        #wrapper_fn
+
+        #vis #sig {
+            #fn_body
+        }
+    };
+
+    proc_macro::TokenStream::from(output)
+}
+
+#[proc_macro_attribute]
+pub fn kernel_init(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    item
 }

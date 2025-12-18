@@ -1,26 +1,11 @@
-use crate::modules::KernelModule;
-use crate::utils::KernelError;
+use macros::{kernel_init, kernelmod_call};
 
-#[derive(Default)]
-pub(super) struct SampleModule {
-    value: u32
+#[kernel_init]
+fn init() {
+    
 }
 
-impl KernelModule for SampleModule {
-    fn init(&mut self) -> Result<(), KernelError> {
-        Ok(())
-    }
-
-    fn exit(&mut self) -> Result<(), KernelError> {
-        Ok(())
-    }
-
-    fn name(&self) -> &'static str {
-        "sample Module"
-    }
-}
-impl SampleModule {
-    pub(crate) const fn new() -> Self {
-        SampleModule { value: 0 }
-    }
+#[kernelmod_call]
+fn call(target: i32) {
+    
 }

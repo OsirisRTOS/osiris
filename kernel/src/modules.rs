@@ -1,7 +1,5 @@
 pub mod kernelmods;
 
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 use crate::utils::KernelError;
 
 trait KernelModule {
