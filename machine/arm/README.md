@@ -27,7 +27,7 @@ The build system expects the following things to be present in order to successf
     *   `device_native`: CMSIS device files.
     *   `hal_native`: The vendor's HAL files.
     *   `interface_native`: Your C code that the kernel will call.
-    *   `chip_native`: Chip-specific definitions like memory layout of the actual MCU used.
+    *   `variant_native`: Variant-specific definitions like memory layout of the actual MCU used.
 
 2.  **A linker script** named `link.ld` in your HAL's root directory (e.g., `machine/arm/new_hal/link.ld`).
 

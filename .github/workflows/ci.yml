@@ -71,7 +71,7 @@ jobs:
           submodules: recursive
 
       - name: Set testing config
-        run: just config load test_def --no-confirm
+        run: just config load testing_def --no-confirm
 
       - name: Run test coverage
         run: just cov
@@ -111,7 +111,7 @@ jobs:
           submodules: recursive
 
       - name: Set testing config
-        run: just config load test_def --no-confirm
+        run: just config load testing_def --no-confirm
 
       - name: Run Kani
         run: just verify
@@ -132,4 +132,4 @@ jobs:
         run: just config load stm32l4r5zi_def --no-confirm
 
       - name: Build
-        run: just build thumbv7em-none-eabi
+        run: just build

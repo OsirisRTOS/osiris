@@ -4,15 +4,18 @@ parent = "."
 [arm]
 name = "ARM"
 description = "Options for ARM-based microcontrollers."
-
+depends_on = [{ key = ".arch", value = "arm" }]
+attributes = ["skip"]
 
 [arm.hal]
-name = "Hardware Abstraction Layer"
-description = "The hardware abstraction layer to use when building for ARM."
+name = "Selected HAL"
+description = "The hardware abstraction layer that will be used."
 type = { type = "String", allowed_values = ["stm32l4xx"] }
 default = "stm32l4xx"
+attributes = ["no_hidden_preview"]
 
 [arm.stm32l4xx]
-name = "STM32L4xx"
+name = "Hardware"
 description = "Config for the STM32L4xx microcontroller series."
 depends_on = [{ key = "hal", value = "stm32l4xx" }]
+attributes = ["no_hidden_preview"]

@@ -1,8 +1,9 @@
 [metadata]
 parent = ".arm.stm32l4xx"
 
-[mcu]
-name = "Microcontroller"
+[variant]
+name = "Variant"
 description = "The specific microcontroller to use."
 type = { type = "String", allowed_values = ["r5zi"] }
 default = "r5zi"
+attributes = []

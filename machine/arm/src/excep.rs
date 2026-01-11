@@ -1,4 +1,4 @@
-use core::{fmt::Display, sync::atomic::compiler_fence};
+use core::fmt::Display;
 
 #[repr(C)]
 pub struct ExcepStackFrame {
@@ -80,35 +80,21 @@ impl Display for ExcepBacktrace {
         }
 
         for i in 1..BACKTRACE_MAX_FRAMES {
-            writeln!(f, "       FP: 0x{:08x}", fp as usize)?;
-
             // Read the return address from the stack.
             let ret_addr = unsafe { fp.add(1).read_volatile() };
             // Read the frame pointer from the current frame.
             let next_fp = unsafe { *fp };
 
-            compiler_fence(core::sync::atomic::Ordering::SeqCst);
-
             if ret_addr == 0 || ret_addr == 1 {
                 break;
             }
 
-            compiler_fence(core::sync::atomic::Ordering::SeqCst);
-
             // Print the return address.
-
             if let Some(symbol) = crate::debug::find_nearest_symbol(ret_addr) {
                 writeln!(f, "{i}:     {symbol} (0x{ret_addr:08x})")?;
             } else {
                 writeln!(f, "{i}:     0x{ret_addr:08x}")?;
             }
-
-            compiler_fence(core::sync::atomic::Ordering::SeqCst);
-
-            // Next fp
-            writeln!(f, "       FP: 0x{next_fp:08x}")?;
-
-            compiler_fence(core::sync::atomic::Ordering::SeqCst);
 
             // If the next frame pointer is 0 or 1. (thumb mode adds +1 to the address)
             if next_fp == 0 || next_fp == 1 {
@@ -121,8 +107,6 @@ impl Display for ExcepBacktrace {
             if i == BACKTRACE_MAX_FRAMES - 1 {
                 writeln!(f, "{i}:     ...")?;
             }
-
-            compiler_fence(core::sync::atomic::Ordering::SeqCst);
         }
 
         writeln!(f)

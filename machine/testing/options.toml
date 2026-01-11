@@ -1,0 +1,8 @@
+[metadata]
+parent = "."
+
+[testing]
+name = "testing"
+description = "Options for x86_64 testing environment."
+depends_on = [{ key = ".arch", value = "x86_64" }]
+attributes = ["skip"]

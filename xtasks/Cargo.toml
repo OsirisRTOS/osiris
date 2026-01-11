@@ -1,0 +1,12 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logging = { path = "logging" }
+clap = "4.5.53"
+walkdir = "2.5.0"
+log = "0.4.29"
+color-print = "0.3.7"
+cargo_metadata = "0.23.1"
