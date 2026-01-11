@@ -1,15 +1,10 @@
-build target:
-    cargo build --target {{target}}
-    cargo xtask inject-syms --target {{target}}
-    cargo objcopy --target {{target}} -- -O binary Kernel.bin
-
-release target:
-    cargo build --target {{target}} --release
-    cargo xtask inject-syms --target {{target}} --release
-    cargo objcopy --target {{target}} --release -- -O binary Kernel.bin
+build *args:
+    cargo build {{args}}
+    cargo xtask --release injector Cargo.toml
+    cargo objcopy {{args}} -- -O binary Kernel.bin
 
 config *args:
-    cargo run -p config -- {{args}}
+    cargo xtask config --root {{justfile_directory()}} {{args}}
 
 fmt *args:
     cargo fmt {{args}}

@@ -1,0 +1,13 @@
+[package]
+name = "injector"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logging = { path = "../logging" }
+clap = { version = "4.5", features = ["derive"] }
+object = "0.36"
+log = "0.4.29"
+cargo_metadata = "0.23.1"
+toml = "0.9.10"
+walkdir = "2.5.0"

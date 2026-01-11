@@ -24,7 +24,7 @@ mod bindings {
 #[link(name = "device_native")]
 #[link(name = "hal_native")]
 #[link(name = "interface_native")]
-#[link(name = "chip_native")]
+#[link(name = "variant_native")]
 unsafe extern "C" {}
 
 pub struct ArmMachine;

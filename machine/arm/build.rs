@@ -51,7 +51,7 @@ fn host_triple() -> Result<String> {
 /// Sets ARM core-specific Rust configuration flags based on the target architecture.
 ///
 /// This function analyzes the TARGET environment variable and emits appropriate
-/// `cargo:rustc-cfg` directives to enable conditional compilation for different
+/// `cargo::rustc-cfg` directives to enable conditional compilation for different
 /// ARM Cortex-M cores:
 ///
 /// - `cm0` for Cortex-M0/M0+ (thumbv6m*)
@@ -73,11 +73,11 @@ fn set_arm_core_cfg() -> Result<()> {
     let target = env::var("TARGET").context("TARGET environment variable not set")?;
 
     if target.starts_with("thumbv6m") {
-        println!("cargo:rustc-cfg=cm0");
+        println!("cargo::rustc-cfg=cm0");
     } else if target.starts_with("thumbv7m") {
-        println!("cargo:rustc-cfg=cm3");
+        println!("cargo::rustc-cfg=cm3");
     } else if target.starts_with("thumbv7em") {
-        println!("cargo:rustc-cfg=cm4");
+        println!("cargo::rustc-cfg=cm4");
     }
 
     Ok(())
@@ -95,12 +95,10 @@ fn set_arm_core_cfg() -> Result<()> {
 ///
 /// * `config` - The CMake configuration to modify
 fn forward_env_vars(config: &mut Config) {
-    let mut cnt = 0;
-
     for (key, var) in env::vars() {
         if key.starts_with("OSIRIS_") {
             // Instruct cargo to rerun the build script if this environment variable changes.
-            println!("cargo:rerun-if-env-changed={key}");
+            println!("cargo::rerun-if-env-changed={key}");
 
             match var.as_str() {
                 "0" | "false" | "off" => {
@@ -113,12 +111,8 @@ fn forward_env_vars(config: &mut Config) {
                     config.define(key, var.as_str());
                 }
             }
-
-            cnt += 1;
         }
     }
-
-    println!("cargo:info=Forwarded {cnt} OSIRIS_* environment variables to CMake");
 }
 
 /// Configures FPU settings for ARM targets based on architecture and user preferences.
@@ -189,7 +183,7 @@ fn forward_fpu_config(config: &mut Config) -> Result<()> {
     config.asmflag(format!("-mfpu={fpu_type}"));
     config.asmflag(format!("-mfloat-abi={float_abi}"));
 
-    println!("cargo:info=ARM FPU: {fpu_type}, Float ABI: {float_abi}");
+    println!("cargo::info=ARM FPU: {fpu_type}, Float ABI: {float_abi}");
 
     Ok(())
 }
@@ -224,7 +218,7 @@ fn generate_bindings(out: &str, hal: &str) -> Result<()> {
 
     bindgen.write_to_file(format!("{out}/bindings.rs"))?;
 
-    println!("cargo:rerun-if-changed={hal}");
+    println!("cargo::rerun-if-changed={hal}");
     Ok(())
 }
 
@@ -243,14 +237,14 @@ fn check_for_host() -> bool {
     match host_triple() {
         Ok(host) => {
             if host == env::var("TARGET").unwrap_or_default() {
-                println!("cargo:rustc-cfg=feature=\"host\"");
-                println!("cargo:warning=Building for host, skipping HAL build.");
+                println!("cargo::rustc-cfg=feature=\"host\"");
+                println!("cargo::warning=Building for host, skipping HAL build.");
                 // Only build when we are not on the host
                 return true;
             }
         }
         Err(e) => {
-            println!("cargo:warning=Could not determine host triple: {e}");
+            println!("cargo::warning=Could not determine host triple: {e}");
         }
     }
 
@@ -270,7 +264,7 @@ fn fail_on_error<T>(res: Result<T>) -> T {
     match res {
         Ok(val) => val,
         Err(e) => {
-            println!("cargo:error={e}");
+            println!("cargo::error={e}");
             std::process::exit(1);
         }
     }
@@ -368,8 +362,8 @@ fn main() {
     fail_on_error(forward_fpu_config(&mut libhal_config));
     let libhal = libhal_config.build();
 
-    println!("cargo:rustc-link-search=native={}", libhal.display());
-    println!("cargo:linker-script={out}/link.ld");
+    println!("cargo::rustc-link-search=native={}", libhal.display());
+    println!("cargo::metadata=linker-script={out}/link.ld");
 
     // Extract compile commands for HAL
     let hal_cc = build_dir.join("compile_commands.json");
@@ -387,8 +381,8 @@ fn main() {
     let common_cc = build_dir.join("compile_commands.json");
     let common_cc = fs::read_to_string(common_cc).unwrap_or_default();
 
-    println!("cargo:rerun-if-changed=common");
-    println!("cargo:rustc-link-search=native={}", common.display());
+    println!("cargo::rerun-if-changed=common");
+    println!("cargo::rustc-link-search=native={}", common.display());
 
     // Merge and export compile_commands.json for IDE integration
     let merged = merge_compile_commands(&[hal_cc, common_cc]);

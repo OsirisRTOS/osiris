@@ -39,7 +39,7 @@ add_library(common STATIC
 )
 
 target_include_directories(common PUBLIC
-    ../../../kernel/include
+    ../../../include
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

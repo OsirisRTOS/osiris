@@ -1,4 +1,3 @@
-[env]
 
 [alias]
-xtask = "run --manifest-path xtask/Cargo.toml --release --"
+xtask = "--config xtasks/.cargo/config.toml run --manifest-path xtasks/Cargo.toml --release --"

@@ -1,0 +1,22 @@
+[package]
+name = "config"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+logging = { path = "../logging" }
+ratatui = "0.29.0"
+crossterm = "0.27"
+walkdir = "2.3"
+thiserror = "2.0.12"
+log = "0.4.27"
+toml_edit = "0.22.26"
+annotate-snippets = "0.11.5"
+anyhow = "1.0.99"
+enum_dispatch = "0.3.13"
+clap = { version = "4.5.47", features = ["derive"] }
+rustversion = "1.0.22"
+rustc-cfg = { git = "https://github.com/thomasw04/rustc-cfg.git" }
+
+[dev-dependencies]
+ctor = "0.6.3"

@@ -141,3 +141,24 @@ macro_rules! __macro_delay {
 }
 
 pub use crate::__macro_delay as delay;
+
+
+#[cfg(not(feature = "host"))]
+#[macro_export]
+macro_rules! __macro_fault_do_not_use_under_any_circumstances {
+    () => {{
+        use core::arch::asm;
+        use core::sync::atomic::compiler_fence;
+        compiler_fence(core::sync::atomic::Ordering::SeqCst);
+        asm!("udf #0", options(nomem, nostack, preserves_flags));
+        compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    }};
+}
+
+#[cfg(feature = "host")]
+#[macro_export]
+macro_rules! __macro_fault_do_not_use_under_any_circumstances {
+    () => {{}};
+}
+
+pub use crate::__macro_fault_do_not_use_under_any_circumstances as fault_do_not_use_under_any_circumstances;
