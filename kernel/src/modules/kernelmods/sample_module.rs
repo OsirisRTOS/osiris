@@ -1,11 +1,30 @@
-use macros::{kernel_init, kernelmod_call};
+use macros::{kernel_deinit, kernel_init, kernelmod_call};
 
 #[kernel_init]
 fn init() {
     
 }
 
-#[kernelmod_call]
-fn call(target: i32) {
+#[kernel_deinit]
+fn deinit() {
     
+}
+
+
+struct Test {
+    a: i64,
+    b: i64,
+}
+enum UnixError {
+    Unknown = -1,
+    InvalidArgument = -22,
+    NotFound = -2,
+}
+#[kernelmod_call]
+fn call(target: i32) -> Result<i32,UnixError> {
+    match target {
+        1 => Ok(0),
+        2 => Err(UnixError::InvalidArgument),
+        _ => Err(UnixError::Unknown),
+    }
 }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, path::Path};
+use std::{collections::HashMap, env, fs::File, path::Path};
 
 extern crate rand;
 extern crate syn;
@@ -18,6 +18,8 @@ fn main() {
 
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
 
+    generate_modules().expect("Failed to generate Kernelmodules.");
+    
     // Get linker script from environment variable
     if let Ok(linker_script) = std::env::var("DEP_HAL_LINKER_SCRIPT") {
         println!("cargo:rustc-link-arg=-T{linker_script}");
@@ -30,8 +32,14 @@ fn main() {
     }
 }
 
+
+
 fn generate_modules() -> Result<(), std::io::Error> {
-    let mut file = File::create("../include/syscalls.map.gen.h")?;
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let modules_dir = Path::new(&manifest_dir).join("src/modules/kernelmods");
+    let output_file = modules_dir.parent().unwrap().join("kernelmods.rs");
+    
+    
     Ok(())
 }
 

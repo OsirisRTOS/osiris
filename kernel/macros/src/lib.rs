@@ -1,9 +1,10 @@
-use quote::quote;
+use quote::{quote, quote_spanned};
 use quote::{ToTokens, format_ident};
-use syn::{parse_macro_input, FnArg};
+use syn::{parse_macro_input, parse_quote, Error, FnArg, GenericArgument, Pat, PatType, PathArguments, ReturnType, Type, TypeReference, TypeSlice};
 use syn::ItemFn;
 
 use proc_macro2::TokenStream;
+use syn::spanned::Spanned;
 
 #[proc_macro_attribute]
 pub fn service(
@@ -223,60 +224,295 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     }
 }
 
+
 #[proc_macro_attribute]
 pub fn kernelmod_call(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input_fn = parse_macro_input!(item as ItemFn);
+    let input = parse_macro_input!(item as ItemFn);
+    
+    match generate_wrapper(input) {
+        Ok(tokens) => proc_macro::TokenStream::from(tokens),
+        Err(e) => proc_macro::TokenStream::from(e.to_compile_error()),
+    }
+}
 
-    let fn_name = &input_fn.sig.ident;
-    let wrapper_name = format_ident!("{}_wrapper", fn_name);
-    let fn_body = &input_fn.block;
-    let vis = &input_fn.vis;
-    let sig = &input_fn.sig;
+fn generate_wrapper(input: ItemFn) -> Result<TokenStream,Error> {
+    let fn_name = &input.sig.ident;
+    let fn_vis = &input.vis;
+    let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
+    let args_struct_name = syn::Ident::new(&format!("{}Args", fn_name), fn_name.span());
 
-    // Extract argument types and names
-    let mut arg_types = Vec::new();
+    validate_return_type(&input.sig.output)?;
+
+    let mut arg_fields = Vec::new();
     let mut arg_names = Vec::new();
+    let mut arg_reconstructions = Vec::new();
 
-    for input in &input_fn.sig.inputs {
-        if let FnArg::Typed(pat_type) = input {
-            arg_types.push(&pat_type.ty);
-            arg_names.push(&pat_type.pat);
+    for arg in &input.sig.inputs {
+        let (name, ty) = match arg {
+            FnArg::Typed(PatType { pat, ty, .. }) => {
+                let name = match &**pat {
+                    Pat::Ident(ident) => &ident.ident,
+                    _ => return Err(Error::new_spanned(pat, "Expected simple identifier pattern")),
+                };
+                (name, ty)
+            }
+            FnArg::Receiver(_) => {
+                return Err(Error::new_spanned(arg, "Methods with 'self' are not supported"));
+            }
+        };
+
+        arg_names.push(name.clone());
+
+        match validate_and_generate_field(name, ty)? {
+            ArgFieldInfo::Direct(field, reconstruction) => {
+                arg_fields.push(field);
+                arg_reconstructions.push(reconstruction);
+            }
+            ArgFieldInfo::Slice(ptr_field, len_field, reconstruction) => {
+                arg_fields.push(ptr_field);
+                arg_fields.push(len_field);
+                arg_reconstructions.push(reconstruction);
+            }
         }
     }
 
-    // 1. Create a C-compatible struct for safely casting the pointer
-    let args_struct_name = format_ident!("_{}_Args", fn_name);
-    let args_struct = quote! {
+    let return_handling = generate_return_handling(&input.sig.output)?;
+
+    let original_fn = &input;
+
+    let output = quote! {
+        #original_fn
+        
         #[repr(C)]
         struct #args_struct_name {
-            #(#arg_names: #arg_types),*
+            #(#arg_fields),*
         }
-    };
-
-
-    let wrapper_fn = quote! {
-        #[doc(hidden)]
-        pub unsafe fn #wrapper_name(ptr: *const u8) {
-            let args = &*(ptr as *const #args_struct_name);
-            #fn_name( #( args.#arg_names ),* );
-        }
-    };
-
-    // 3. Output everything: The original function + The wrapper + The struct
-    let output = quote! {
-        #args_struct
         
-        #wrapper_fn
-
-        #vis #sig {
-            #fn_body
+        #fn_vis unsafe extern "C" fn #wrapper_name(args_ptr: *const u8) -> usize {
+            let args = &*(args_ptr as *const #args_struct_name);
+            
+            #(#arg_reconstructions)*
+            
+            let result = #fn_name(#(#arg_names),*);
+            
+            #return_handling
         }
     };
 
-    proc_macro::TokenStream::from(output)
+    Ok(output)
+}
+
+enum ArgFieldInfo {
+    Direct(proc_macro2::TokenStream, proc_macro2::TokenStream),
+    Slice(proc_macro2::TokenStream, proc_macro2::TokenStream, proc_macro2::TokenStream),
+}
+
+fn validate_and_generate_field(
+    name: &syn::Ident,
+    ty: &Type,
+) -> Result<ArgFieldInfo,Error> {
+    match ty {
+        Type::Path(type_path) => {
+            let type_name = type_path.path.segments.last()
+                .ok_or_else(|| Error::new_spanned(ty, "Invalid type path"))?
+                .ident
+                .to_string();
+
+            if is_valid_primitive(&type_name) {
+                let field = quote! { #name: #ty };
+                let reconstruction = quote! { let #name = args.#name; };
+                return Ok(ArgFieldInfo::Direct(field, reconstruction));
+            }
+            
+            let field = quote! { #name: #ty };
+            let reconstruction = quote! { 
+                let #name = args.#name;
+                let _: fn() = || { fn assert_copy<T: Copy>() {} assert_copy::<#ty>(); };
+            };
+
+            Ok(ArgFieldInfo::Direct(field, reconstruction))
+        }
+        Type::Reference(TypeReference { elem, mutability, .. }) => {
+            if mutability.is_some() {
+                return Err(Error::new_spanned(
+                    ty,
+                    "Mutable references are not supported. Only immutable references are allowed."
+                ));
+            }
+
+            match &**elem {
+                Type::Slice(TypeSlice { elem: slice_elem, .. }) => {
+                    let ptr_name = syn::Ident::new(&format!("{}_ptr", name), name.span());
+                    let len_name = syn::Ident::new(&format!("{}_len", name), name.span());
+
+                    let ptr_field = quote! { #ptr_name: *const #slice_elem };
+                    let len_field = quote! { #len_name: usize };
+                    let reconstruction = quote! {
+                        let #name = unsafe { 
+                            core::slice::from_raw_parts(args.#ptr_name, args.#len_name) 
+                        };
+                    };
+
+                    Ok(ArgFieldInfo::Slice(ptr_field, len_field, reconstruction))
+                }
+                Type::Path(path) => {
+                    // Check for &str
+                    if path.path.is_ident("str") {
+                        let ptr_name = syn::Ident::new(&format!("{}_ptr", name), name.span());
+                        let len_name = syn::Ident::new(&format!("{}_len", name), name.span());
+
+                        let ptr_field = quote! { #ptr_name: *const u8 };
+                        let len_field = quote! { #len_name: usize };
+                        let reconstruction = quote! {
+                            let #name = unsafe { 
+                                let bytes = core::slice::from_raw_parts(args.#ptr_name, args.#len_name);
+                                core::str::from_utf8_unchecked(bytes)
+                            };
+                        };
+
+                        return Ok(ArgFieldInfo::Slice(ptr_field, len_field, reconstruction));
+                    }
+
+                    // Reference to struct - store as thin pointer
+                    let field = quote! { #name: *const #path };
+                    let reconstruction = quote! { let #name = unsafe { &*args.#name }; };
+                    Ok(ArgFieldInfo::Direct(field, reconstruction))
+                }
+                _ => Err(Error::new_spanned(
+                    ty,
+                    "Unsupported reference type. Only references to structs, slices (&[T]), and &str are supported."
+                ))
+            }
+        }
+        _ => Err(Error::new_spanned(
+            ty,
+            "Unsupported argument type. Supported types are:\n\
+             - Primitive types (at most usize)\n\
+             - Structs implementing Copy (at most usize)\n\
+             - References to structs (&T)\n\
+             - Slices (&[T])\n\
+             - String slices (&str)"
+        ))
+    }
+}
+
+fn is_valid_primitive(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "u8" | "u16" | "u32" | "u64" | "usize" |
+        "i8" | "i16" | "i32" | "i64" | "isize" |
+        "bool" | "char"
+    )
+}
+
+fn validate_return_type(return_type: &ReturnType) -> Result<(),Error> {
+    match return_type {
+        ReturnType::Default => {
+            return Err(Error::new_spanned(
+                return_type,
+                "Function must return Result<T, UnixError> where T is a primitive type at most usize or ()"
+            ));
+        }
+        ReturnType::Type(_, ty) => {
+            if let Type::Path(type_path) = &**ty {
+                let last_segment = type_path.path.segments.last()
+                    .ok_or_else(|| Error::new_spanned(ty, "Invalid return type path"))?;
+
+                if last_segment.ident != "Result" {
+                    return Err(Error::new_spanned(
+                        ty,
+                        "Function must return Result<T, UnixError>"
+                    ));
+                }
+
+                if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                    if args.args.len() != 2 {
+                        return Err(Error::new_spanned(
+                            ty,
+                            "Result must have exactly 2 type parameters: Result<T, UnixError>"
+                        ));
+                    }
+
+                    if let Some(GenericArgument::Type(Type::Path(err_path))) = args.args.iter().nth(1) {
+                        if !err_path.path.is_ident("UnixError") {
+                            return Err(Error::new_spanned(
+                                err_path,
+                                "Error type must be UnixError"
+                            ));
+                        }
+                    }
+
+                    return Ok(());
+                }
+
+                return Err(Error::new_spanned(
+                    ty,
+                    "Invalid Result type. Expected Result<T, UnixError>"
+                ));
+            }
+
+            Err(Error::new_spanned(
+                ty,
+                "Return type must be Result<T, UnixError>"
+            ))
+        }
+    }
+}
+
+fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::TokenStream,Error> {
+    match return_type {
+        ReturnType::Type(_, ty) => {
+            if let Type::Path(type_path) = &**ty {
+                if let Some(last_segment) = type_path.path.segments.last() {
+                    if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                        if let Some(GenericArgument::Type(ok_type)) = args.args.first() {
+                            if let Type::Tuple(tuple) = ok_type {
+                                if tuple.elems.is_empty() {
+                                    return Ok(quote! {
+                                        match result {
+                                            Ok(()) => 0,
+                                            Err(e) => e as usize,
+                                        }
+                                    });
+                                }
+                            }
+
+                            // Check if ok_type is a primitive that can be cast to usize
+                            if let Type::Path(ok_path) = ok_type {
+                                if let Some(ident) = ok_path.path.get_ident() {
+                                    let type_str = ident.to_string();
+                                    if is_valid_primitive(&type_str) {
+                                        return Ok(quote! {
+                                            match result {
+                                                Ok(val) => val as usize,
+                                                Err(e) => e as usize,
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+
+                            return Err(Error::new_spanned(
+                                ok_type,
+                                "Return type T in Result<T, UnixError> must be a primitive type at most usize or unit ()"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Err(Error::new_spanned(return_type, "Invalid return type"))
 }
 
 #[proc_macro_attribute]
 pub fn kernel_init(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    item
+}
+
+#[proc_macro_attribute]
+pub fn kernel_deinit(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     item
 }
