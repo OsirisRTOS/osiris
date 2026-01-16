@@ -13,7 +13,7 @@ impl hal_api::Machinelike for TestingMachine {
 
     fn print(s: &str) -> Result<()> {
         // Print to standard output in testing.
-        print!("{}", s);
+        print!("{s}");
         Ok(())
     }
 
@@ -47,7 +47,7 @@ impl hal_api::Machinelike for TestingMachine {
 
     fn panic_handler(info: &core::panic::PanicInfo) -> ! {
         // Print the panic information and abort in testing.
-        eprintln!("Panic occurred: {}", info);
+        eprintln!("Panic occurred: {info}");
         std::process::abort();
     }
 }

@@ -37,6 +37,7 @@ struct BestFitMeta {
 /// That does mean, when we allocate a block, we try to find the smallest block that fits the requested size.
 /// Blocks are stored in a singly linked list. The important part is that the linked list is stored in-line with the memory blocks.
 /// This means that every block has a header that contains the size of the block and a pointer to the next block.
+#[derive(Debug)]
 pub struct BestFitAllocator {
     /// Head of the free block list.
     head: Option<NonNull<u8>>,
@@ -44,8 +45,6 @@ pub struct BestFitAllocator {
 
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
-    pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
-
     /// Creates a new BestFitAllocator.
     ///
     /// Returns the new BestFitAllocator.
@@ -68,7 +67,7 @@ impl BestFitAllocator {
         let ptr = range.start;
 
         // Check if the pointer is 128bit aligned.
-        if ptr % align_of::<u128>() != 0 {
+        if !ptr.is_multiple_of(align_of::<u128>()) {
             return Err(utils::KernelError::InvalidAlign);
         }
 

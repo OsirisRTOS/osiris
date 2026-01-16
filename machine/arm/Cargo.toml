@@ -16,6 +16,7 @@ crate-type = ["rlib"]
 hal-api = { path = "../api" }
 
 [build-dependencies]
+cbindgen = "0.28.0"
 bindgen = "0.72.0"
 cmake = "0.1.54"
 anyhow = "1.0.99"

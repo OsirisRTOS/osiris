@@ -9,3 +9,4 @@ symbols.map
 *.bin
 compile_commands.json
 .cache/
+*.img

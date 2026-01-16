@@ -5,11 +5,13 @@ use crate::utils::KernelError;
 use core::{borrow::Borrow, mem::MaybeUninit};
 
 /// This is a fixed-size map that can store up to N consecutive elements.
+#[derive(Debug)]
 pub struct IndexMap<K: Borrow<usize> + Default, V, const N: usize> {
     data: [Option<V>; N],
     phantom: core::marker::PhantomData<K>,
 }
 
+#[allow(dead_code)]
 impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
     /// Create a new IndexMap.
     ///
@@ -145,12 +147,14 @@ impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
 }
 
 /// This is a vector that can store up to N elements inline and will allocate on the heap if more are needed.
+#[derive(Debug)]
 pub struct Vec<T, const N: usize> {
     len: usize,
     data: [MaybeUninit<T>; N],
     extra: Box<[MaybeUninit<T>]>,
 }
 
+#[allow(dead_code)]
 impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// Create a new Vec.
     ///

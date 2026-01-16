@@ -23,6 +23,7 @@ pub enum TaskId {
     Kernel(usize),
 }
 
+#[allow(dead_code)]
 impl TaskId {
     /// Check if the task is a user task.
     pub fn is_user(&self) -> bool {
@@ -43,9 +44,9 @@ impl TaskId {
     }
 }
 
-impl Into<usize> for TaskId {
-    fn into(self) -> usize {
-        match self {
+impl From<TaskId> for usize {
+    fn from(val: TaskId) -> Self {
+        match val {
             TaskId::User(id) => id,
             TaskId::Kernel(id) => id,
         }
@@ -59,6 +60,7 @@ pub struct TaskDescriptor {
 }
 
 /// The struct representing a task.
+#[derive(Debug)]
 pub struct Task {
     /// The unique identifier of the task.
     pub id: TaskId,
@@ -136,6 +138,7 @@ impl Task {
 }
 
 /// The memory of a task.
+#[derive(Debug)]
 pub struct TaskMemory {
     /// The beginning of the memory.
     begin: NonNull<u8>,
@@ -146,6 +149,7 @@ pub struct TaskMemory {
     alloc: BestFitAllocator,
 }
 
+#[allow(dead_code)]
 impl TaskMemory {
     /// Create a new task memory.
     ///

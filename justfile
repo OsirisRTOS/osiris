@@ -1,10 +1,16 @@
 build *args:
     cargo build {{args}}
     cargo xtask --release injector Cargo.toml
-    cargo objcopy {{args}} -- -O binary Kernel.bin
 
 config *args:
     cargo xtask config --root {{justfile_directory()}} {{args}}
+
+pack *args:
+    cargo xtask pack {{args}}
+
+example name *args: (build args)
+    cargo build -p {{name}} {{args}}
+    cargo xtask pack --output {{name}}.bin --init examples/{{name}} {{args}}
 
 fmt *args:
     cargo fmt {{args}}

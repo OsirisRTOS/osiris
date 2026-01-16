@@ -1,3 +1,16 @@
 
 [alias]
-xtask = "--config xtasks/.cargo/config.toml run --manifest-path xtasks/Cargo.toml --release --"
+xtask = "--config xtasks/.cargo/config.toml run -p xtask --release --"
+
+[env]
+
+[build]
+target = "host-tuple"
+
+[target]
+
+[target.'cfg(target_os = "none")']
+rustflags = ["-C", "link-arg=--entry=main",]
+
+[target.thumbv7em-none-eabi]
+rustflags = ["-C", "relocation-model=ropi-rwpi"]

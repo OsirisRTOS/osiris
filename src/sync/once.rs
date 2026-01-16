@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use core::sync::atomic::AtomicU8;
@@ -8,7 +10,7 @@ use core::sync::atomic::Ordering;
 /// 1. The Caller calls step(NOT_READY) to indicate that it is about to start the initialization process.
 /// 2. The Caller initializes the value.
 /// 3. The Caller calls step(IN_TRANSIT) to indicate that the value is ready.
-/// If step 1 fails, the value is already being initialized and the Caller must wait until is() returns true.
+///    If step 1 fails, the value is already being initialized and the Caller must wait until is() returns true.
 pub struct Ready {
     ready: AtomicU8,
 }

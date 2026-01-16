@@ -1,47 +1,54 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use cargo_metadata::{MetadataCommand, TargetKind};
-use clap::{Arg, Command, builder::styling::{AnsiColor, Style}};
-use color_print::{cformat};
+use clap::{
+    Arg, Command,
+    builder::styling::{AnsiColor, Style},
+};
+use color_print::cformat;
 
 fn find_subcommands() -> Vec<(String, PathBuf, Option<PathBuf>)> {
     let mut subcommands = Vec::new();
-    
-    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        let manifest_dir = PathBuf::from(manifest_dir);
 
-        for entry in walkdir::WalkDir::new(manifest_dir.clone()).into_iter().filter_map(Result::ok) {
-            if !entry.file_type().is_dir() {
-                continue;
-            }
+    if let Ok(search_path) = std::env::var("XTASK_SEARCH_PATH") {
+        let search_path = Path::new(&search_path).canonicalize().unwrap_or_else(|_| {
+            log::error!("Failed to canonicalize XTASK_SEARCH_PATH: {}", search_path);
+            std::process::exit(1);
+        });
 
-            if entry.path() == manifest_dir {
-                continue;
-            }
-
+        for entry in walkdir::WalkDir::new(search_path.clone())
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_dir())
+        {
             let path = entry.path().join("Cargo.toml");
-            if path.exists() {
-                if let Ok(metadata) = MetadataCommand::new().manifest_path(path.clone()).no_deps().exec() {
-                    if let Some(package) = metadata.root_package() {
-                        let has_binary = package.targets.iter().any(|target| {
-                            target.kind.iter().any(|k| matches!(k, TargetKind::Bin))
-                        });
+            if path.exists()
+                && let Ok(metadata) = MetadataCommand::new()
+                    .manifest_path(path.clone())
+                    .no_deps()
+                    .exec()
+                && let Some(package) = metadata.packages.iter().find(|p| p.manifest_path == path)
+            {
+                let has_binary = package
+                    .targets
+                    .iter()
+                    .any(|target| target.kind.iter().any(|k| matches!(k, TargetKind::Bin)));
 
-                        if !has_binary {
-                            continue;
-                        }
+                if !has_binary {
+                    continue;
+                }
 
-                        let config = entry.path().join(".cargo").join("config.toml");
+                let config = entry.path().join(".cargo").join("config.toml");
 
-                        if config.exists() {
-                            subcommands.push((package.name.to_string(), path, Some(config)));
-                        } else {
-                            subcommands.push((package.name.to_string(), path, None));
-                        }
-                    }
+                if config.exists() {
+                    subcommands.push((package.name.to_string(), path, Some(config)));
+                } else {
+                    subcommands.push((package.name.to_string(), path, None));
                 }
             }
         }
+    } else {
+        log::warn!("XTASK_SEARCH_PATH not set, no subcommands will be available.");
     }
 
     subcommands
@@ -113,7 +120,7 @@ fn main() {
         let leaked_subc: &'static str = Box::leak(name.clone().into_boxed_str());
 
         let sc = Command::new(leaked_subc)
-        // Idea: pass through all args after the subcommand to the underlying command
+            // Idea: pass through all args after the subcommand to the underlying command
             .disable_help_flag(true)
             .arg(
                 Arg::new("args")
@@ -136,7 +143,9 @@ fn main() {
     }
 
     // Find the first token that matches a known subcommand name.
-    let sub_idx = args.iter().position(|a| subcommands.iter().any(|(name, _, _)| name == a));
+    let sub_idx = args
+        .iter()
+        .position(|a| subcommands.iter().any(|(name, _, _)| name == a));
 
     let (cargo_args, cmd_name, sub_args) = match sub_idx {
         Some(idx) => {
@@ -159,16 +168,25 @@ fn main() {
         None => {
             // No known subcommand found.
             let style = Style::new().fg_color(Some(AnsiColor::White.into()));
-            log::error!("{style:#}{}", cformat!("unknown subcommand '<b><yellow>{}</yellow></b>'\n\n{}\n\nFor more information, try '<s>--help</s>'.", args.get(0).cloned().unwrap_or_default(), usage.ansi()));
+            log::error!(
+                "{style:#}{}",
+                cformat!(
+                    "unknown subcommand '<b><yellow>{}</yellow></b>'\n\n{}\n\nFor more information, try '<s>--help</s>'.",
+                    args.get(0).cloned().unwrap_or_default(),
+                    usage.ansi()
+                )
+            );
             std::process::exit(1);
         }
     };
 
-    if let Some((_, manifest_path, config_path)) = subcommands.iter().find(|(n, _, _)| n == &cmd_name) {
+    if let Some((_, manifest_path, config_path)) =
+        subcommands.iter().find(|(n, _, _)| n == &cmd_name)
+    {
         match run_from_cwd(manifest_path, config_path, &cargo_args, &sub_args) {
             Ok(status) => {
                 std::process::exit(status.code().unwrap_or(1));
-            },
+            }
             Err(()) => {
                 log::error!("failed to execute subcommand '{cmd_name}'");
                 std::process::exit(1);
@@ -176,7 +194,14 @@ fn main() {
         }
     } else {
         let style = Style::new().fg_color(Some(AnsiColor::White.into()));
-        log::error!("{style:#}{}", cformat!("unknown subcommand '<b><yellow>{}</yellow></b>'\n\n{}\n\nFor more information, try '<s>--help</s>'.", cmd_name, usage.ansi()));
+        log::error!(
+            "{style:#}{}",
+            cformat!(
+                "unknown subcommand '<b><yellow>{}</yellow></b>'\n\n{}\n\nFor more information, try '<s>--help</s>'.",
+                cmd_name,
+                usage.ansi()
+            )
+        );
         std::process::exit(1);
     }
 }

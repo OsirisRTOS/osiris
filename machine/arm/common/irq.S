@@ -14,6 +14,8 @@
 .thumb_func
 .global pendsv_hndlr
 pendsv_hndlr:
+    @ Disable interrupts.
+    cpsid i
     @ Check which stack we need to use.
     tst lr, #4
     ite eq
@@ -51,6 +53,9 @@ pendsv_hndlr:
     ite eq
     msreq msp, r0
     msrne psp, r0
+
+    @ Re-enable interrupts.
+    cpsie i
 
     @ See Cortex-M4 errata.
     isb

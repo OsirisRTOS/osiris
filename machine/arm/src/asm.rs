@@ -63,13 +63,13 @@ macro_rules! __macro_syscall {
 
 pub use crate::__macro_syscall as syscall;
 
-use core::arch::asm;
-use core::sync::atomic::compiler_fence;
-
 #[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn disable_interrupts() {
-    unsafe { asm!("cpsid f", options(nomem, nostack, preserves_flags)) };
+    use core::arch::asm;
+    use core::sync::atomic::compiler_fence;
+
+    unsafe { asm!("cpsid i", options(nomem, nostack, preserves_flags)) };
     compiler_fence(core::sync::atomic::Ordering::SeqCst);
 }
 
@@ -80,6 +80,8 @@ pub fn disable_interrupts() {}
 #[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn are_interrupts_enabled() -> bool {
+    use core::arch::asm;
+
     let primask: u32;
     unsafe {
         asm!("mrs {}, primask", out(reg) primask, options(nomem, nostack, preserves_flags));
@@ -96,7 +98,10 @@ pub fn are_interrupts_enabled() -> bool {
 #[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn enable_interrupts() {
-    unsafe { asm!("cpsie f", options(nomem, nostack, preserves_flags)) };
+    use core::arch::asm;
+    use core::sync::atomic::compiler_fence;
+
+    unsafe { asm!("cpsie i", options(nomem, nostack, preserves_flags)) };
     compiler_fence(core::sync::atomic::Ordering::SeqCst);
 }
 
@@ -109,7 +114,7 @@ pub fn enable_interrupts() {}
 macro_rules! __macro_startup_trampoline {
     () => {{
         use core::arch::naked_asm;
-        naked_asm!("ldr r1,=__stack_top", "mov sp, r1", "b _main")
+        naked_asm!("ldr r1,=__stack_top", "mov sp, r1", "b bootstrap")
     }};
 }
 
@@ -141,7 +146,6 @@ macro_rules! __macro_delay {
 }
 
 pub use crate::__macro_delay as delay;
-
 
 #[cfg(not(feature = "host"))]
 #[macro_export]

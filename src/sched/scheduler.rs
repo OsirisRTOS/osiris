@@ -20,6 +20,7 @@ static SCHEDULER_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// The scheduler struct. It keeps track of the tasks and threads in the system.
 /// This scheduler is a simple Rate Monotonic Scheduler (RMS) implementation.
+#[derive(Debug)]
 pub struct Scheduler {
     /// The current running thread.
     current: Option<ThreadUId>,
@@ -87,12 +88,12 @@ impl Scheduler {
     ///
     /// `ctx` - The new context to update the current thread with.
     fn update_current_ctx(&mut self, ctx: *mut c_void) {
-        if let Some(id) = self.current {
-            if let Some(thread) = self.threads.get_mut(&id) {
-                thread
-                    .update_sp(ctx)
-                    .expect("Failed to update thread context");
-            }
+        if let Some(id) = self.current
+            && let Some(thread) = self.threads.get_mut(&id)
+        {
+            thread
+                .update_sp(ctx)
+                .expect("Failed to update thread context");
         }
     }
 
@@ -104,21 +105,21 @@ impl Scheduler {
     fn select_new_thread(&mut self) -> Option<*mut c_void> {
         if let Some(id) = self.queue.pop().map(|(_, id)| id) {
             // Set the previous thread as ready. And add a callback from now.
-            if let Some(id) = self.current {
-                if let Some(thread) = self.threads.get_mut(&id) {
-                    thread.update_run_state(RunState::Ready);
-                    // The delay that is already in the queue.
-                    let delay = self.callbacks.back().map(|(_, delay)| *delay).unwrap_or(0);
-                    // Check if the period is already passed.
-                    if thread.timing().period > (self.time + delay) {
-                        // Add the callback to the queue. If it fails, we can't do much.
-                        let _ = self
-                            .callbacks
-                            .push_back((id, thread.timing().period - (self.time + delay)));
-                    } else {
-                        // If the period is already passed, add it to the queue immediately.
-                        let _ = self.queue.push((thread.timing().exec_time, id));
-                    }
+            if let Some(id) = self.current
+                && let Some(thread) = self.threads.get_mut(&id)
+            {
+                thread.update_run_state(RunState::Ready);
+                // The delay that is already in the queue.
+                let delay = self.callbacks.back().map(|(_, delay)| *delay).unwrap_or(0);
+                // Check if the period is already passed.
+                if thread.timing().period > (self.time + delay) {
+                    // Add the callback to the queue. If it fails, we can't do much.
+                    let _ = self
+                        .callbacks
+                        .push_back((id, thread.timing().period - (self.time + delay)));
+                } else {
+                    // If the period is already passed, add it to the queue immediately.
+                    let _ = self.queue.push((thread.timing().exec_time, id));
                 }
             }
 
@@ -195,6 +196,7 @@ pub fn set_enabled(enabled: bool) {
 pub extern "C" fn sched_enter(ctx: *mut c_void) -> *mut c_void {
     {
         let mut scheduler = SCHEDULER.lock();
+
         // Update the current context.
         scheduler.update_current_ctx(ctx);
 

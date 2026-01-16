@@ -287,7 +287,7 @@ fn merge_compile_commands(files: &[String]) -> String {
 
     let mut entries = Vec::new();
     for data in files {
-        if let Ok(Value::Array(mut arr)) = serde_json::from_str::<Value>(&data) {
+        if let Ok(Value::Array(mut arr)) = serde_json::from_str::<Value>(data) {
             entries.append(&mut arr);
         }
     }

@@ -1,3 +1,10 @@
+[workspace]
+members = ["examples/*", "xtasks", "xtasks/crates/*"]
+
+[workspace.dependencies]
+interface = { path = "interface" }
+logging = { path = "xtasks/logging" }
+
 [package]
 name = "osiris"
 version = "0.1.0"
@@ -13,6 +20,8 @@ path = "src/main.rs"
 [dependencies]
 hal = { package = "hal-select", path = "machine/select" }
 macros = { path = "macros" }
+interface = { path = "interface" }
+envparse = "0.1.0"
 
 [dev-dependencies]
 # This is a host-compatible HAL which will be used for running tests and verification on the host.
@@ -40,7 +49,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 [profile.dev]
 panic = "abort"
 strip = false
-opt-level = "z"
+opt-level = 2
 
 [profile.release]
 panic = "abort"

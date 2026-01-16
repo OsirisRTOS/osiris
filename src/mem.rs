@@ -41,7 +41,7 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
 pub fn init_memory(boot_info: &BootInfo) -> Result<(), utils::KernelError> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-    for entry in boot_info.mmap.iter().take(boot_info.mmap_len) {
+    for entry in boot_info.mmap.iter().take(boot_info.mmap_len as usize) {
         // We only add available memory to the allocator.
         if entry.ty == MemoryTypes::Available as u32 {
             let range = entry.addr as usize..(entry.addr + entry.length) as usize;

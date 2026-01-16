@@ -1,5 +1,7 @@
 //! This module provides a pool allocator implementation.
 
+#![allow(dead_code)]
+
 use core::{
     marker::PhantomData,
     num::NonZeroUsize,

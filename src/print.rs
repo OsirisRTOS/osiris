@@ -1,7 +1,4 @@
-use core::ffi::CStr;
 use core::fmt::{self, Write};
-
-use crate::kprintln;
 
 use hal::Machinelike;
 
@@ -24,21 +21,4 @@ pub fn print_header() {
     kprintln!("");
     kprintln!("****************************************************************");
     kprintln!("");
-}
-
-pub fn print_boot_info(boot_info: &crate::BootInfo) {
-    kprintln!("[Osiris] Booting kernel...");
-
-    let implementer = unsafe { CStr::from_ptr(boot_info.implementer) };
-    let variant = unsafe { CStr::from_ptr(boot_info.variant) };
-
-    if let (Ok(implementer), Ok(variant)) = (implementer.to_str(), variant.to_str()) {
-        kprintln!("[Osiris] Detected Processor:");
-        kprintln!("[Osiris] Implementer     : {}", implementer);
-        kprintln!("[Osiris] Name            : {}", variant);
-        kprintln!("");
-    } else {
-        kprintln!("[Osiris] Error: failed to read processor information.");
-        kprintln!("");
-    }
 }
