@@ -28,18 +28,25 @@ foreach(var ${_cache_vars})
   endif()
 endforeach()
 
+# This sets up PIC for .data/.bss access by making all accesses relative to r9.
+# r9 is initialized in crt0.S to point to the base of the .data section.
+# We need this because the offset between .text and .data is not known at compile time. (relocatable)
+add_compile_options(-msingle-pic-base -mpic-register=r9 -mno-pic-data-is-text-relative)
+
 set_property(SOURCE ivt.S APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")
 set_property(SOURCE irq.S APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-cpp")
+set_property(SOURCE crt0.S APPEND PROPERTY COMPILE_OPTIONS "-fno-pic")
 
 add_library(common STATIC
     ivt.S
     entry.c
     syscall.c
     irq.S
+    crt0.S
 )
 
 target_include_directories(common PUBLIC
-    ../../../include
+    ../../../interface/include
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

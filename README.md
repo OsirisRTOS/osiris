@@ -54,7 +54,14 @@ This will build the kernel for your current config.
 $ just build
 ```
 
-After the build a binary named ```Kernel.bin``` will be created at the source root folder.
+#### **Build an example app.**
+In order to build an example run ```just example <name>```.
+For example:
+```sh
+$ just example hello-world
+```
+
+After the build a binary named ```hello-world.bin` will be created at the source root folder. This can then be flashed onto the MCU.
 
 ### Set up pre-commit hooks
 

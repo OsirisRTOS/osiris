@@ -9,12 +9,14 @@ use core::{
 };
 
 /// A heap-allocated memory block.
+#[derive(Debug)]
 pub struct Box<T: ?Sized> {
     /// Pointer to the heap-allocated memory.
     /// This is uniquely owned, so no covariance issues.
     ptr: NonNull<T>,
 }
 
+#[allow(dead_code)]
 impl<T> Box<[T]> {
     /// Create a new zeroed heap-allocated slice with the given length.
     ///
@@ -66,6 +68,7 @@ impl<T> Box<[T]> {
     }
 }
 
+#[allow(dead_code)]
 impl<T> Box<T> {
     /// Create a new heap-allocated value.
     ///

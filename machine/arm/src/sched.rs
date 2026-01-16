@@ -55,6 +55,7 @@ impl Add<usize> for StackPtr {
 }
 
 /// A stack on arm is 4 byte aligned and grows downwards.
+#[derive(Debug)]
 pub struct ArmStack {
     /// The top of the stack (highest address).
     /// Safety: NonNull<u32> can safely be covariant over u32.
@@ -133,6 +134,7 @@ impl ArmStack {
         // R1 (argument to the function - 0)
         // R0 (argument to the function - 0)
         // LR (EXEC_RETURN)
+        // R12 (dummy for alignment)
         // R11 - R4 (scratch - 0)
 
         println!(
@@ -158,8 +160,18 @@ impl ArmStack {
             // Tells the hw to return to thread mode and use the PSP after the exception.
             Self::push(&mut write_index, EXEC_RETURN_THREAD_PSP);
 
-            // R12 (dummy for alignment), R11 - R4
-            for _ in 0..9 {
+            // R12 (dummy), R11 - R10
+            for _ in 0..3 {
+                Self::push(&mut write_index, 0);
+            }
+
+            // R9, fixed
+            let r9: u32;
+            core::arch::asm!("mov {}, r9", out(reg) r9);
+            Self::push(&mut write_index, r9);
+
+            // R8 - R4
+            for _ in 0..5 {
                 Self::push(&mut write_index, 0);
             }
 

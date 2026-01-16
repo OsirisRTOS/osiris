@@ -23,6 +23,7 @@ pub struct AtomicU8 {
     value: UnsafeCell<u8>,
 }
 
+#[allow(unused_imports)]
 #[cfg(not(all(feature = "no-atomic-cas")))]
 pub use core::sync::atomic::AtomicU8;
 
@@ -65,6 +66,7 @@ impl AtomicU8 {
     }
 }
 
+#[allow(unused_imports)]
 #[cfg(not(all(feature = "no-atomic-cas")))]
 pub use core::sync::atomic::AtomicBool;
 

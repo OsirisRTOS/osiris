@@ -12,5 +12,16 @@ OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
 # Tuning parameters
 OSIRIS_TUNING_ENABLEFPU = "false"
 
+OSIRIS_TUNING_APPSTACKSIZE = "2048"
+OSIRIS_TUNING_APPMEMSIZE = "8192"
+
 [build]
 target = "thumbv7em-none-eabi"
+
+[target.'cfg(target_os = "none")']
+rustflags = [
+  "-C", "link-arg=--entry=main",
+]
+
+[target.thumbv7em-none-eabi]
+rustflags = ["-C", "relocation-model=ropi-rwpi"]

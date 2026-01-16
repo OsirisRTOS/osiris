@@ -3,7 +3,7 @@
 #[cfg(freestanding)]
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
-pub extern "C" fn _start() -> ! {
+pub extern "C" fn main() -> ! {
     hal::asm::startup_trampoline!();
 }
 

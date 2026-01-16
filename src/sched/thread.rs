@@ -14,6 +14,7 @@ pub struct ThreadId {
     owner: TaskId,
 }
 
+#[allow(dead_code)]
 impl ThreadId {
     pub fn new(id: usize, owner: TaskId) -> Self {
         Self { id, owner }
@@ -27,18 +28,20 @@ impl ThreadId {
         self.owner
     }
 
-    pub fn into_uid(&self, uid: usize) -> ThreadUId {
+    pub fn get_uid(&self, uid: usize) -> ThreadUId {
         ThreadUId { uid, tid: *self }
     }
 }
 
 /// Unique identifier for a thread. Build from TaskId and ThreadId.
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct ThreadUId {
     uid: usize,
     tid: ThreadId,
 }
 
+#[allow(dead_code)]
 impl ThreadUId {
     pub fn tid(&self) -> ThreadId {
         self.tid
@@ -100,6 +103,8 @@ pub struct Timing {
 }
 
 /// The state of a thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum RunState {
     /// The thread is currently using the cpu.
     Runs,
@@ -109,12 +114,15 @@ pub enum RunState {
     Waits,
 }
 
+#[derive(Debug)]
 pub struct ThreadState {
     run_state: RunState,
     stack: Stack,
 }
 
 /// The struct representing a thread.
+#[derive(Debug)]
+#[allow(dead_code)]
 pub struct Thread {
     /// The current state of the thread.
     state: ThreadState,
@@ -124,6 +132,7 @@ pub struct Thread {
     tuid: ThreadUId,
 }
 
+#[allow(dead_code)]
 impl Thread {
     /// Create a new thread.
     ///
@@ -165,10 +174,12 @@ impl Thread {
     }
 }
 
+#[derive(Debug)]
 pub struct ThreadMap<const N: usize> {
     map: IndexMap<ThreadUId, Thread, N>,
 }
 
+#[allow(dead_code)]
 impl<const N: usize> ThreadMap<N> {
     pub const fn new() -> Self {
         Self {
@@ -178,7 +189,7 @@ impl<const N: usize> ThreadMap<N> {
 
     pub fn create(&mut self, desc: ThreadDescriptor) -> Result<ThreadUId, KernelError> {
         let idx = self.map.find_empty().ok_or(KernelError::OutOfMemory)?;
-        let tuid = desc.tid.into_uid(idx);
+        let tuid = desc.tid.get_uid(idx);
         let thread = Thread::new(tuid, desc.stack, desc.timing);
 
         self.map.insert(&tuid, thread)?;

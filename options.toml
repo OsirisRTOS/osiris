@@ -25,3 +25,15 @@ name = "Enable FPU"
 description = "Enables the Floating Point Unit (FPU). This is required for applications that use floating point operations. Enabling the FPU increases context switch time and stack usage."
 type = "Boolean"
 default = false
+
+[tuning.appmemsize]
+name = "Application Memory Size"
+description = "Sets the size of the initial memory region for the init application. This memory is used for the heap and stack."
+type = { type = "Integer", min = 0 }
+default = 8192
+
+[tuning.appstacksize]
+name = "Application Stack Size"
+description = "Sets the size of the stack for the init application. This must be less than the application memory size."
+type = { type = "Integer", min = 0 }
+default = 2048

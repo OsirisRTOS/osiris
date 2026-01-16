@@ -16,6 +16,7 @@ fn tick() {
  * Returns the current time in milliseconds after boot.
  *
  */
+#[allow(dead_code)]
 pub fn time() -> u64 {
     if !hal::asm::are_interrupts_enabled() {
         // If interrupts are disabled, we can just read the time.

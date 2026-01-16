@@ -5,12 +5,14 @@ use super::boxed::Box;
 use crate::utils::KernelError;
 
 /// A ring-buffer based queue, with N elements stored inline. TODO: Make this growable.
+#[derive(Debug)]
 pub struct Queue<T: Clone, const N: usize> {
     data: Vec<T, N>,
     len: usize,
     front: usize,
 }
 
+#[allow(dead_code)]
 impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     /// Create a new empty queue.
     pub const fn new() -> Self {
@@ -139,10 +141,10 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
             }
             // now copy the data back from the temp helper
             for i in 0..non_wrapping_queue_start_len {
-                // Safety: values copied into our helper are part of the active queue, must therefore be inited
-                self.data
-                    .at_mut(i)
-                    .map(|el| *el = unsafe { swap_helper[i].assume_init() });
+                // Safety: values copied into our helper are part of the active queue, must therefore be initialized
+                if let Some(el) = self.data.at_mut(i) {
+                    *el = unsafe { swap_helper[i].assume_init() };
+                }
             }
             self.front = 0;
         }

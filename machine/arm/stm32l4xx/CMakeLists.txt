@@ -30,6 +30,10 @@ foreach(var ${_cache_vars})
   endif()
 endforeach()
 
+# This sets up PIC for .data/.bss access by making all accesses relative to r9.
+# r9 is initialized in crt0.S to point to the base of the .data section.
+# We need this because the offset between .text and .data is not known at compile time. (relocatable)
+add_compile_options(-msingle-pic-base -mpic-register=r9 -mno-pic-data-is-text-relative)
 
 # this will compile our variant_stm32l4xx library
 add_subdirectory(${OSIRIS_ARM_STM32L4XX_VARIANT})

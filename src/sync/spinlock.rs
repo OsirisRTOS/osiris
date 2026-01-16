@@ -6,10 +6,12 @@ use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 
 /// A mutual exclusion primitive, facilitating busy-waiting.
+#[derive(Debug)]
 pub struct SpinLock {
     lock: AtomicBool,
 }
 
+#[allow(dead_code)]
 impl SpinLock {
     /// Creates a new SpinLock.
     pub const fn new() -> Self {
@@ -54,6 +56,7 @@ impl SpinLock {
 }
 
 /// A guard that releases the SpinLock when dropped.
+#[derive(Debug)]
 pub struct SpinLockGuard<'a, T: ?Sized> {
     lock: &'a SpinLock,
     value: NonNull<T>,
@@ -92,6 +95,7 @@ pub struct SpinLocked<T> {
 unsafe impl<T> Sync for SpinLocked<T> {}
 
 /// Test
+#[allow(dead_code)]
 impl<T> SpinLocked<T> {
     /// Creates a new SpinLocked.
     pub const fn new(value: T) -> Self {
