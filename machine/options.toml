@@ -1,2 +1,11 @@
 [metadata]
 parent = "."
+
+[arch]
+name = "Architecture"
+description = "Implicit target architecture selection."
+type = { type = "String", allowed_values = ["arm", "x86_64"] }
+# This expression evaluates to the target architecture based on the target-triple provided.
+default = "${target_arch}"
+# This option is hidden in the UI and is also not stored in the config.
+attributes = ["hidden", "no_store"]

@@ -30,9 +30,13 @@ foreach(var ${_cache_vars})
   endif()
 endforeach()
 
+# This sets up PIC for .data/.bss access by making all accesses relative to r9.
+# r9 is initialized in crt0.S to point to the base of the .data section.
+# We need this because the offset between .text and .data is not known at compile time. (relocatable)
+add_compile_options(-msingle-pic-base -mpic-register=r9 -mno-pic-data-is-text-relative)
 
-# this will compile our chip_stm32l4xx library
-add_subdirectory(${OSIRIS_ARM_STM32L4XX_MCU})
+# this will compile our variant_stm32l4xx library
+add_subdirectory(${OSIRIS_ARM_STM32L4XX_VARIANT})
 
 # HAL
 add_subdirectory(hal)
@@ -51,7 +55,7 @@ add_custom_command(
   OUTPUT  ${LINKER_SCRIPT_OUT}
   COMMAND ${CMAKE_C_COMPILER} -E -P -x c
           ${CONFIG_DEFINES}
-          -DMCU_HEADER=\"${OSIRIS_ARM_STM32L4XX_MCU}/link.ld\"
+          -DMCU_HEADER=\"${OSIRIS_ARM_STM32L4XX_VARIANT}/link.ld\"
           ${LINKER_SCRIPT_IN}
           -o ${LINKER_SCRIPT_OUT}
   DEPENDS ${LINKER_SCRIPT_IN} ${DEPS_FILE}
@@ -66,6 +70,6 @@ target_link_libraries(hal_native PUBLIC device_native)
 
 # Interface
 add_subdirectory(interface)
-target_link_libraries(interface_native PUBLIC hal_native chip_native)
+target_link_libraries(interface_native PUBLIC hal_native variant_native)
 
-install(TARGETS interface_native hal_native device_native chip_native DESTINATION .)
+install(TARGETS interface_native hal_native device_native variant_native DESTINATION .)

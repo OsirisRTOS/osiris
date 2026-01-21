@@ -1,7 +1,6 @@
 #include <stdint.h>
 
-#include <kernel/lib.h>
-
+#include <bindings.h>
 #include <stdint.h>
 
 /*
@@ -199,12 +198,7 @@ const uintptr_t vector_table_ext[] __attribute__((section(".ivt.ext"))) = {
     (uintptr_t)&dmamux1_ovr_hndlr,
 };
 
-void init_boot_info(BootInfo *boot_info) {
-  boot_info->implementer = "ARM";
-  boot_info->variant = "Cortex-M4";
-
-  boot_info->mmap;
-
+void init_mem_maps(BootInfo *boot_info) {
   boot_info->mmap_len = 3;
 
   // SRAM1

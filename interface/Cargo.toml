@@ -1,0 +1,12 @@
+[package]
+name = "interface"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytemuck = { version = "1.24.0", features = ["derive"] }
+
+
+[build-dependencies]
+cfg_aliases = "0.2.1"
+cbindgen = "0.28.0"

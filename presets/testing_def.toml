@@ -1,0 +1,6 @@
+# This is the default configuration for running tests and verification.
+
+[env]
+
+[build]
+target = "host-tuple"

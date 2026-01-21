@@ -66,12 +66,15 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	ln -sf /usr/bin/clang /usr/bin/cc && \
 	ln -sf /usr/bin/clang++ /usr/bin/c++
 
-RUN git clone --single-branch --depth 1 -b "develop" https://github.com/stlink-org/stlink.git /tmp/stlink
+RUN git clone --single-branch --depth 2 -b "develop" https://github.com/CreaxxOG/stlink.git /tmp/stlink && \
+    cd /tmp/stlink && \
+    git fetch origin 6622e2c4b9e28296ef14e7a0740b388eccb47987 && \
+    git checkout 6622e2c4b9e28296ef14e7a0740b388eccb47987
 RUN --mount=type=cache,target=/tmp/stlink/build \
-	cd /tmp/stlink && \
-	make -j release && \
-	make install && \
-	ldconfig
+    cd /tmp/stlink && \
+    make -j release && \
+    make install && \
+    ldconfig
 
 # Fix for Fedora not finding libstlink.so.1
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64

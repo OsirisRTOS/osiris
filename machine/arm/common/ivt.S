@@ -8,7 +8,7 @@
 .section .ivt.core, "a", %progbits
 vector_table:
 .word __stack_top
-.word _start
+.word main
 .word nmi_hndlr
 .word hard_fault_hndlr
 .word mem_manage_fault_hndlr

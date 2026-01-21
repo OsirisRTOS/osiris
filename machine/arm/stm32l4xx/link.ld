@@ -1,5 +1,3 @@
-ENTRY(_start)
-
 #ifndef MCU_HEADER
 #error "MCU_HEADER is not defined."
 #endif
@@ -17,6 +15,19 @@ __syms_size = 0x3e800;
 __syms_size = 4;
 #endif
 
+
+/* 
+We need to ensure that .data and .bss will be emitted in one segment.
+The reason for that is, that with ropi-rwpi enabled LLD will generate incorrect r9 relative addressing when multiple segments are involved.
+See https://github.com/llvm/llvm-project/issues/55628 for details.
+*/
+PHDRS
+{
+  text PT_LOAD FLAGS((1 << 2) | (1 << 0)); /* PF_X | PF_R */
+  ro   PT_LOAD FLAGS((1 << 0));            /* PF_R        */
+  data PT_LOAD FLAGS((1 << 1) | (1 << 0)); /* PF_W | PF_R */
+}
+
 SECTIONS
 {
     /* Our vector table. */
@@ -26,7 +37,7 @@ SECTIONS
 
         KEEP(*(.ivt.core));
         KEEP(*(.ivt.ext));
-    } > FLASH
+    } > FLASH :text
 
     .stack (NOLOAD) :
     {
@@ -41,13 +52,13 @@ SECTIONS
     {
         *(.text .text.* .gnu.linkonce.t*)
         *(.gnu.warning)
-    } > FLASH
+    } > FLASH :text
 
     /* Some arm exception stuff */
-    .ARM.extab : { *(.ARM.extab* .gnu.linkonce.armextab.*) } > FLASH
+    .ARM.extab : { *(.ARM.extab* .gnu.linkonce.armextab.*) } > FLASH :text
     . = ALIGN(4);
     PROVIDE_HIDDEN(__exidx_start = .);
-    .ARM.exidx : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } > FLASH
+    .ARM.exidx : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } > FLASH :text
     PROVIDE_HIDDEN(__exidx_end = .);
 
     .preinit_array :
@@ -55,7 +66,7 @@ SECTIONS
         PROVIDE_HIDDEN (__preinit_array_start = .);
         KEEP(*(.preinit_array*))
         PROVIDE_HIDDEN (__preinit_array_end = .);
-    } > FLASH
+    } > FLASH :text
 
     .init_array :
     {
@@ -63,7 +74,7 @@ SECTIONS
         KEEP (*(SORT(.init_array.*)))
         KEEP (*(.init_array*))
         PROVIDE_HIDDEN (__init_array_end = .);
-    } > FLASH
+    } > FLASH :text
 
     .fini_array :
     {
@@ -71,7 +82,7 @@ SECTIONS
         KEEP (*(SORT(.fini_array.*)))
         KEEP (*(.fini_array*))
         PROVIDE_HIDDEN (__fini_array_end = .);
-    } > FLASH
+    } > FLASH :text
 
     .rodata :
     {
@@ -79,26 +90,7 @@ SECTIONS
         *(.rodata .rodata.* .gnu.linkonce.r*)
         . = ALIGN(0x4);
         __rom_end = .;
-    } > FLASH
-
-    __data = LOADADDR(.data);
-    .data :
-    {
-        __data_start = .;
-        *(.data .data.* .gnu.linkonce.d*)
-        . = ALIGN(4);
-        __data_end = .;
-    } > RAM AT > FLASH
-
-    .bss (NOLOAD):
-    {
-        . = ALIGN(4);
-        __bss_start = .;
-        *(.bss .bss.*)
-        *(COMMON)
-        . = ALIGN(4);
-        __bss_end = .;
-    } > RAM
+    } > FLASH :ro
 
     /* A section of memory where the runtime symbols will be placed. 
      * We just make sure that nothing leaks into this memory space.
@@ -112,7 +104,31 @@ SECTIONS
         /* BYTE(0x00); make sure the section is not empty */
         . = . + __syms_size;
         __syms_area_end = .;
-    } > FLASH
+    } > FLASH :ro
+
+    __data = LOADADDR(.bootinfo);
+    .bootinfo : 
+    {
+        __data_start = .;
+        KEEP(*(.bootinfo))
+        . = ALIGN(4);
+    } > RAM AT > FLASH :data
+
+    .data :
+    {
+        *(.data .data.* .gnu.linkonce.d*)
+        . = ALIGN(4);
+        __data_end = .;
+    } > RAM AT > FLASH :data
+
+    .bss :
+    {
+        __bss_start = .;
+        *(.bss .bss.*)
+        *(COMMON)
+        . = ALIGN(4);
+        __bss_end = .;
+    } > RAM :data
 
     /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
 }
