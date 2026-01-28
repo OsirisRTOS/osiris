@@ -10,3 +10,5 @@ symbols.map
 compile_commands.json
 .cache/
 *.img
+src/modules/kernelmods.rs
+src/uspace/kernelmods.rs

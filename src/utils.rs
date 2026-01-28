@@ -56,6 +56,7 @@ pub enum KernelError {
     HalError(hal::Error),
 }
 
+
 /// Debug msg implementation for KernelError.
 impl Debug for KernelError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -75,3 +76,5 @@ impl From<hal::Error> for KernelError {
         KernelError::HalError(err)
     }
 }
+
+

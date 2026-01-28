@@ -18,6 +18,8 @@ fn main() {
 
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
     generate_syscalls_export("src/syscalls").expect("Failed to generate syscall exports.");
+    generate_kernelmods("src/modules/").expect("Failed to generate kernel modules.");
+    generate_userspace_kernelmods("src/modules/").expect("Failed to generate userspace kernel module wrappers.");
 
     // Get linker script from environment variable
     if let Ok(linker_script) = std::env::var("DEP_HAL_LINKER_SCRIPT") {
@@ -65,19 +67,19 @@ fn get_arg_names(args: &str) -> String {
 
     ", ".to_owned()
         + &args.chars().fold("".to_owned(), |mut acc, char| {
-            if char.eq(&' ') {
-                in_arg_name = false;
-                return acc;
-            }
-            if char.eq(&',') {
-                in_arg_name = true;
-                return acc + ", ";
-            }
-            if in_arg_name {
-                acc.push(char);
-            }
-            acc
-        })
+        if char.eq(&' ') {
+            in_arg_name = false;
+            return acc;
+        }
+        if char.eq(&',') {
+            in_arg_name = true;
+            return acc + ", ";
+        }
+        if in_arg_name {
+            acc.push(char);
+        }
+        acc
+    })
 }
 
 fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
@@ -250,4 +252,383 @@ fn collect_syscalls_export<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallDa
     }
 
     syscalls
+}
+
+#[derive(Debug, Clone)]
+struct KernelModuleCallFn {
+    name: String,
+    inputs: Punctuated<FnArg, Comma>,
+    output: syn::ReturnType,
+}
+
+#[derive(Debug)]
+struct KernelModule {
+    name: String,
+    init_fn: Option<String>,
+    exit_fn: Option<String>,
+    call_fns: Vec<KernelModuleCallFn>,
+}
+
+fn has_attribute(attrs: &[Attribute], attr_name: &str) -> bool {
+    attrs.iter().any(|attr| attr.path().is_ident(attr_name))
+}
+
+fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Error> {
+    let mut modules = Vec::new();
+    let mut folder = root.to_string();
+    folder.push_str("kernelmods/");
+    for entry in WalkDir::new(folder) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+
+        if entry.file_type().is_file() && entry.path().extension().map_or(false, |ext| ext == "rs") {
+            let path = entry.path();
+
+            println!("Processing kernel module file: {}", path.display());
+
+            let contents = match std::fs::read_to_string(path) {
+                Ok(contents) => contents,
+                Err(_) => continue,
+            };
+
+            let file = match syn::parse_file(&contents) {
+                Ok(file) => file,
+                Err(_) => continue,
+            };
+
+            let module_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            let mut module = KernelModule {
+                name: module_name.clone(),
+                init_fn: None,
+                exit_fn: None,
+                call_fns: Vec::new(),
+            };
+
+            for item in file.items {
+                if let syn::Item::Fn(item_fn) = item {
+                    let fn_name = item_fn.sig.ident.to_string();
+
+                    if has_attribute(&item_fn.attrs, "kernel_init") {
+                        if module.init_fn.is_some() {
+                            println!("cargo::warning=Module {module_name} has multiple init functions");
+                        }
+                        module.init_fn = Some(fn_name.clone());
+                    }
+
+                    if has_attribute(&item_fn.attrs, "kernel_deinit") {
+                        if module.exit_fn.is_some() {
+                            println!("cargo::warning=Module {module_name} has multiple exit functions");
+                        }
+                        module.exit_fn = Some(fn_name.clone());
+                    }
+
+                    if has_attribute(&item_fn.attrs, "kernelmod_call") {
+                        module.call_fns.push(KernelModuleCallFn {
+                            name: fn_name,
+                            inputs: item_fn.sig.inputs.clone(),
+                            output: item_fn.sig.output.clone(),
+                        });
+                    }
+                }
+            }
+
+            // Only add module if it has at least one of the attributes
+            if module.init_fn.is_some() || module.exit_fn.is_some() || !module.call_fns.is_empty() {
+                modules.push(module);
+            }
+        }
+    }
+
+    Ok(modules)
+}
+
+fn generate_kernelmods(root: &str) -> Result<(), std::io::Error> {
+    let modules = collect_kernel_modules(root)?;
+    println!("Generating kernel mods for {}", root);
+    let out_dir = root;
+    let out_path = Path::new(&out_dir).join("kernelmods.rs");
+    let mut file = File::create(out_path)?;
+
+    // 1. Header
+    writeln!(file, "// This file is @generated by build.rs. Do not edit!")?;
+    writeln!(file, "// Generated kernel module system")?;
+    writeln!(file, "use macros::syscall_handler;")?;
+    writeln!(file)?;
+
+    // Generate mod declarations
+    writeln!(file, "// Module declarations")?;
+    for module in &modules {
+        writeln!(file, "mod {};", module.name)?;
+    }
+    writeln!(file)?;
+
+    // 2. init_modules() function
+    writeln!(file, "/// Initialize all kernel modules")?;
+    writeln!(file, "pub fn init_modules() {{")?;
+
+    for module in &modules {
+        if let Some(ref init_fn) = module.init_fn {
+            writeln!(file, "    {}::{}();", module.name, init_fn)?;
+        }
+    }
+    writeln!(file, "}}")?;
+    writeln!(file)?;
+
+    // 3. exit_modules() function
+    writeln!(file, "/// Deinitialize all kernel modules")?;
+    writeln!(file, "pub fn exit_modules() {{")?;
+    for module in &modules {
+        if let Some(ref exit_fn) = module.exit_fn {
+            writeln!(file, "    {}::{}();", module.name, exit_fn)?;
+        }
+    }
+    writeln!(file, "}}")?;
+    writeln!(file)?;
+
+    // 4. Lookup table with function pointers
+    writeln!(file, "/// Lookup table for kernel module call wrappers")?;
+    writeln!(file, "type KernelModCallFn = unsafe fn(*const u8) -> usize;")?;
+    writeln!(file)?;
+    writeln!(file, "const KERNELMOD_CALL_TABLE: &[KernelModCallFn] = &[")?;
+
+    for module in &modules {
+        for call_fn in &module.call_fns {
+            writeln!(file, "    {}::__{}_wrapper,", module.name, call_fn.name)?;
+        }
+    }
+
+    writeln!(file, "];")?;
+    writeln!(file)?;
+
+    // 5. execute_kernelmodcall function
+    writeln!(file, "/// Execute a kernel module call by index")?;
+    writeln!(file, "#[syscall_handler(num = 255)]")?;
+    writeln!(file, "pub fn execute_kernelmodcall(index: usize, data: *const u8) -> i32 {{")?;
+    writeln!(file, "    if index >= KERNELMOD_CALL_TABLE.len() {{")?;
+    writeln!(file, "        return -1;")?;
+    writeln!(file, "    }}")?;
+    writeln!(file)?;
+    writeln!(file, "    let func = KERNELMOD_CALL_TABLE[index];")?;
+    writeln!(file, "    unsafe {{")?;
+    writeln!(file, "        let result = func(data);")?;
+    writeln!(file, "        result as i32")?;
+    writeln!(file, "    }}")?;
+    writeln!(file, "}}")?;
+
+    println!("cargo::warning=Generated kernel modules file with {} modules", modules.len());
+
+    Ok(())
+}
+// ===== Userspace Wrapper Generation =====
+
+use syn::{Pat, PatType, Type, TypeReference, TypeSlice};
+
+fn generate_userspace_kernelmods(root: &str) -> Result<(), std::io::Error> {
+    let modules = collect_kernel_modules(root)?;
+
+    let out_path = Path::new("src/uspace").join("kernelmods.rs");
+    let mut file = File::create(out_path)?;
+
+    // Header
+    writeln!(file, "// This file is @generated by build.rs. Do not edit!")?;
+    writeln!(file, "// Generated userspace kernel module wrappers")?;
+    writeln!(file)?;
+    writeln!(file, "use crate::error::UnixError;")?;
+    writeln!(file)?;
+
+    // Track global index across all modules
+    let mut global_index = 0usize;
+
+    // Generate each module
+    for module in &modules {
+        if module.call_fns.is_empty() {
+            continue;
+        }
+
+        writeln!(file, "pub mod {} {{", module.name)?;
+        writeln!(file, "    use super::*;")?;
+        writeln!(file)?;
+
+        // Generate each function in the module
+        for call_fn in &module.call_fns {
+            generate_userspace_function(&mut file, &call_fn, global_index)?;
+            global_index += 1;
+        }
+
+        writeln!(file, "}}")?;
+        writeln!(file)?;
+    }
+
+    println!("cargo::warning=Generated userspace kernel modules file with {} functions", global_index);
+
+    Ok(())
+}
+
+fn generate_userspace_function(
+    file: &mut File,
+    func: &KernelModuleCallFn,
+    index: usize,
+) -> Result<(), std::io::Error> {
+    let fn_name = &func.name;
+    let args_struct_name = format!("{}Args", fn_name);
+
+    // Generate the Args struct
+    writeln!(file, "    #[repr(C)]")?;
+    writeln!(file, "    struct {} {{", args_struct_name)?;
+
+    let mut arg_names = Vec::new();
+    let mut field_inits = Vec::new();
+
+    for arg in &func.inputs {
+        if let FnArg::Typed(pat_type) = arg {
+            if let Pat::Ident(pat_ident) = &*pat_type.pat {
+                let name = pat_ident.ident.to_string();
+                arg_names.push(name.clone());
+
+                generate_args_struct_field(file, &name, &pat_type.ty, &mut field_inits)?;
+            }
+        }
+    }
+
+    writeln!(file, "    }}")?;
+    writeln!(file)?;
+
+    // Generate the function signature
+    let inputs_str = func.inputs
+        .iter()
+        .map(|arg| arg.to_token_stream().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    // Extract return type
+    let return_type_str = match &func.output {
+        syn::ReturnType::Default => "Result<(), UnixError>".to_string(),
+        syn::ReturnType::Type(_, ty) => ty.to_token_stream().to_string(),
+    };
+
+    writeln!(file, "    pub fn {}({}) -> {} {{", fn_name, inputs_str, return_type_str)?;
+
+    // Create args struct
+    writeln!(file, "        let args = {} {{", args_struct_name)?;
+    for init in &field_inits {
+        writeln!(file, "            {},", init)?;
+    }
+    writeln!(file, "        }};")?;
+    writeln!(file)?;
+
+    // Make syscall
+    writeln!(file, "        let result = unsafe {{")?;
+    writeln!(file, "            hal::asm::syscall!(255, {}, &args as *const _ as *const u8)", index)?;
+    writeln!(file, "        }};")?;
+    writeln!(file)?;
+
+    // Convert i32 result to Result<T, UnixError>
+    writeln!(file, "        // Convert i32 result to Result")?;
+    writeln!(file, "        if result < 0 && result > -134 {{")?;
+    writeln!(file, "            let err: UnixError = UnixError::try_from(result)")?;
+    writeln!(file, "                .unwrap_or(UnixError::ENOSYS);")?;
+    writeln!(file, "            Err(err)")?;
+    writeln!(file, "        }} else {{")?;
+
+    // Determine success return type
+    let success_type = extract_success_type(&func.output);
+    if success_type == "()" {
+        writeln!(file, "            Ok(())")?;
+    } else {
+        writeln!(file, "            Ok(result as {})", success_type)?;
+    }
+
+    writeln!(file, "        }}")?;
+    writeln!(file, "    }}")?;
+    writeln!(file)?;
+
+    Ok(())
+}
+
+fn generate_args_struct_field(
+    file: &mut File,
+    name: &str,
+    ty: &Type,
+    field_inits: &mut Vec<String>,
+) -> Result<(), std::io::Error> {
+    match ty {
+        Type::Path(_) => {
+            // Direct field (primitive or Copy type)
+            let ty_str = ty.to_token_stream().to_string();
+            writeln!(file, "        {}: {},", name, ty_str)?;
+            field_inits.push(name.to_string());
+        }
+        Type::Reference(type_ref) => {
+            if type_ref.mutability.is_some() {
+                println!("cargo::warning=Mutable references not supported in kernelmod_call: {}", name);
+            }
+
+            match &*type_ref.elem {
+                Type::Slice(slice) => {
+                    // &[T] -> ptr + len
+                    let elem_ty = slice.elem.to_token_stream().to_string();
+                    writeln!(file, "        {}_ptr: *const {},", name, elem_ty)?;
+                    writeln!(file, "        {}_len: usize,", name)?;
+                    field_inits.push(format!("{}_ptr: {}.as_ptr()", name, name));
+                    field_inits.push(format!("{}_len: {}.len()", name, name));
+                }
+                Type::Path(path) => {
+                    // Check for &str
+                    if path.path.is_ident("str") {
+                        writeln!(file, "        {}_ptr: *const u8,", name)?;
+                        writeln!(file, "        {}_len: usize,", name)?;
+                        field_inits.push(format!("{}_ptr: {}.as_ptr()", name, name));
+                        field_inits.push(format!("{}_len: {}.len()", name, name));
+                    } else {
+                        // &T -> *const T
+                        let ty_str = path.to_token_stream().to_string();
+                        writeln!(file, "        {}: *const {},", name, ty_str)?;
+                        field_inits.push(format!("{}: {} as *const _", name, name));
+                    }
+                }
+                _ => {
+                    // Fallback: &T -> *const T
+                    let elem_ty = type_ref.elem.to_token_stream().to_string();
+                    writeln!(file, "        {}: *const {},", name, elem_ty)?;
+                    field_inits.push(format!("{}: {} as *const _", name, name));
+                }
+            }
+        }
+        _ => {
+            println!("cargo::warning=Unsupported type in kernelmod_call: {}", ty.to_token_stream());
+            let ty_str = ty.to_token_stream().to_string();
+            writeln!(file, "        {}: {},", name, ty_str)?;
+            field_inits.push(name.to_string());
+        }
+    }
+
+    Ok(())
+}
+
+fn extract_success_type(return_type: &syn::ReturnType) -> String {
+    match return_type {
+        syn::ReturnType::Default => "()".to_string(),
+        syn::ReturnType::Type(_, ty) => {
+            // Parse Result<T, UnixError> to extract T
+            if let Type::Path(type_path) = &**ty {
+                if let Some(segment) = type_path.path.segments.last() {
+                    if segment.ident == "Result" {
+                        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                            if let Some(syn::GenericArgument::Type(ok_type)) = args.args.first() {
+                                return ok_type.to_token_stream().to_string();
+                            }
+                        }
+                    }
+                }
+            }
+            "()".to_string()
+        }
+    }
 }

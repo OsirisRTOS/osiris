@@ -1,12 +1,12 @@
 use macros::{kernel_deinit, kernel_init, kernelmod_call};
 
 #[kernel_init]
-fn init() {
+pub(super) fn init() {
     
 }
 
 #[kernel_deinit]
-fn deinit() {
+pub(super) fn deinit() {
     
 }
 
@@ -21,7 +21,7 @@ enum UnixError {
     NotFound = -2,
 }
 #[kernelmod_call]
-fn call(target: i32) -> Result<i32,UnixError> {
+pub(super) fn call(target: i32) -> Result<i32,UnixError> {
     match target {
         1 => Ok(0),
         2 => Err(UnixError::InvalidArgument),

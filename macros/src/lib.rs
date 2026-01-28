@@ -238,8 +238,8 @@ pub fn kernelmod_call(_attr: proc_macro::TokenStream, item: proc_macro::TokenStr
 fn generate_wrapper(input: ItemFn) -> Result<TokenStream,Error> {
     let fn_name = &input.sig.ident;
     let fn_vis = &input.vis;
-    let wrapper_name = syn::Ident::new(&format!("{}_wrapper", fn_name), fn_name.span());
-    let args_struct_name = syn::Ident::new(&format!("{}Args", fn_name), fn_name.span());
+    let wrapper_name = syn::Ident::new(&format!("__{}_wrapper", fn_name), fn_name.span());
+    let args_struct_name = syn::Ident::new(&format!("__{}Args", fn_name), fn_name.span());
 
     validate_return_type(&input.sig.output)?;
 
@@ -288,7 +288,7 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream,Error> {
             #(#arg_fields),*
         }
         
-        #fn_vis unsafe extern "C" fn #wrapper_name(args_ptr: *const u8) -> usize {
+        #fn_vis unsafe fn #wrapper_name(args_ptr: *const u8) -> usize {
             let args = &*(args_ptr as *const #args_struct_name);
             
             #(#arg_reconstructions)*

@@ -9,11 +9,11 @@ trait KernelModule {
 }
 
 
-fn init_modules() -> Result<(), KernelError> { 
+fn init_modules() { 
     kernelmods::init_modules()
 }
 
-fn exit_modules() -> Result<(), KernelError> {
+fn exit_modules()  {
     kernelmods::exit_modules()
 }
 

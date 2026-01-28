@@ -1,4 +1,5 @@
 //! This module provides access to userspace structures and services.
+mod kernelmods;
 
 use ::core::mem::transmute;
 
