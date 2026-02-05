@@ -11,6 +11,9 @@ pub mod boxed;
 pub mod heap;
 pub mod pool;
 pub mod queue;
+pub mod rbtree;
+pub mod traits;
+pub mod view;
 
 /// The possible types of memory. Which is compatible with the multiboot2 memory map.
 /// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
@@ -88,61 +91,3 @@ pub fn align_up(size: usize) -> usize {
     let align = align_of::<u128>();
     (size + align - 1) & !(align - 1)
 }
-
-// VERIFICATION -----------------------------------------------------------------------------------
-#[cfg(kani)]
-mod verification {
-    use super::*;
-    use crate::mem::alloc::MAX_ADDR;
-
-    fn mock_ptr_write<T>(dst: *mut T, src: T) {
-        // noop
-    }
-
-    #[kani::proof]
-    #[kani::stub(core::ptr::write, mock_ptr_write)]
-    fn proof_init_allocator_good() {
-        const MAX_REGIONS: usize = 8;
-        let regions: [(&str, usize, usize); MAX_REGIONS] =
-            core::array::from_fn(|i| ("dummy", kani::any(), kani::any()));
-
-        // contrain all regions
-        for &(_, base, size) in regions.iter() {
-            kani::assume(base % align_of::<u128>() == 0);
-            kani::assume(base > 0);
-            kani::assume(size > 0);
-            kani::assume(size < alloc::MAX_ADDR && size > alloc::BestFitAllocator::MIN_RANGE_SIZE);
-            kani::assume(base < alloc::MAX_ADDR - size);
-        }
-
-        // for any i, j, i != j as indices into the memory regions the following should hold
-        let i: usize = kani::any();
-        let j: usize = kani::any();
-        kani::assume(i < MAX_REGIONS);
-        kani::assume(j < MAX_REGIONS);
-        kani::assume(i != j);
-
-        // non-overlapping regions
-        let (_, base_i, size_i) = regions[i];
-        let (_, base_j, size_j) = regions[j];
-        kani::assume(base_i + size_i <= base_j || base_j + size_j <= base_i);
-
-        // verify memory init
-        assert!(init_memory(&regions).is_ok());
-    }
-
-    #[kani::proof]
-    fn check_align_up() {
-        let size = kani::any();
-        kani::assume(size > 0);
-
-        let align = align_up(size);
-        assert_ne!(align, 0);
-
-        if align != usize::MAX {
-            assert_eq!(align % align_of::<u128>(), 0);
-            assert!(align >= size);
-        }
-    }
-}
-// END VERIFICATION

@@ -4,18 +4,19 @@ use core::{borrow::Borrow, ffi::c_void};
 
 use hal::Stack;
 use hal::stack::Stacklike;
+use macros::TaggedLinks;
 
-use crate::{mem::array::IndexMap, sched::task::TaskId, utils::KernelError};
+use crate::{mem::{rbtree::{self, Compare}, traits::{Project, ToIndex}}, sched::task::TaskId, utils::KernelError};
 
 /// Id of a task. This is only unique within a Task.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub struct ThreadId {
+pub struct Id {
     id: usize,
     owner: TaskId,
 }
 
 #[allow(dead_code)]
-impl ThreadId {
+impl Id {
     pub fn new(id: usize, owner: TaskId) -> Self {
         Self { id, owner }
     }
@@ -28,78 +29,72 @@ impl ThreadId {
         self.owner
     }
 
-    pub fn get_uid(&self, uid: usize) -> ThreadUId {
-        ThreadUId { uid, tid: *self }
+    pub fn get_uid(&self, uid: usize) -> UId {
+        UId { uid, tid: *self }
     }
 }
 
 /// Unique identifier for a thread. Build from TaskId and ThreadId.
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
-pub struct ThreadUId {
+pub struct UId {
     uid: usize,
-    tid: ThreadId,
+    tid: Id,
 }
 
 #[allow(dead_code)]
-impl ThreadUId {
-    pub fn tid(&self) -> ThreadId {
+impl UId {
+    pub fn tid(&self) -> Id {
         self.tid
     }
 }
 
-impl PartialEq for ThreadUId {
+impl PartialEq for UId {
     fn eq(&self, other: &Self) -> bool {
         self.uid == other.uid
     }
 }
 
-impl Eq for ThreadUId {}
+impl Eq for UId {}
 
-impl Borrow<usize> for ThreadUId {
-    fn borrow(&self) -> &usize {
-        &self.uid
+impl Into<usize> for UId {
+    fn into(self) -> usize {
+        self.uid
     }
 }
 
-impl Default for ThreadUId {
+impl Default for UId {
     fn default() -> Self {
         Self {
             uid: 0,
-            tid: ThreadId::new(0, TaskId::User(0)),
+            tid: Id::new(0, TaskId::User(0)),
         }
     }
 }
 
-impl PartialOrd for ThreadUId {
+impl PartialOrd for UId {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ThreadUId {
+impl Ord for UId {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.uid.cmp(&other.uid)
     }
 }
 
-// -------------------------------------------------------------------------
-
-pub struct ThreadDescriptor {
-    pub tid: ThreadId,
-    pub stack: Stack,
-    pub timing: Timing,
+impl ToIndex for UId {
+    fn to_index<Q: Borrow<Self>>(idx: Option<Q>) -> usize {
+        idx.as_ref().map_or(0, |k| k.borrow().uid)
+    }
 }
 
-/// The timing information for a thread.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Timing {
-    /// The period of the thread after which it should run again.
-    pub period: usize,
-    /// The deadline of the thread.
-    pub deadline: usize,
-    /// The execution time of the thread. (How much cpu time it needs)
-    pub exec_time: usize,
+// -------------------------------------------------------------------------
+
+pub struct Descriptor {
+    pub tid: Id,
+    pub stack: Stack,
 }
 
 /// The state of a thread.
@@ -114,22 +109,98 @@ pub enum RunState {
     Waits,
 }
 
-#[derive(Debug)]
-pub struct ThreadState {
+#[derive(Debug, Clone, Copy)]
+pub struct State {
     run_state: RunState,
     stack: Stack,
 }
 
+#[derive(Debug, Clone, Copy)]
+#[derive(TaggedLinks)]
+pub struct RtServer {
+    budget: u64,
+    total_budget: u64,
+
+    reservation: u64,
+    deadline: u64,
+
+    // Back-reference to the thread uid.
+    uid: UId,
+
+    /// Real-time tree links for the server.
+    #[rbtree(tag = RtTree, idx = UId)]
+    _rt_links: rbtree::Links<RtTree, UId>,
+}
+
+impl RtServer {
+    pub fn new(budget: u64, reservation: u64, deadline: u64, uid: UId) -> Self {
+        Self {
+            budget,
+            total_budget: budget,
+            reservation,
+            deadline,
+            uid,
+            _rt_links: rbtree::Links::new(),
+        }
+    }
+
+    pub fn budget(&self) -> u64 {
+        self.budget
+    }
+
+    pub fn replenish(&mut self, now: u64) {
+        let next = self.deadline + self.reservation;
+        self.deadline = next.max(now + self.reservation);
+        self.budget = self.total_budget;
+    }
+
+    pub fn consume(&mut self, dt: u64) {
+        if self.budget >= dt {
+            self.budget -= dt;
+        } else {
+            self.budget = 0;
+        }
+    }
+
+    pub fn deadline(&self) -> u64 {
+        self.deadline
+    }
+
+    pub fn uid(&self) -> UId {
+        self.uid
+    }
+}
+
+impl Compare<RtTree, UId> for RtServer {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        let ord = self.deadline.cmp(&other.deadline);
+
+        if ord == core::cmp::Ordering::Equal {
+            self.uid.cmp(&other.uid)
+        } else {
+            ord
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct WakupTree;
+#[derive(Debug, Clone, Copy)]
+pub struct RtTree;
+
 /// The struct representing a thread.
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Copy)]
+#[derive(TaggedLinks)]
 pub struct Thread {
     /// The current state of the thread.
-    state: ThreadState,
-    /// The timing constraints of the thread.
-    timing: Timing,
+    state: State,
     /// The unique identifier of the thread.
-    tuid: ThreadUId,
+    uid: UId,
+    /// If the thread is real-time, its contains a constant bandwidth server.
+    rt_server: Option<RtServer>,
+    /// Wakup tree links for the thread.
+    #[rbtree(tag = WakupTree, idx = UId)]
+    _wakeup_links: rbtree::Links<WakupTree, UId>,
 }
 
 #[allow(dead_code)]
@@ -137,74 +208,55 @@ impl Thread {
     /// Create a new thread.
     ///
     /// `stack` - The stack of the thread.
-    /// `timing` - The timing constraints of the thread.
     ///
     /// Returns a new thread.
-    fn new(tuid: ThreadUId, stack: Stack, timing: Timing) -> Self {
+    fn new(uid: UId, stack: Stack) -> Self {
         Self {
-            state: ThreadState {
+            state: State {
                 run_state: RunState::Ready,
                 stack,
             },
-            timing,
-            tuid,
+            uid,
+            rt_server: None,
+            _wakeup_links: rbtree::Links::new(),
         }
     }
 
-    pub fn update_sp(&mut self, sp: *mut c_void) -> Result<(), KernelError> {
-        let sp = self.state.stack.create_sp(sp)?;
+    pub fn save_ctx(&mut self, ctx: *mut c_void) -> Result<(), KernelError> {
+        let sp = self.state.stack.create_sp(ctx)?;
         self.state.stack.set_sp(sp);
         Ok(())
     }
 
-    pub fn update_run_state(&mut self, state: RunState) {
+    pub fn set_run_state(&mut self, state: RunState) {
         self.state.run_state = state;
     }
 
-    pub fn timing(&self) -> &Timing {
-        &self.timing
+    pub fn rt_server(&self) -> Option<&RtServer> {
+        self.rt_server.as_ref()
     }
 
-    pub fn sp(&self) -> *mut c_void {
+    pub fn ctx(&self) -> *mut c_void {
         self.state.stack.sp()
     }
 
-    pub fn tuid(&self) -> ThreadUId {
-        self.tuid
+    pub fn uid(&self) -> UId {
+        self.uid
     }
 }
 
-#[derive(Debug)]
-pub struct ThreadMap<const N: usize> {
-    map: IndexMap<ThreadUId, Thread, N>,
+impl Compare<WakupTree, UId> for Thread {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.uid.cmp(&other.uid)
+    }
 }
 
-#[allow(dead_code)]
-impl<const N: usize> ThreadMap<N> {
-    pub const fn new() -> Self {
-        Self {
-            map: IndexMap::new(),
-        }
+impl Project<RtServer> for Thread {
+    fn project(&self) -> Option<&RtServer> {
+         self.rt_server.as_ref()
     }
 
-    pub fn create(&mut self, desc: ThreadDescriptor) -> Result<ThreadUId, KernelError> {
-        let idx = self.map.find_empty().ok_or(KernelError::OutOfMemory)?;
-        let tuid = desc.tid.get_uid(idx);
-        let thread = Thread::new(tuid, desc.stack, desc.timing);
-
-        self.map.insert(&tuid, thread)?;
-        Ok(tuid)
-    }
-
-    pub fn get_mut(&mut self, id: &ThreadUId) -> Option<&mut Thread> {
-        self.map.get_mut(id)
-    }
-
-    pub fn get(&self, id: &ThreadUId) -> Option<&Thread> {
-        self.map.get(id)
-    }
-
-    pub fn remove(&mut self, id: &ThreadUId) -> Option<Thread> {
-        self.map.remove(id)
+    fn project_mut(&mut self) -> Option<&mut RtServer> {
+        self.rt_server.as_mut()
     }
 }

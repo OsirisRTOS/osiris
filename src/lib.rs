@@ -13,7 +13,7 @@ pub mod print;
 pub mod sched;
 pub mod sync;
 pub mod syscalls;
-pub mod time;
+//pub mod time;
 pub mod uspace;
 
 use hal::Machinelike;

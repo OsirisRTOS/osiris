@@ -45,7 +45,8 @@ pub struct BestFitAllocator {
 
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
-    pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
+     pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
+
     /// Creates a new BestFitAllocator.
     ///
     /// Returns the new BestFitAllocator.

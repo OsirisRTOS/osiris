@@ -2,6 +2,7 @@
 
 use core::ffi::c_int;
 
+/* 
 use crate::sched;
 use macros::syscall_handler;
 
@@ -29,4 +30,4 @@ fn syscall_exec(entry: usize) -> c_int {
         .and_then(|task| sched::create_thread(task, entry, None, timing))
         .map(|_| 0)
         .unwrap_or(-1)
-}
+}*/

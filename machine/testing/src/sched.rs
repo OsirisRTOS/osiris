@@ -5,7 +5,7 @@ use hal_api::{
     stack::{StackDescriptor, Stacklike},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TestingStack {}
 
 impl Stacklike for TestingStack {
