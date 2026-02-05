@@ -27,6 +27,8 @@ envparse = "0.1.0"
 # This is a host-compatible HAL which will be used for running tests and verification on the host.
 hal-testing = { path = "machine/testing", features = [] }
 
+[target.'cfg(kani_ra)'.dependencies]
+kani = { git = "https://github.com/model-checking/kani" }
 
 [features]
 default = []

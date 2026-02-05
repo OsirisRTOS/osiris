@@ -1,18 +1,26 @@
 //! This module implements static and dynamic arrays for in-kernel use.
 
 use super::boxed::Box;
-use crate::utils::KernelError;
+use crate::{
+    mem::traits::{Get, GetMut, ToIndex},
+    utils::KernelError,
+};
 use core::{borrow::Borrow, mem::MaybeUninit};
+use std::{
+    ops::{Index, IndexMut},
+};
 
 /// This is a fixed-size map that can store up to N consecutive elements.
 #[derive(Debug)]
-pub struct IndexMap<K: Borrow<usize> + Default, V, const N: usize> {
+pub struct IndexMap<K: ?Sized + ToIndex, V, const N: usize>
+{
     data: [Option<V>; N],
     phantom: core::marker::PhantomData<K>,
 }
 
 #[allow(dead_code)]
-impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
+impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
+{
     /// Create a new IndexMap.
     ///
     /// Returns a new IndexMap.
@@ -23,47 +31,17 @@ impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
         }
     }
 
-    /// Get the element at the given index.
-    ///
-    /// `index` - The index to get the element from.
-    ///
-    /// Returns `Some(&T)` if the index is in-bounds, otherwise `None`.
-    pub fn get(&self, index: &K) -> Option<&V> {
-        let index = *index.borrow();
-
-        if index < N {
-            self.data[index].as_ref()
-        } else {
-            None
-        }
-    }
-
-    /// Get a mutable reference to the element at the given index.
-    ///
-    /// `index` - The index to get the element from.
-    ///
-    /// Returns `Some(&mut T)` if the index is in-bounds, otherwise `None`.
-    pub fn get_mut(&mut self, index: &K) -> Option<&mut V> {
-        let index = *index.borrow();
-
-        if index < N {
-            self.data[index].as_mut()
-        } else {
-            None
-        }
-    }
-
     /// Insert a value at the given index.
     ///
     /// `index` - The index to insert the value at.
     /// `value` - The value to insert.
     ///
     /// Returns `Ok(())` if the index was in-bounds, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn insert(&mut self, index: &K, value: V) -> Result<(), KernelError> {
-        let index = *index.borrow();
+    pub fn insert(&mut self, idx: &K, value: V) -> Result<(), KernelError> {
+        let idx = K::to_index(Some(idx));
 
-        if index < N {
-            self.data[index] = Some(value);
+        if idx < N {
+            self.data[idx] = Some(value);
             Ok(())
         } else {
             Err(KernelError::OutOfMemory)
@@ -91,11 +69,11 @@ impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
     /// `index` - The index to remove the value from.
     ///
     /// Returns the value if it was removed, otherwise `None`.
-    pub fn remove(&mut self, index: &K) -> Option<V> {
-        let index = *index.borrow();
+    pub fn remove(&mut self, idx: &K) -> Option<V> {
+        let idx = K::to_index(Some(idx));
 
-        if index < N {
-            self.data[index].take()
+        if idx < N {
+            self.data[idx].take()
         } else {
             None
         }
@@ -113,8 +91,8 @@ impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
     /// `index` - The index to start the iterator from.
     ///
     /// Returns an iterator over the elements in the map.
-    pub fn iter_from_cycle(&self, index: &K) -> impl Iterator<Item = &Option<V>> {
-        self.data.iter().cycle().skip(index.borrow() + 1)
+    pub fn iter_from_cycle(&self, idx: Option<&K>) -> impl Iterator<Item = &Option<V>> {
+        self.data.iter().cycle().skip(K::to_index(idx) + 1)
     }
 
     /// Get the next index that contains a value (this will cycle).
@@ -122,13 +100,11 @@ impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
     /// `index` - The index to start the search from.
     ///
     /// Returns the next index (potentially < index) that contains a value, otherwise `None`.
-    pub fn next(&self, index: Option<&K>) -> Option<usize> {
-        let default = K::default();
-        let index = index.unwrap_or(&default);
-
-        for (i, elem) in self.iter_from_cycle(index).enumerate() {
+    pub fn next(&self, idx: Option<&K>) -> Option<usize> {
+        for (i, elem) in self.iter_from_cycle(idx).enumerate() {
             if elem.is_some() {
-                return Some((index.borrow() + i + 1) % N);
+                let idx = K::to_index(idx);
+                return Some((idx + i + 1) % N);
             }
         }
 
@@ -143,6 +119,88 @@ impl<K: Borrow<usize> + Default, V, const N: usize> IndexMap<K, V, N> {
         }
 
         None
+    }
+}
+
+impl<K: Copy + ToIndex, V, const N: usize> Index<K> for IndexMap<K, V, N>
+{
+    type Output = V;
+
+    fn index(&self, index: K) -> &Self::Output {
+        self.get(&index).unwrap()
+    }
+}
+
+impl<K: Copy + ToIndex, V, const N: usize> IndexMut<K> for IndexMap<K, V, N>
+{
+    fn index_mut(&mut self, index: K) -> &mut Self::Output {
+        self.get_mut(&index).unwrap()
+    }
+}
+
+impl<K: ?Sized + ToIndex, V, const N: usize> Get<K> for IndexMap<K, V, N>
+{
+    type Output = V;
+
+    fn get<Q: Borrow<K>>(&self, index: Q) -> Option<&Self::Output> {
+        let idx = K::to_index(Some(index.borrow()));
+        if idx < N {
+            self.data[idx].as_ref()
+        } else {
+            None
+        }
+    }
+}
+
+impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
+    fn get_mut<Q: Borrow<K>>(&mut self, index: Q) -> Option<&mut Self::Output> {
+        let idx = K::to_index(Some(index.borrow()));
+        if idx < N {
+            self.data[idx].as_mut()
+        } else {
+            None
+        }
+    }
+
+    fn get2_mut<Q: Borrow<K>>(&mut self, index1: Q, index2: Q) -> (Option<&mut Self::Output>, Option<&mut Self::Output>) {
+        let index1 = K::to_index(Some(index1.borrow()));
+        let index2 = K::to_index(Some(index2.borrow()));
+
+        if index1 == index2 {
+            debug_assert!(false, "get2_mut called with identical indices");
+            return (None, None);
+        }
+
+        let ptr1 = &mut self.data[index1] as *mut Option<V>;
+        let ptr2 = &mut self.data[index2] as *mut Option<V>;
+
+        // Safety: the elements at index1 and index2 are nowhere else borrowed mutably by function contract.
+        // And they are disjoint because of the check above.
+        unsafe { ((*ptr1).as_mut(), (*ptr2).as_mut()) }
+    }
+
+    fn get3_mut<Q: Borrow<K>>(
+        &mut self,
+        index1: Q,
+        index2: Q,
+        index3: Q,
+    ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>, Option<&mut Self::Output>) {
+        let index1 = K::to_index(Some(index1.borrow()));
+        let index2 = K::to_index(Some(index2.borrow()));
+        let index3 = K::to_index(Some(index3.borrow()));
+
+        if index1 == index2 || index1 == index3 || index2 == index3 {
+            debug_assert!(false, "get3_mut called with identical indices");
+            return (None, None, None);
+        }
+
+        let ptr1 = &mut self.data[index1] as *mut Option<V>;
+        let ptr2 = &mut self.data[index2] as *mut Option<V>;
+        let ptr3 = &mut self.data[index3] as *mut Option<V>;
+
+        // Safety: the elements at index1, index2 and index3 are nowhere else borrowed mutably by function contract.
+        // And they are disjoint because of the check above.
+        unsafe { ((*ptr1).as_mut(), (*ptr2).as_mut(), (*ptr3).as_mut()) }
     }
 }
 
@@ -403,6 +461,66 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
     }
 
+    fn at_mut_unchecked(&mut self, index: usize) -> *mut T {
+        if index < N {
+            // Safety: the elements until self.len are initialized.
+            // The element at index is nowhere else borrowed mutably by function contract.
+            self.data[index].as_mut_ptr()
+        } else {
+            let index = index - N;
+            // Safety: the elements until self.len - N are initialized.
+            // The element at index is nowhere else borrowed mutably by function contract.
+            self.extra[index].as_mut_ptr()
+        }
+    }
+
+    /// Get disjoint mutable references to the values at the given indices.
+    ///
+    /// `index1` - The first index.
+    /// `index2` - The second index.
+    ///
+    /// Returns `Some(&mut T, &mut T)` if the indices are in-bounds and disjoint, otherwise `None`.
+    pub fn at2_mut(&mut self, index1: usize, index2: usize) -> (Option<&mut T>, Option<&mut T>) {
+        if index1 == index2 {
+            debug_assert!(false, "at2_mut called with identical indices");
+            return (None, None);
+        }
+
+        let ptr1 = self.at_mut_unchecked(index1);
+        let ptr2 = self.at_mut_unchecked(index2);
+
+        // Safety: the elements at index1 and index2 are nowhere else borrowed mutably by function contract.
+        // And they are disjoint because of the check above.
+        unsafe { (Some(&mut *ptr1), Some(&mut *ptr2)) }
+    }
+
+    /// Get disjoint mutable references to the values at the given indices.
+    ///
+    /// `index1` - The first index.
+    /// `index2` - The second index.
+    /// `index3` - The third index.
+    ///
+    /// Returns `Some(&mut T, &mut T, &mut T)` if the indices are in-bounds and disjoint, otherwise `None`.
+    pub fn at3_mut(
+        &mut self,
+        index1: usize,
+        index2: usize,
+        index3: usize,
+    ) -> (Option<&mut T>, Option<&mut T>, Option<&mut T>) {
+        if index1 == index2 || index1 == index3 || index2 == index3 {
+            debug_assert!(false, "at3_mut called with identical indices");
+            return (None, None, None);
+        }
+
+        let ptr1 = self.at_mut_unchecked(index1);
+        let ptr2 = self.at_mut_unchecked(index2);
+        let ptr3 = self.at_mut_unchecked(index3);
+
+        // Safety: the elements at index1, index2 and index3 are nowhere else borrowed mutably by function contract.
+        // And they are disjoint because of the check above.
+        unsafe { (Some(&mut *ptr1), Some(&mut *ptr2), Some(&mut *ptr3)) }
+    }
+
     /// Swap the values at the given indices.
     ///
     /// `a` - The first index.
@@ -465,7 +583,47 @@ impl<T, const N: usize> Drop for Vec<T, N> {
     }
 }
 
-#[cfg(kani)]
-mod verification {
-    use super::*;
+impl<T: Clone + Copy, const N: usize> Index<usize> for Vec<T, N> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.at(index).unwrap()
+    }
+}
+
+impl<T: Clone + Copy, const N: usize> IndexMut<usize> for Vec<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.at_mut(index).unwrap()
+    }
+}
+
+impl<T: Clone + Copy, const N: usize> Get<usize> for Vec<T, N> {
+    type Output = T;
+
+    fn get<Q: Borrow<usize>>(&self, index: Q) -> Option<&Self::Output> {
+        self.at(*index.borrow())
+    }
+}
+
+impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
+    fn get_mut<Q: Borrow<usize>>(&mut self, index: Q) -> Option<&mut Self::Output> {
+        self.at_mut(*index.borrow())
+    }
+
+    fn get2_mut<Q: Borrow<usize>>(
+        &mut self,
+        index1: Q,
+        index2: Q,
+    ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>) {
+        self.at2_mut(*index1.borrow(), *index2.borrow())
+    }
+
+    fn get3_mut<Q: Borrow<usize>>(
+        &mut self,
+        index1: Q,
+        index2: Q,
+        index3: Q,
+    ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>, Option<&mut Self::Output>) {
+        self.at3_mut(*index1.borrow(), *index2.borrow(), *index3.borrow())
+    }
 }

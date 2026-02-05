@@ -55,7 +55,7 @@ impl Add<usize> for StackPtr {
 }
 
 /// A stack on arm is 4 byte aligned and grows downwards.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ArmStack {
     /// The top of the stack (highest address).
     /// Safety: NonNull<u32> can safely be covariant over u32.

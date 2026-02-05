@@ -2,6 +2,8 @@
 #![cfg_attr(feature = "nightly", feature(likely_unlikely))]
 
 use core::fmt::Debug;
+use core::ptr::NonNull;
+use core::mem::offset_of;
 
 /// These two definitions are copied from https://github.com/rust-lang/hashbrown
 #[cfg(not(feature = "nightly"))]
@@ -10,6 +12,8 @@ pub(crate) use core::convert::{identity as likely, identity as unlikely};
 
 #[cfg(feature = "nightly")]
 pub(crate) use core::hint::{likely, unlikely};
+
+
 
 /// This is a macro that is used to panic when a bug is detected.
 /// It is similar to the BUG() macro in the Linux kernel. Link: [https://www.kernel.org/]()

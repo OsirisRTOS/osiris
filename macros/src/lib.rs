@@ -3,6 +3,18 @@ use syn::parse_macro_input;
 
 use proc_macro2::TokenStream;
 
+mod tree;
+
+#[proc_macro_derive(TaggedLinks, attributes(rbtree))]
+pub fn derive_tagged_links(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+
+    match tree::derive_tagged_links(&input) {
+        Ok(tokens) => tokens,
+        Err(e) => e.to_compile_error(),
+    }.into()
+}
+
 #[proc_macro_attribute]
 pub fn service(
     attr: proc_macro::TokenStream,

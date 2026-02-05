@@ -53,6 +53,8 @@ impl From<TaskId> for usize {
     }
 }
 
+
+
 /// Descibes a task.
 pub struct TaskDescriptor {
     /// The size of the memory that the task requires.
@@ -68,8 +70,6 @@ pub struct Task {
     memory: TaskMemory,
     /// The counter for the thread ids.
     tid_cntr: usize,
-    /// The threads associated with the task.
-    threads: mem::array::Vec<ThreadId, 4>,
 }
 
 impl Task {
@@ -80,13 +80,11 @@ impl Task {
     /// Returns a new task if the task was created successfully, or an error if the task could not be created.
     pub fn new(memory_size: usize, id: TaskId) -> Result<Self, KernelError> {
         let memory = TaskMemory::new(memory_size)?;
-        let threads = mem::array::Vec::new();
 
         Ok(Self {
             id,
             memory,
             tid_cntr: 0,
-            threads,
         })
     }
 
@@ -187,3 +185,5 @@ impl Drop for TaskMemory {
         unsafe { mem::free(self.begin, self.size) };
     }
 }
+
+    
