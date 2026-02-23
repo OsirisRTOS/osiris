@@ -1,6 +1,6 @@
 use quote::{quote, quote_spanned};
 use quote::{ToTokens, format_ident};
-use syn::{parse_macro_input, parse_quote, Error, FnArg, GenericArgument, Pat, PatType, PathArguments, ReturnType, Type, TypeReference, TypeSlice};
+use syn::{parse_macro_input, Error, FnArg, Pat, PatType, ReturnType, Type, TypeReference, TypeSlice};
 use syn::ItemFn;
 
 use proc_macro2::TokenStream;
@@ -158,7 +158,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
                 "syscall_handler: function {name} has too many arguments (max is {SYSCALL_MAX_ARGS})"
             ),
         )
-        .to_compile_error();
+            .to_compile_error();
     }
 
     let ret_check = match is_return_type_register_sized_check(item) {
@@ -175,7 +175,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
                         "syscall_handler: function {name} has too many arguments (max is {SYSCALL_MAX_ARGS})"
                     ),
                 )
-                .to_compile_error();
+                    .to_compile_error();
             }
             types
         }
@@ -228,18 +228,42 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
 #[proc_macro_attribute]
 pub fn kernelmod_call(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(item as ItemFn);
-    
+
     match generate_wrapper(input) {
         Ok(tokens) => proc_macro::TokenStream::from(tokens),
         Err(e) => proc_macro::TokenStream::from(e.to_compile_error()),
     }
 }
 
+fn snake_to_pascal(s: &str) -> String {
+    s.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
 fn generate_wrapper(input: ItemFn) -> Result<TokenStream,Error> {
     let fn_name = &input.sig.ident;
+    let fn_name_str = fn_name.to_string();
+
+    // Reject function names containing uppercase letters to avoid naming collisions
+    if fn_name_str.chars().any(|c| c.is_uppercase()) {
+        return Err(Error::new_spanned(
+            fn_name,
+            "kernelmod_call: function names must be snake_case (no uppercase letters allowed)"
+        ));
+    }
+
     let fn_vis = &input.vis;
     let wrapper_name = syn::Ident::new(&format!("__{}_wrapper", fn_name), fn_name.span());
-    let args_struct_name = syn::Ident::new(&format!("__{}Args", fn_name), fn_name.span());
+    let pascal_name = snake_to_pascal(&fn_name_str);
+    let args_struct_name = syn::Ident::new(&format!("__{}Args", pascal_name), fn_name.span());
 
     validate_return_type(&input.sig.output)?;
 
@@ -312,20 +336,17 @@ fn validate_and_generate_field(
     ty: &Type,
 ) -> Result<ArgFieldInfo,Error> {
     match ty {
-        Type::Path(type_path) => {
-            let type_name = type_path.path.segments.last()
-                .ok_or_else(|| Error::new_spanned(ty, "Invalid type path"))?
-                .ident
-                .to_string();
-
-            if is_valid_primitive(&type_name) {
-                let field = quote! { #name: #ty };
-                let reconstruction = quote! { let #name = args.#name; };
-                return Ok(ArgFieldInfo::Direct(field, reconstruction));
-            }
-            
+        Type::Path(_type_path) => {
             let field = quote! { #name: #ty };
+            let size_check = quote_spanned! { ty.span() =>
+                const _: () = {
+                    if core::mem::size_of::<#ty>() > core::mem::size_of::<usize>() {
+                        panic!("kernelmod_call: argument type is bigger than usize. arguments must fit in a register.");
+                    }
+                };
+            };
             let reconstruction = quote! { 
+                #size_check
                 let #name = args.#name;
                 let _: fn() = || { fn assert_copy<T: Copy>() {} assert_copy::<#ty>(); };
             };
@@ -396,115 +417,52 @@ fn validate_and_generate_field(
     }
 }
 
-fn is_valid_primitive(type_name: &str) -> bool {
-    matches!(
-        type_name,
-        "u8" | "u16" | "u32" | "u64" | "usize" |
-        "i8" | "i16" | "i32" | "i64" | "isize" |
-        "bool" | "char"
-    )
-}
-
 fn validate_return_type(return_type: &ReturnType) -> Result<(),Error> {
     match return_type {
         ReturnType::Default => {
-            return Err(Error::new_spanned(
-                return_type,
-                "Function must return Result<T, UnixError> where T is a primitive type at most usize or ()"
-            ));
-        }
-        ReturnType::Type(_, ty) => {
-            if let Type::Path(type_path) = &**ty {
-                let last_segment = type_path.path.segments.last()
-                    .ok_or_else(|| Error::new_spanned(ty, "Invalid return type path"))?;
-
-                if last_segment.ident != "Result" {
-                    return Err(Error::new_spanned(
-                        ty,
-                        "Function must return Result<T, UnixError>"
-                    ));
-                }
-
-                if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
-                    if args.args.len() != 2 {
-                        return Err(Error::new_spanned(
-                            ty,
-                            "Result must have exactly 2 type parameters: Result<T, UnixError>"
-                        ));
-                    }
-
-                    if let Some(GenericArgument::Type(Type::Path(err_path))) = args.args.iter().nth(1) {
-                        if !err_path.path.is_ident("UnixError") {
-                            return Err(Error::new_spanned(
-                                err_path,
-                                "Error type must be UnixError"
-                            ));
-                        }
-                    }
-
-                    return Ok(());
-                }
-
-                return Err(Error::new_spanned(
-                    ty,
-                    "Invalid Result type. Expected Result<T, UnixError>"
-                ));
-            }
-
             Err(Error::new_spanned(
-                ty,
-                "Return type must be Result<T, UnixError>"
+                return_type,
+                "kernelmod_call: function must have an explicit return type (expected Result<T, UnixError>)"
             ))
+        }
+        ReturnType::Type(_, _) => {
+            // Don't try to validate the type by name — type aliases like
+            // `type MyResult = Result<i32, UnixError>` would fail name-based checks.
+            // Instead, let the compiler verify compatibility through the generated code.
+            Ok(())
         }
     }
 }
 
 fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::TokenStream,Error> {
     match return_type {
-        ReturnType::Type(_, ty) => {
-            if let Type::Path(type_path) = &**ty {
-                if let Some(last_segment) = type_path.path.segments.last() {
-                    if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
-                        if let Some(GenericArgument::Type(ok_type)) = args.args.first() {
-                            if let Type::Tuple(tuple) = ok_type {
-                                if tuple.elems.is_empty() {
-                                    return Ok(quote! {
-                                        match result {
-                                            Ok(()) => 0,
-                                            Err(e) => e as usize,
-                                        }
-                                    });
-                                }
-                            }
-
-                            // Check if ok_type is a primitive that can be cast to usize
-                            if let Type::Path(ok_path) = ok_type {
-                                if let Some(ident) = ok_path.path.get_ident() {
-                                    let type_str = ident.to_string();
-                                    if is_valid_primitive(&type_str) {
-                                        return Ok(quote! {
-                                            match result {
-                                                Ok(val) => val as usize,
-                                                Err(e) => e as usize,
-                                            }
-                                        });
-                                    }
-                                }
-                            }
-
-                            return Err(Error::new_spanned(
-                                ok_type,
-                                "Return type T in Result<T, UnixError> must be a primitive type at most usize or unit ()"
-                            ));
+        ReturnType::Type(_, _ty) => {
+            // Don't try to inspect the return type by name — type aliases would break.
+            // Instead, generate generic code that works for any Result<T, E> where
+            // T fits in a register. The compiler enforces type compatibility.
+            Ok(quote! {
+                match result {
+                    Ok(val) => {
+                        assert!(
+                            core::mem::size_of_val(&val) <= core::mem::size_of::<usize>(),
+                            "kernelmod_call: Ok return type is bigger than usize. must fit in a register."
+                        );
+                        let mut raw: usize = 0;
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(
+                                &val as *const _ as *const u8,
+                                &mut raw as *mut usize as *mut u8,
+                                core::mem::size_of_val(&val),
+                            );
                         }
+                        raw
                     }
+                    Err(e) => e as usize,
                 }
-            }
+            })
         }
-        _ => {}
+        _ => Err(Error::new_spanned(return_type, "Invalid return type"))
     }
-
-    Err(Error::new_spanned(return_type, "Invalid return type"))
 }
 
 #[proc_macro_attribute]
@@ -513,6 +471,6 @@ pub fn kernel_init(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream
 }
 
 #[proc_macro_attribute]
-pub fn kernel_deinit(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn kernel_exit(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     item
 }

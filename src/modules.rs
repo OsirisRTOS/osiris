@@ -1,4 +1,6 @@
-pub mod kernelmods;
+// Module declarations
+include!(concat!(env!("OUT_DIR"), "/modules_kernel.rs"));
+
 
 use crate::utils::KernelError;
 
@@ -10,10 +12,10 @@ trait KernelModule {
 
 
 fn init_modules() { 
-    kernelmods::init_modules()
+    __init_modules()
 }
 
 fn exit_modules()  {
-    kernelmods::exit_modules()
+    __exit_modules()
 }
 

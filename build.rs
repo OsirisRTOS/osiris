@@ -264,6 +264,7 @@ struct KernelModuleCallFn {
 #[derive(Debug)]
 struct KernelModule {
     name: String,
+    source_path: String,
     init_fn: Option<String>,
     exit_fn: Option<String>,
     call_fns: Vec<KernelModuleCallFn>,
@@ -275,9 +276,9 @@ fn has_attribute(attrs: &[Attribute], attr_name: &str) -> bool {
 
 fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Error> {
     let mut modules = Vec::new();
-    let mut folder = root.to_string();
-    folder.push_str("kernelmods/");
-    for entry in WalkDir::new(folder) {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    for entry in WalkDir::new(root) {
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => continue,
@@ -304,8 +305,16 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
                 .unwrap_or("unknown")
                 .to_string();
 
+            // Compute absolute path for include!() in generated code
+            let abs_path = Path::new(&manifest_dir).join(path);
+            let source_path = abs_path.canonicalize()
+                .unwrap_or(abs_path)
+                .to_string_lossy()
+                .replace('\\', "/");
+
             let mut module = KernelModule {
                 name: module_name.clone(),
+                source_path,
                 init_fn: None,
                 exit_fn: None,
                 call_fns: Vec::new(),
@@ -322,7 +331,7 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
                         module.init_fn = Some(fn_name.clone());
                     }
 
-                    if has_attribute(&item_fn.attrs, "kernel_deinit") {
+                    if has_attribute(&item_fn.attrs, "kernel_exit") {
                         if module.exit_fn.is_some() {
                             println!("cargo::warning=Module {module_name} has multiple exit functions");
                         }
@@ -351,9 +360,8 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
 
 fn generate_kernelmods(root: &str) -> Result<(), std::io::Error> {
     let modules = collect_kernel_modules(root)?;
-    println!("Generating kernel mods for {}", root);
-    let out_dir = root;
-    let out_path = Path::new(&out_dir).join("kernelmods.rs");
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let out_path = Path::new(&out_dir).join("modules_kernel.rs");
     let mut file = File::create(out_path)?;
 
     // 1. Header
@@ -362,16 +370,18 @@ fn generate_kernelmods(root: &str) -> Result<(), std::io::Error> {
     writeln!(file, "use macros::syscall_handler;")?;
     writeln!(file)?;
 
-    // Generate mod declarations
-    writeln!(file, "// Module declarations")?;
+    // Include module source files via include! macro
+    writeln!(file, "// Module inclusions")?;
     for module in &modules {
-        writeln!(file, "mod {};", module.name)?;
+        writeln!(file, "mod {} {{", module.name)?;
+        writeln!(file, "    include!(\"{}\");", module.source_path)?;
+        writeln!(file, "}}")?;
     }
     writeln!(file)?;
 
     // 2. init_modules() function
     writeln!(file, "/// Initialize all kernel modules")?;
-    writeln!(file, "pub fn init_modules() {{")?;
+    writeln!(file, "pub fn __init_modules() {{")?;
 
     for module in &modules {
         if let Some(ref init_fn) = module.init_fn {
@@ -382,8 +392,8 @@ fn generate_kernelmods(root: &str) -> Result<(), std::io::Error> {
     writeln!(file)?;
 
     // 3. exit_modules() function
-    writeln!(file, "/// Deinitialize all kernel modules")?;
-    writeln!(file, "pub fn exit_modules() {{")?;
+    writeln!(file, "/// Exit all kernel modules")?;
+    writeln!(file, "pub fn __exit_modules() {{")?;
     for module in &modules {
         if let Some(ref exit_fn) = module.exit_fn {
             writeln!(file, "    {}::{}();", module.name, exit_fn)?;
@@ -433,7 +443,8 @@ use syn::{Pat, PatType, Type, TypeReference, TypeSlice};
 fn generate_userspace_kernelmods(root: &str) -> Result<(), std::io::Error> {
     let modules = collect_kernel_modules(root)?;
 
-    let out_path = Path::new("src/uspace").join("kernelmods.rs");
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let out_path = Path::new(&out_dir).join("modules_uspace.rs");
     let mut file = File::create(out_path)?;
 
     // Header
@@ -471,13 +482,27 @@ fn generate_userspace_kernelmods(root: &str) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+fn snake_to_pascal(s: &str) -> String {
+    s.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
 fn generate_userspace_function(
     file: &mut File,
     func: &KernelModuleCallFn,
     index: usize,
 ) -> Result<(), std::io::Error> {
     let fn_name = &func.name;
-    let args_struct_name = format!("{}Args", fn_name);
+    let pascal_name = snake_to_pascal(fn_name);
+    let args_struct_name = format!("{}Args", pascal_name);
 
     // Generate the Args struct
     writeln!(file, "    #[repr(C)]")?;
@@ -567,7 +592,7 @@ fn generate_args_struct_field(
         }
         Type::Reference(type_ref) => {
             if type_ref.mutability.is_some() {
-                println!("cargo::warning=Mutable references not supported in kernelmod_call: {}", name);
+                panic!("Mutable references not supported in kernelmod_call: {}", name);
             }
 
             match &*type_ref.elem {
@@ -602,10 +627,7 @@ fn generate_args_struct_field(
             }
         }
         _ => {
-            println!("cargo::warning=Unsupported type in kernelmod_call: {}", ty.to_token_stream());
-            let ty_str = ty.to_token_stream().to_string();
-            writeln!(file, "        {}: {},", name, ty_str)?;
-            field_inits.push(name.to_string());
+            panic!("Unsupported type in kernelmod_call argument '{}': {}", name, ty.to_token_stream());
         }
     }
 
@@ -628,7 +650,11 @@ fn extract_success_type(return_type: &syn::ReturnType) -> String {
                     }
                 }
             }
-            "()".to_string()
+            panic!(
+                "kernelmod_call: cannot extract success type from return type '{}'. \
+                 Return type must be Result<T, UnixError> (type aliases are not supported in build.rs codegen).",
+                ty.to_token_stream()
+            );
         }
     }
 }

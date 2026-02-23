@@ -1,5 +1,5 @@
 //! This module provides access to userspace structures and services.
-mod kernelmods;
+include!(concat!(env!("OUT_DIR"), "/modules_uspace.rs"));
 
 use ::core::mem::transmute;
 
