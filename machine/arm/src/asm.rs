@@ -79,6 +79,7 @@ macro_rules! __macro_syscall {
     }
     };
     ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {
+    {
         let result: isize;
         unsafe {
             core::arch::asm!(
@@ -92,17 +93,18 @@ macro_rules! __macro_syscall {
             );
         }
         result
+    }
     };
 }
 
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! __macro_syscall {
-    ($num:expr) => {{}};
-    ($num:expr, $arg0:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{}};
+    ($num:expr) => { 0isize };
+    ($num:expr, $arg0:expr) => {{ 0isize }};
+    ($num:expr, $arg0:expr, $arg1:expr) => {{ 0isize }};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{ 0isize }};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{ 0isize }};
 }
 
 pub use crate::__macro_syscall as syscall;

@@ -16,7 +16,7 @@ pub mod syscalls;
 pub mod time;
 pub mod uspace;
 pub mod modules;
-mod error;
+pub mod error;
 
 use hal::Machinelike;
 use interface::BootInfo;

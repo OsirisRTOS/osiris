@@ -11,7 +11,6 @@ pub fn service(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    // This macro should be used to annotate a service struct.
     let item = syn::parse_macro_input!(item as syn::ItemStruct);
 
     let service_name = item.ident.clone();
@@ -63,7 +62,6 @@ fn is_return_type_register_sized_check(
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let ret_ty = match &item.sig.output {
         syn::ReturnType::Default => {
-            // no "-> Type" present
             return Err(syn::Error::new_spanned(
                 &item.sig.output,
                 "syscall_handler: missing return type; expected a register‐sized type",
@@ -150,7 +148,6 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     let name = item.sig.ident.to_string().to_uppercase();
     let num_args = item.sig.inputs.len();
 
-    // Check if the function has a valid signature. So args <= 4 and return type is u32.
     if num_args > SYSCALL_MAX_ARGS {
         return syn::Error::new(
             item.sig.ident.span(),
@@ -182,7 +179,6 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
         Err(e) => return e.to_compile_error(),
     };
 
-    // Check if each argument type is valid and fits in a register.
     let size_checks: Vec<TokenStream> = types.iter().map(|ty| {
         quote::quote! {
             const _: () = {
@@ -209,9 +205,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     let wrapper = quote::quote! {
         #[unsafe(no_mangle)]
         pub extern "C" fn  #wrapper_name(svc_args: *const core::ffi::c_uint) -> core::ffi::c_int {
-            // This function needs to extract the arguments from the pointer and call the original function by passing the arguments as actual different parameters.
             let args = unsafe { svc_args as *const usize };
-            // Call the original function with the extracted arguments.
             #call
         }
     };
@@ -248,11 +242,10 @@ fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
-fn generate_wrapper(input: ItemFn) -> Result<TokenStream,Error> {
+fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
     let fn_name = &input.sig.ident;
     let fn_name_str = fn_name.to_string();
 
-    // Reject function names containing uppercase letters to avoid naming collisions
     if fn_name_str.chars().any(|c| c.is_uppercase()) {
         return Err(Error::new_spanned(
             fn_name,
@@ -300,25 +293,42 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream,Error> {
         }
     }
 
+    let ret_size_check = match &input.sig.output {
+        ReturnType::Type(_, ty) => {
+            quote! {
+                const _: () = {
+                    trait __RetOkSize { type Ok; }
+                    impl<T, E> __RetOkSize for core::result::Result<T, E> { type Ok = T; }
+                    if core::mem::size_of::<<#ty as __RetOkSize>::Ok>() > core::mem::size_of::<usize>() {
+                        panic!("kernelmod_call: Ok return type is bigger than usize. must fit in a register.");
+                    }
+                };
+            }
+        }
+        _ => quote! {},
+    };
+
     let return_handling = generate_return_handling(&input.sig.output)?;
 
     let original_fn = &input;
 
     let output = quote! {
         #original_fn
-        
+
+        #ret_size_check
+
         #[repr(C)]
         struct #args_struct_name {
             #(#arg_fields),*
         }
-        
+
         #fn_vis unsafe fn #wrapper_name(args_ptr: *const u8) -> usize {
             let args = &*(args_ptr as *const #args_struct_name);
-            
+
             #(#arg_reconstructions)*
-            
+
             let result = #fn_name(#(#arg_names),*);
-            
+
             #return_handling
         }
     };
@@ -331,12 +341,20 @@ enum ArgFieldInfo {
     Slice(proc_macro2::TokenStream, proc_macro2::TokenStream, proc_macro2::TokenStream),
 }
 
+/// Generates the args-struct field(s) and reconstruction code for a single argument.
+///
+/// Dispatch is purely structural (AST node kind), never by type name:
+///   - `Type::Path`      → value type, single field, compile-time size + Copy check
+///   - `Type::Reference`
+///       - `Type::Slice` → fat pointer decomposed into (ptr, len) fields
+///       - `is_ident("str")` → same layout as &[u8], language primitive check
+///       - other `Type::Path` → thin pointer, single field
 fn validate_and_generate_field(
     name: &syn::Ident,
     ty: &Type,
-) -> Result<ArgFieldInfo,Error> {
+) -> Result<ArgFieldInfo, Error> {
     match ty {
-        Type::Path(_type_path) => {
+        Type::Path(_) => {
             let field = quote! { #name: #ty };
             let size_check = quote_spanned! { ty.span() =>
                 const _: () = {
@@ -345,9 +363,10 @@ fn validate_and_generate_field(
                     }
                 };
             };
-            let reconstruction = quote! { 
+            let reconstruction = quote! {
                 #size_check
                 let #name = args.#name;
+                // Compile-time Copy bound check — fails if the type is not Copy.
                 let _: fn() = || { fn assert_copy<T: Copy>() {} assert_copy::<#ty>(); };
             };
 
@@ -362,6 +381,7 @@ fn validate_and_generate_field(
             }
 
             match &**elem {
+                // &[T] — structurally a slice, decomposed into (ptr, len)
                 Type::Slice(TypeSlice { elem: slice_elem, .. }) => {
                     let ptr_name = syn::Ident::new(&format!("{}_ptr", name), name.span());
                     let len_name = syn::Ident::new(&format!("{}_len", name), name.span());
@@ -369,15 +389,15 @@ fn validate_and_generate_field(
                     let ptr_field = quote! { #ptr_name: *const #slice_elem };
                     let len_field = quote! { #len_name: usize };
                     let reconstruction = quote! {
-                        let #name = unsafe { 
-                            core::slice::from_raw_parts(args.#ptr_name, args.#len_name) 
+                        let #name = unsafe {
+                            core::slice::from_raw_parts(args.#ptr_name, args.#len_name)
                         };
                     };
 
                     Ok(ArgFieldInfo::Slice(ptr_field, len_field, reconstruction))
                 }
                 Type::Path(path) => {
-                    // Check for &str
+                    // &str — `str` is a language primitive (unsized), same wire layout as &[u8]
                     if path.path.is_ident("str") {
                         let ptr_name = syn::Ident::new(&format!("{}_ptr", name), name.span());
                         let len_name = syn::Ident::new(&format!("{}_len", name), name.span());
@@ -385,7 +405,7 @@ fn validate_and_generate_field(
                         let ptr_field = quote! { #ptr_name: *const u8 };
                         let len_field = quote! { #len_name: usize };
                         let reconstruction = quote! {
-                            let #name = unsafe { 
+                            let #name = unsafe {
                                 let bytes = core::slice::from_raw_parts(args.#ptr_name, args.#len_name);
                                 core::str::from_utf8_unchecked(bytes)
                             };
@@ -394,7 +414,7 @@ fn validate_and_generate_field(
                         return Ok(ArgFieldInfo::Slice(ptr_field, len_field, reconstruction));
                     }
 
-                    // Reference to struct - store as thin pointer
+                    // &T where T is a sized type — stored as a thin pointer
                     let field = quote! { #name: *const #path };
                     let reconstruction = quote! { let #name = unsafe { &*args.#name }; };
                     Ok(ArgFieldInfo::Direct(field, reconstruction))
@@ -417,36 +437,30 @@ fn validate_and_generate_field(
     }
 }
 
-fn validate_return_type(return_type: &ReturnType) -> Result<(),Error> {
+fn validate_return_type(return_type: &ReturnType) -> Result<(), Error> {
     match return_type {
         ReturnType::Default => {
             Err(Error::new_spanned(
                 return_type,
-                "kernelmod_call: function must have an explicit return type (expected Result<T, UnixError>)"
+                "kernelmod_call: function must have an explicit return type (expected Result<T, PosixError>)"
             ))
         }
         ReturnType::Type(_, _) => {
-            // Don't try to validate the type by name — type aliases like
-            // `type MyResult = Result<i32, UnixError>` would fail name-based checks.
-            // Instead, let the compiler verify compatibility through the generated code.
             Ok(())
         }
     }
 }
 
-fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::TokenStream,Error> {
+fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::TokenStream, Error> {
     match return_type {
         ReturnType::Type(_, _ty) => {
-            // Don't try to inspect the return type by name — type aliases would break.
-            // Instead, generate generic code that works for any Result<T, E> where
-            // T fits in a register. The compiler enforces type compatibility.
             Ok(quote! {
+                // SAFETY: `val` is guaranteed at most `size_of::<usize>()` by the
+                // compile-time const assert emitted alongside this wrapper.
+                // `raw` is zero-initialised so unwritten bytes remain zero.
+                // Both pointers are stack-local, valid, aligned, and non-overlapping.
                 match result {
                     Ok(val) => {
-                        assert!(
-                            core::mem::size_of_val(&val) <= core::mem::size_of::<usize>(),
-                            "kernelmod_call: Ok return type is bigger than usize. must fit in a register."
-                        );
                         let mut raw: usize = 0;
                         unsafe {
                             core::ptr::copy_nonoverlapping(
@@ -466,11 +480,11 @@ fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::Tok
 }
 
 #[proc_macro_attribute]
-pub fn kernel_init(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn kernelmod_init(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     item
 }
 
 #[proc_macro_attribute]
-pub fn kernel_exit(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn kernelmod_exit(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     item
 }

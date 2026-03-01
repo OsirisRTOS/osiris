@@ -12,10 +12,10 @@ pub use crate::__macro_nop as nop;
 #[macro_export]
 macro_rules! __macro_syscall {
     ($num:expr) => {{}};
-    ($num:expr, $arg0:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{}};
+    ($num:expr, $arg0:expr) => {{0isize}};
+    ($num:expr, $arg0:expr, $arg1:expr) => {{0isize}};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{0isize}};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{0isize}};
 }
 
 pub use crate::__macro_syscall as syscall;

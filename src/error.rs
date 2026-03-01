@@ -1,8 +1,13 @@
-/// Unix error codes enum covering all standard errno values
-/// Values are stored as negative integers matching kernel return values
+/// Unix error codes enum covering all standard errno values.
+/// Values are stored as negative integers matching kernel return values.
+///
+/// Source: Linux kernel include/uapi/asm-generic/errno-base.h (1–34)
+///         and include/uapi/asm-generic/errno.h (35–133).
+///         Valid for x86 (32/64-bit) and ARM (32/64-bit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum UnixError {
+#[non_exhaustive]
+#[repr(i16)]
+pub enum PosixError {
     /// Operation not permitted
     EPERM = -1,
     /// No such file or directory
@@ -23,7 +28,7 @@ pub enum UnixError {
     EBADF = -9,
     /// No child processes
     ECHILD = -10,
-    /// Try again
+    /// Try again (EWOULDBLOCK is an alias for this value)
     EAGAIN = -11,
     /// Out of memory
     ENOMEM = -12,
@@ -71,7 +76,7 @@ pub enum UnixError {
     EDOM = -33,
     /// Math result not representable
     ERANGE = -34,
-    /// Resource deadlock would occur
+    /// Resource deadlock would occur (EDEADLOCK is an alias for this value)
     EDEADLK = -35,
     /// File name too long
     ENAMETOOLONG = -36,
@@ -83,6 +88,8 @@ pub enum UnixError {
     ENOTEMPTY = -39,
     /// Too many symbolic links encountered
     ELOOP = -40,
+    /// Reserved (EWOULDBLOCK alias slot, use EAGAIN)
+    _RESERVED_41 = -41,
     /// No message of desired type
     ENOMSG = -42,
     /// Identifier removed
@@ -115,6 +122,8 @@ pub enum UnixError {
     EBADRQC = -56,
     /// Invalid slot
     EBADSLT = -57,
+    /// Reserved (EDEADLOCK alias slot, use EDEADLK)
+    _RESERVED_58 = -58,
     /// Bad font file format
     EBFONT = -59,
     /// Device not a stream
@@ -187,7 +196,7 @@ pub enum UnixError {
     EPROTONOSUPPORT = -93,
     /// Socket type not supported
     ESOCKTNOSUPPORT = -94,
-    /// Operation not supported on transport endpoint
+    /// Operation not supported on transport endpoint (ENOTSUP is an alias for this value)
     EOPNOTSUPP = -95,
     /// Protocol family not supported
     EPFNOSUPPORT = -96,
@@ -267,308 +276,89 @@ pub enum UnixError {
     EHWPOISON = -133,
 }
 
-impl UnixError {
-    /// Convert to errno value (returns the stored negative value)
+/// Convenience alias: EWOULDBLOCK is EAGAIN in Linux
+pub const EWOULDBLOCK: PosixError = PosixError::EAGAIN;
+/// Convenience alias: EDEADLOCK is EDEADLK in Linux
+pub const EDEADLOCK: PosixError = PosixError::EDEADLK;
+/// Convenience alias: ENOTSUP is EOPNOTSUPP in Linux
+pub const ENOTSUP: PosixError = PosixError::EOPNOTSUPP;
+
+// ── Inherent methods ─────────────────────────────────────────────────
+
+impl PosixError {
+    /// Bounds for Try Impls: The bounds are both inclusive
+    const MIN: i16 = -133;
+    const MAX: i16 = -1;
+
     #[inline]
-    pub fn to_errno(&self) -> i32 {
-        *self as i32
+    pub fn to_errno(&self) -> i16 {
+        *self as i16
     }
 }
 
-impl From<UnixError> for i32 {
-    fn from(err: UnixError) -> i32 {
+// ── Base conversion: i16 (matches #[repr(i16)]) ─────────────────────
+
+impl From<PosixError> for i16 {
+    #[inline]
+    fn from(err: PosixError) -> i16 {
         err.to_errno()
     }
 }
 
-impl TryFrom<i32> for UnixError {
+impl TryFrom<i16> for PosixError {
     type Error = ();
 
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        // Only accept negative values (syscall error returns)
-        if value >= 0 {
+    #[inline]
+    fn try_from(value: i16) -> Result<Self, Self::Error> {
+        if value < Self::MIN || value > Self::MAX {
             return Err(());
         }
-
-        match value {
-            -1 => Ok(UnixError::EPERM),
-            -2 => Ok(UnixError::ENOENT),
-            -3 => Ok(UnixError::ESRCH),
-            -4 => Ok(UnixError::EINTR),
-            -5 => Ok(UnixError::EIO),
-            -6 => Ok(UnixError::ENXIO),
-            -7 => Ok(UnixError::E2BIG),
-            -8 => Ok(UnixError::ENOEXEC),
-            -9 => Ok(UnixError::EBADF),
-            -10 => Ok(UnixError::ECHILD),
-            -11 => Ok(UnixError::EAGAIN),
-            -12 => Ok(UnixError::ENOMEM),
-            -13 => Ok(UnixError::EACCES),
-            -14 => Ok(UnixError::EFAULT),
-            -15 => Ok(UnixError::ENOTBLK),
-            -16 => Ok(UnixError::EBUSY),
-            -17 => Ok(UnixError::EEXIST),
-            -18 => Ok(UnixError::EXDEV),
-            -19 => Ok(UnixError::ENODEV),
-            -20 => Ok(UnixError::ENOTDIR),
-            -21 => Ok(UnixError::EISDIR),
-            -22 => Ok(UnixError::EINVAL),
-            -23 => Ok(UnixError::ENFILE),
-            -24 => Ok(UnixError::EMFILE),
-            -25 => Ok(UnixError::ENOTTY),
-            -26 => Ok(UnixError::ETXTBSY),
-            -27 => Ok(UnixError::EFBIG),
-            -28 => Ok(UnixError::ENOSPC),
-            -29 => Ok(UnixError::ESPIPE),
-            -30 => Ok(UnixError::EROFS),
-            -31 => Ok(UnixError::EMLINK),
-            -32 => Ok(UnixError::EPIPE),
-            -33 => Ok(UnixError::EDOM),
-            -34 => Ok(UnixError::ERANGE),
-            -35 => Ok(UnixError::EDEADLK),
-            -36 => Ok(UnixError::ENAMETOOLONG),
-            -37 => Ok(UnixError::ENOLCK),
-            -38 => Ok(UnixError::ENOSYS),
-            -39 => Ok(UnixError::ENOTEMPTY),
-            -40 => Ok(UnixError::ELOOP),
-            -42 => Ok(UnixError::ENOMSG),
-            -43 => Ok(UnixError::EIDRM),
-            -44 => Ok(UnixError::ECHRNG),
-            -45 => Ok(UnixError::EL2NSYNC),
-            -46 => Ok(UnixError::EL3HLT),
-            -47 => Ok(UnixError::EL3RST),
-            -48 => Ok(UnixError::ELNRNG),
-            -49 => Ok(UnixError::EUNATCH),
-            -50 => Ok(UnixError::ENOCSI),
-            -51 => Ok(UnixError::EL2HLT),
-            -52 => Ok(UnixError::EBADE),
-            -53 => Ok(UnixError::EBADR),
-            -54 => Ok(UnixError::EXFULL),
-            -55 => Ok(UnixError::ENOANO),
-            -56 => Ok(UnixError::EBADRQC),
-            -57 => Ok(UnixError::EBADSLT),
-            -59 => Ok(UnixError::EBFONT),
-            -60 => Ok(UnixError::ENOSTR),
-            -61 => Ok(UnixError::ENODATA),
-            -62 => Ok(UnixError::ETIME),
-            -63 => Ok(UnixError::ENOSR),
-            -64 => Ok(UnixError::ENONET),
-            -65 => Ok(UnixError::ENOPKG),
-            -66 => Ok(UnixError::EREMOTE),
-            -67 => Ok(UnixError::ENOLINK),
-            -68 => Ok(UnixError::EADV),
-            -69 => Ok(UnixError::ESRMNT),
-            -70 => Ok(UnixError::ECOMM),
-            -71 => Ok(UnixError::EPROTO),
-            -72 => Ok(UnixError::EMULTIHOP),
-            -73 => Ok(UnixError::EDOTDOT),
-            -74 => Ok(UnixError::EBADMSG),
-            -75 => Ok(UnixError::EOVERFLOW),
-            -76 => Ok(UnixError::ENOTUNIQ),
-            -77 => Ok(UnixError::EBADFD),
-            -78 => Ok(UnixError::EREMCHG),
-            -79 => Ok(UnixError::ELIBACC),
-            -80 => Ok(UnixError::ELIBBAD),
-            -81 => Ok(UnixError::ELIBSCN),
-            -82 => Ok(UnixError::ELIBMAX),
-            -83 => Ok(UnixError::ELIBEXEC),
-            -84 => Ok(UnixError::EILSEQ),
-            -85 => Ok(UnixError::ERESTART),
-            -86 => Ok(UnixError::ESTRPIPE),
-            -87 => Ok(UnixError::EUSERS),
-            -88 => Ok(UnixError::ENOTSOCK),
-            -89 => Ok(UnixError::EDESTADDRREQ),
-            -90 => Ok(UnixError::EMSGSIZE),
-            -91 => Ok(UnixError::EPROTOTYPE),
-            -92 => Ok(UnixError::ENOPROTOOPT),
-            -93 => Ok(UnixError::EPROTONOSUPPORT),
-            -94 => Ok(UnixError::ESOCKTNOSUPPORT),
-            -95 => Ok(UnixError::EOPNOTSUPP),
-            -96 => Ok(UnixError::EPFNOSUPPORT),
-            -97 => Ok(UnixError::EAFNOSUPPORT),
-            -98 => Ok(UnixError::EADDRINUSE),
-            -99 => Ok(UnixError::EADDRNOTAVAIL),
-            -100 => Ok(UnixError::ENETDOWN),
-            -101 => Ok(UnixError::ENETUNREACH),
-            -102 => Ok(UnixError::ENETRESET),
-            -103 => Ok(UnixError::ECONNABORTED),
-            -104 => Ok(UnixError::ECONNRESET),
-            -105 => Ok(UnixError::ENOBUFS),
-            -106 => Ok(UnixError::EISCONN),
-            -107 => Ok(UnixError::ENOTCONN),
-            -108 => Ok(UnixError::ESHUTDOWN),
-            -109 => Ok(UnixError::ETOOMANYREFS),
-            -110 => Ok(UnixError::ETIMEDOUT),
-            -111 => Ok(UnixError::ECONNREFUSED),
-            -112 => Ok(UnixError::EHOSTDOWN),
-            -113 => Ok(UnixError::EHOSTUNREACH),
-            -114 => Ok(UnixError::EALREADY),
-            -115 => Ok(UnixError::EINPROGRESS),
-            -116 => Ok(UnixError::ESTALE),
-            -117 => Ok(UnixError::EUCLEAN),
-            -118 => Ok(UnixError::ENOTNAM),
-            -119 => Ok(UnixError::ENAVAIL),
-            -120 => Ok(UnixError::EISNAM),
-            -121 => Ok(UnixError::EREMOTEIO),
-            -122 => Ok(UnixError::EDQUOT),
-            -123 => Ok(UnixError::ENOMEDIUM),
-            -124 => Ok(UnixError::EMEDIUMTYPE),
-            -125 => Ok(UnixError::ECANCELED),
-            -126 => Ok(UnixError::ENOKEY),
-            -127 => Ok(UnixError::EKEYEXPIRED),
-            -128 => Ok(UnixError::EKEYREVOKED),
-            -129 => Ok(UnixError::EKEYREJECTED),
-            -130 => Ok(UnixError::EOWNERDEAD),
-            -131 => Ok(UnixError::ENOTRECOVERABLE),
-            -132 => Ok(UnixError::ERFKILL),
-            -133 => Ok(UnixError::EHWPOISON),
-            _ => Err(()),
-        }
+        // SAFETY: 
+        // The range of error values is padded with reserved fields to be continous, so every value in the range is a valid PosixError variant
+        // The bounds are validated against the provided MIN...MAX range
+        Ok(unsafe { core::mem::transmute(value) })
     }
 }
 
-impl TryFrom<isize> for UnixError {
+// ── Widening conversions built on the i16 base ──────────────────────
+
+impl From<PosixError> for i32 {
+    #[inline]
+    fn from(err: PosixError) -> i32 {
+        err.to_errno() as i32
+    }
+}
+
+impl TryFrom<i32> for PosixError {
     type Error = ();
 
-    fn try_from(value: isize) -> Result<Self, Self::Error> {
-        // Only accept negative values (syscall error returns)
-        if value >= 0 {
-            return Err(());
-        }
+    #[inline]
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        let narrow = i16::try_from(value).map_err(|_| ())?;
+        Self::try_from(narrow)
+    }
+}
 
-        match value {
-            -1 => Ok(UnixError::EPERM),
-            -2 => Ok(UnixError::ENOENT),
-            -3 => Ok(UnixError::ESRCH),
-            -4 => Ok(UnixError::EINTR),
-            -5 => Ok(UnixError::EIO),
-            -6 => Ok(UnixError::ENXIO),
-            -7 => Ok(UnixError::E2BIG),
-            -8 => Ok(UnixError::ENOEXEC),
-            -9 => Ok(UnixError::EBADF),
-            -10 => Ok(UnixError::ECHILD),
-            -11 => Ok(UnixError::EAGAIN),
-            -12 => Ok(UnixError::ENOMEM),
-            -13 => Ok(UnixError::EACCES),
-            -14 => Ok(UnixError::EFAULT),
-            -15 => Ok(UnixError::ENOTBLK),
-            -16 => Ok(UnixError::EBUSY),
-            -17 => Ok(UnixError::EEXIST),
-            -18 => Ok(UnixError::EXDEV),
-            -19 => Ok(UnixError::ENODEV),
-            -20 => Ok(UnixError::ENOTDIR),
-            -21 => Ok(UnixError::EISDIR),
-            -22 => Ok(UnixError::EINVAL),
-            -23 => Ok(UnixError::ENFILE),
-            -24 => Ok(UnixError::EMFILE),
-            -25 => Ok(UnixError::ENOTTY),
-            -26 => Ok(UnixError::ETXTBSY),
-            -27 => Ok(UnixError::EFBIG),
-            -28 => Ok(UnixError::ENOSPC),
-            -29 => Ok(UnixError::ESPIPE),
-            -30 => Ok(UnixError::EROFS),
-            -31 => Ok(UnixError::EMLINK),
-            -32 => Ok(UnixError::EPIPE),
-            -33 => Ok(UnixError::EDOM),
-            -34 => Ok(UnixError::ERANGE),
-            -35 => Ok(UnixError::EDEADLK),
-            -36 => Ok(UnixError::ENAMETOOLONG),
-            -37 => Ok(UnixError::ENOLCK),
-            -38 => Ok(UnixError::ENOSYS),
-            -39 => Ok(UnixError::ENOTEMPTY),
-            -40 => Ok(UnixError::ELOOP),
-            -42 => Ok(UnixError::ENOMSG),
-            -43 => Ok(UnixError::EIDRM),
-            -44 => Ok(UnixError::ECHRNG),
-            -45 => Ok(UnixError::EL2NSYNC),
-            -46 => Ok(UnixError::EL3HLT),
-            -47 => Ok(UnixError::EL3RST),
-            -48 => Ok(UnixError::ELNRNG),
-            -49 => Ok(UnixError::EUNATCH),
-            -50 => Ok(UnixError::ENOCSI),
-            -51 => Ok(UnixError::EL2HLT),
-            -52 => Ok(UnixError::EBADE),
-            -53 => Ok(UnixError::EBADR),
-            -54 => Ok(UnixError::EXFULL),
-            -55 => Ok(UnixError::ENOANO),
-            -56 => Ok(UnixError::EBADRQC),
-            -57 => Ok(UnixError::EBADSLT),
-            -59 => Ok(UnixError::EBFONT),
-            -60 => Ok(UnixError::ENOSTR),
-            -61 => Ok(UnixError::ENODATA),
-            -62 => Ok(UnixError::ETIME),
-            -63 => Ok(UnixError::ENOSR),
-            -64 => Ok(UnixError::ENONET),
-            -65 => Ok(UnixError::ENOPKG),
-            -66 => Ok(UnixError::EREMOTE),
-            -67 => Ok(UnixError::ENOLINK),
-            -68 => Ok(UnixError::EADV),
-            -69 => Ok(UnixError::ESRMNT),
-            -70 => Ok(UnixError::ECOMM),
-            -71 => Ok(UnixError::EPROTO),
-            -72 => Ok(UnixError::EMULTIHOP),
-            -73 => Ok(UnixError::EDOTDOT),
-            -74 => Ok(UnixError::EBADMSG),
-            -75 => Ok(UnixError::EOVERFLOW),
-            -76 => Ok(UnixError::ENOTUNIQ),
-            -77 => Ok(UnixError::EBADFD),
-            -78 => Ok(UnixError::EREMCHG),
-            -79 => Ok(UnixError::ELIBACC),
-            -80 => Ok(UnixError::ELIBBAD),
-            -81 => Ok(UnixError::ELIBSCN),
-            -82 => Ok(UnixError::ELIBMAX),
-            -83 => Ok(UnixError::ELIBEXEC),
-            -84 => Ok(UnixError::EILSEQ),
-            -85 => Ok(UnixError::ERESTART),
-            -86 => Ok(UnixError::ESTRPIPE),
-            -87 => Ok(UnixError::EUSERS),
-            -88 => Ok(UnixError::ENOTSOCK),
-            -89 => Ok(UnixError::EDESTADDRREQ),
-            -90 => Ok(UnixError::EMSGSIZE),
-            -91 => Ok(UnixError::EPROTOTYPE),
-            -92 => Ok(UnixError::ENOPROTOOPT),
-            -93 => Ok(UnixError::EPROTONOSUPPORT),
-            -94 => Ok(UnixError::ESOCKTNOSUPPORT),
-            -95 => Ok(UnixError::EOPNOTSUPP),
-            -96 => Ok(UnixError::EPFNOSUPPORT),
-            -97 => Ok(UnixError::EAFNOSUPPORT),
-            -98 => Ok(UnixError::EADDRINUSE),
-            -99 => Ok(UnixError::EADDRNOTAVAIL),
-            -100 => Ok(UnixError::ENETDOWN),
-            -101 => Ok(UnixError::ENETUNREACH),
-            -102 => Ok(UnixError::ENETRESET),
-            -103 => Ok(UnixError::ECONNABORTED),
-            -104 => Ok(UnixError::ECONNRESET),
-            -105 => Ok(UnixError::ENOBUFS),
-            -106 => Ok(UnixError::EISCONN),
-            -107 => Ok(UnixError::ENOTCONN),
-            -108 => Ok(UnixError::ESHUTDOWN),
-            -109 => Ok(UnixError::ETOOMANYREFS),
-            -110 => Ok(UnixError::ETIMEDOUT),
-            -111 => Ok(UnixError::ECONNREFUSED),
-            -112 => Ok(UnixError::EHOSTDOWN),
-            -113 => Ok(UnixError::EHOSTUNREACH),
-            -114 => Ok(UnixError::EALREADY),
-            -115 => Ok(UnixError::EINPROGRESS),
-            -116 => Ok(UnixError::ESTALE),
-            -117 => Ok(UnixError::EUCLEAN),
-            -118 => Ok(UnixError::ENOTNAM),
-            -119 => Ok(UnixError::ENAVAIL),
-            -120 => Ok(UnixError::EISNAM),
-            -121 => Ok(UnixError::EREMOTEIO),
-            -122 => Ok(UnixError::EDQUOT),
-            -123 => Ok(UnixError::ENOMEDIUM),
-            -124 => Ok(UnixError::EMEDIUMTYPE),
-            -125 => Ok(UnixError::ECANCELED),
-            -126 => Ok(UnixError::ENOKEY),
-            -127 => Ok(UnixError::EKEYEXPIRED),
-            -128 => Ok(UnixError::EKEYREVOKED),
-            -129 => Ok(UnixError::EKEYREJECTED),
-            -130 => Ok(UnixError::EOWNERDEAD),
-            -131 => Ok(UnixError::ENOTRECOVERABLE),
-            -132 => Ok(UnixError::ERFKILL),
-            -133 => Ok(UnixError::EHWPOISON),
-            _ => Err(()),
-        }
+impl From<PosixError> for isize {
+    #[inline]
+    fn from(err: PosixError) -> isize {
+        err.to_errno() as isize
+    }
+}
+
+impl TryFrom<isize> for PosixError {
+    type Error = ();
+
+    #[inline]
+    fn try_from(value: isize) -> Result<Self, Self::Error> {
+        let narrow = i16::try_from(value).map_err(|_| ())?;
+        Self::try_from(narrow)
+    }
+}
+
+impl From<PosixError> for usize {
+    #[inline]
+    fn from(err: PosixError) -> usize {
+        err.to_errno() as usize
     }
 }
