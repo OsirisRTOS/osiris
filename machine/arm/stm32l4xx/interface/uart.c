@@ -1,6 +1,6 @@
 
 #include "lib.h"
-#include "stm32l4r5xx.h"
+#include "stm32l4xx.h"
 #include "stm32l4xx_hal_gpio.h"
 #include "stm32l4xx_hal_rcc.h"
 #include "stm32l4xx_hal_rcc_ex.h"
