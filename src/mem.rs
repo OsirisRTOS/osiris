@@ -95,35 +95,10 @@ pub fn align_up(size: usize) -> usize {
 // VERIFICATION -------------------------------------------------------------------------------------------------------
 #[cfg(kani)]
 mod verification {
-    use crate::MemMapEntry;
+    use crate::mem::alloc::MAX_ADDR;
 
     use super::*;
-    use kani::Arbitrary;
-
-    impl Arbitrary for MemMapEntry {
-        fn any() -> Self {
-            let size = size_of::<MemMapEntry>() as u32;
-            let length = kani::any();
-            let addr = kani::any();
-
-            kani::assume(
-                length < alloc::MAX_ADDR as u64
-                    && length > alloc::BestFitAllocator::MIN_RANGE_SIZE as u64,
-            );
-            kani::assume(addr < alloc::MAX_ADDR as u64 - length && addr > 0);
-
-            MemMapEntry {
-                size,
-                addr,
-                length,
-                ty: kani::any(),
-            }
-        }
-
-        fn any_array<const MAX_ARRAY_LENGTH: usize>() -> [Self; MAX_ARRAY_LENGTH] {
-            [(); MAX_ARRAY_LENGTH].map(|_| Self::any())
-        }
-    }
+    use interface::{Args, InitDescriptor, MemMapEntry};
 
     fn mock_ptr_write<T>(dst: *mut T, src: T) {
         // Just a noop
@@ -135,6 +110,7 @@ mod verification {
         let mmap: [MemMapEntry; _] = kani::any();
 
         kani::assume(mmap.len() > 0 && mmap.len() <= 8);
+        // Apply constraints to all
         for entry in mmap.iter() {
             // Ensure aligned.
             kani::assume(entry.addr % align_of::<u128>() as u64 == 0);
@@ -142,6 +118,14 @@ mod verification {
             kani::assume(entry.addr > 0);
             kani::assume(entry.length > 0);
 
+            kani::assume(
+                entry.length < alloc::MAX_ADDR as u64
+                    && entry.length > alloc::BestFitAllocator::MIN_RANGE_SIZE as u64,
+            );
+            kani::assume(entry.addr < alloc::MAX_ADDR as u64 - entry.length && entry.addr > 0);
+        }
+
+        for entry in mmap.iter() {
             // Ensure non overlapping entries
             for other in mmap.iter() {
                 if entry.addr != other.addr {
@@ -153,13 +137,20 @@ mod verification {
             }
         }
 
-        let mmap_len = mmap.len();
+        let mmap_len = mmap.len() as u64;
 
         let boot_info = BootInfo {
-            implementer: core::ptr::null(),
-            variant: core::ptr::null(),
+            magic: interface::BOOT_INFO_MAGIC,
+            version: kani::any(),
             mmap,
             mmap_len,
+            args: Args {
+                init: InitDescriptor {
+                    begin: kani::any(),
+                    len: kani::any(),
+                    entry_offset: kani::any(),
+                },
+            },
         };
 
         assert!(init_memory(&boot_info).is_ok());

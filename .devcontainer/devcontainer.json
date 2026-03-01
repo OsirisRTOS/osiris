@@ -5,8 +5,7 @@
 		"dockerfile": "Dockerfile",
 		"context": "..",
 		"cacheFrom": [
-			"ghcr.io/osirisrtos/osiris/devcontainer:main",
-			"ghcr.io/osirisrtos/osiris/devcontainer:main-cache"
+			"ghcr.io/osirisrtos/osiris/devcontainer",
 		]
 	},
 	"privileged": false,
