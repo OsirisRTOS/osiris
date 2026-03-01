@@ -1,4 +1,4 @@
-/// Unix error codes enum covering all standard errno values.
+/// Posix error codes enum covering all standard errno values.
 /// Values are stored as negative integers matching kernel return values.
 ///
 /// Source: Linux kernel include/uapi/asm-generic/errno-base.h (1–34)
