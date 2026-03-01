@@ -9,6 +9,10 @@
 
 static UART_HandleTypeDef HDBG_UART;
 
+#ifndef OSIRIS_DEBUG_UART
+  #error "OSIRIS_DEBUG_UART not defined."
+#endif
+
 int init_debug_uart(void) {
   HDBG_UART.Instance = OSIRIS_DEBUG_UART;
   HDBG_UART.Init.BaudRate = 115200;
