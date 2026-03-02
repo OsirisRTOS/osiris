@@ -287,7 +287,7 @@ fn has_attribute(attrs: &[Attribute], attr_name: &str) -> bool {
 fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Error> {
     let mut modules = Vec::new();
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    
+
     for entry in WalkDir::new(root) {
         let entry = match entry {
             Ok(entry) => entry,
@@ -339,7 +339,7 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
             for item in file.items {
                 if let syn::Item::Fn(item_fn) = item {
                     let fn_name = item_fn.sig.ident.to_string();
-                    
+
                     //Store kernelmod_init function
                     if has_attribute(&item_fn.attrs, "kernelmod_init") {
                         if module.init_fn.is_some() {
@@ -378,6 +378,9 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
             }
         }
     }
+
+    // Deterministic ordering — critical for index agreement between kernel and uspace
+    modules.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(modules)
 }
@@ -429,7 +432,7 @@ fn generate_modules_kernel(root: &str) -> Result<(), std::io::Error> {
 
     // 4. Lookup table with function pointers
     writeln!(file, "/// Lookup table for kernel module call wrappers")?;
-    writeln!(file, "type KernelModCallFn = unsafe fn(*const u8) -> usize;")?;
+    writeln!(file, "type KernelModCallFn = unsafe fn(*const u8) -> isize;")?;
     writeln!(file)?;
     writeln!(file, "const KERNELMOD_CALL_TABLE: &[KernelModCallFn] = &[")?;
 
@@ -453,10 +456,8 @@ fn generate_modules_kernel(root: &str) -> Result<(), std::io::Error> {
     writeln!(file, "    let func = KERNELMOD_CALL_TABLE[index];")?;
     writeln!(file, "    // SAFETY: index is a function address collected from the existing modules during build.")?;
     writeln!(file, "    // data is a pointer constructed by the userspace wrapper, which is automatically generated from the kernelmodule definition")?;
-    writeln!(file, "    unsafe {{")?;
-    writeln!(file, "        let result = func(data);")?;
-    writeln!(file, "        result as i32")?;
-    writeln!(file, "    }}")?;
+    writeln!(file, "    // The isize -> i32 truncation is safe: Ok values are at most usize-sized and error codes fit in i16.")?;
+    writeln!(file, "    unsafe {{ func(data) as i32 }}")?;
     writeln!(file, "}}")?;
     Ok(())
 }
@@ -518,6 +519,39 @@ fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
+/// Extracts the Ok type from a `Result<T, E>` return type at the AST level.
+/// Returns Some(T_string) if the return type is Result<T, ...>, None otherwise.
+fn extract_result_ok_type(output: &syn::ReturnType) -> Option<String> {
+    let ty = match output {
+        syn::ReturnType::Type(_, ty) => ty,
+        syn::ReturnType::Default => return None,
+    };
+
+    let type_path = match ty.as_ref() {
+        Type::Path(tp) => tp,
+        _ => return None,
+    };
+
+    let last_seg = type_path.path.segments.last()?;
+    if last_seg.ident != "Result" {
+        return None;
+    }
+
+    let args = match &last_seg.arguments {
+        syn::PathArguments::AngleBracketed(ab) => &ab.args,
+        _ => return None,
+    };
+
+    // First type argument is the Ok type
+    for arg in args.iter().take(1) {
+        if let syn::GenericArgument::Type(t) = arg {
+            return Some(t.to_token_stream().to_string());
+        }
+    }
+
+    None
+}
+
 fn generate_userspace_function(
     file: &mut File,
     func: &KernelModuleCallFn,
@@ -554,11 +588,15 @@ fn generate_userspace_function(
         .map(|arg| arg.to_token_stream().to_string())
         .collect::<Vec<_>>()
         .join(", ");
-    
+
     let return_type_str = match &func.output {
         syn::ReturnType::Default => "Result<(), PosixError>".to_string(),
         syn::ReturnType::Type(_, ty) => ty.to_token_stream().to_string(),
     };
+
+    // Extract the Ok type directly from the AST for clear compile-time checks
+    let ok_type_str = extract_result_ok_type(&func.output)
+        .unwrap_or_else(|| "()".to_string());
 
     writeln!(file, "    pub fn {}({}) -> {} {{", fn_name, inputs_str, return_type_str)?;
 
@@ -578,13 +616,13 @@ fn generate_userspace_function(
     }
     writeln!(file)?;
 
+    // Compile-time checks on the Ok type using the extracted type directly
     writeln!(file, "        const _: () = {{")?;
-    writeln!(file, "            trait __RetOkSize {{ type Ok; }}")?;
-    writeln!(file, "            impl<T, E> __RetOkSize for core::result::Result<T, E> {{ type Ok = T; }}")?;
-    writeln!(file, "            if core::mem::size_of::<<{} as __RetOkSize>::Ok>() > core::mem::size_of::<usize>() {{", return_type_str)?;
+    writeln!(file, "            if core::mem::size_of::<{}>() > core::mem::size_of::<usize>() {{", ok_type_str)?;
     writeln!(file, "                panic!(\"kernelmod_call: Ok return type is bigger than usize. must fit in a register.\");")?;
     writeln!(file, "            }}")?;
     writeln!(file, "        }};")?;
+    writeln!(file, "        const _: fn() = || {{ fn assert_copy<T: Copy>() {{}} assert_copy::<{}>(); }};", ok_type_str)?;
     writeln!(file)?;
 
     // Layout call arguments
@@ -607,17 +645,15 @@ fn generate_userspace_function(
     writeln!(file, "                .unwrap_or(PosixError::ENOSYS);")?;
     writeln!(file, "            Err(err)")?;
     writeln!(file, "        }} else {{")?;
-    
-    writeln!(file, "            trait __RetOkType {{ type Ok; }}")?;
-    writeln!(file, "            impl<T, E> __RetOkType for core::result::Result<T, E> {{ type Ok = T; }}")?;
-    writeln!(file)?;
-    writeln!(file, "            // SAFETY: the compile-time assert above guarantees the Ok type fits in usize.")?;
+
+    // Reconstruct the Ok value from the isize result using the extracted type directly
+    writeln!(file, "            // SAFETY: the compile-time assert above guarantees the Ok type fits in isize.")?;
     writeln!(file, "            let val = unsafe {{")?;
-    writeln!(file, "                let mut out = core::mem::MaybeUninit::<<{} as __RetOkType>::Ok>::zeroed();", return_type_str)?;
+    writeln!(file, "                let mut out = core::mem::MaybeUninit::<{}>::zeroed();", ok_type_str)?;
     writeln!(file, "                core::ptr::copy_nonoverlapping(")?;
     writeln!(file, "                    &result as *const _ as *const u8,")?;
     writeln!(file, "                    out.as_mut_ptr() as *mut u8,")?;
-    writeln!(file, "                    core::mem::size_of::<<{} as __RetOkType>::Ok>(),", return_type_str)?;
+    writeln!(file, "                    core::mem::size_of::<{}>(),", ok_type_str)?;
     writeln!(file, "                );")?;
     writeln!(file, "                out.assume_init()")?;
     writeln!(file, "            }};")?;

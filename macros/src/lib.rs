@@ -1,6 +1,6 @@
 use quote::{quote, quote_spanned};
 use quote::{ToTokens, format_ident};
-use syn::{parse_macro_input, Error, FnArg, Pat, PatType, ReturnType, Type, TypeReference, TypeSlice};
+use syn::{parse_macro_input, Error, FnArg, GenericArgument, Pat, PatType, PathArguments, ReturnType, Type, TypeReference, TypeSlice};
 use syn::ItemFn;
 
 use proc_macro2::TokenStream;
@@ -242,6 +242,121 @@ fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
+/// Structurally validates that the return type is `Result<T, PosixError>` and
+/// extracts the `T` (Ok type).
+///
+/// Checks performed (all at the AST / syntactic level):
+///   1. A return type is present (not `-> ()`-less).
+///   2. The outermost type path ends with `Result`.
+///   3. `Result` has exactly two generic type arguments.
+///   4. The second type argument's path ends with `PosixError`.
+///
+/// Returns the first generic argument (`T`) on success so the caller can emit
+/// targeted size / Copy checks against it.
+fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type, Error> {
+    // 1. Must have an explicit return type.
+    let ret_ty = match return_type {
+        ReturnType::Default => {
+            return Err(Error::new_spanned(
+                return_type,
+                "kernelmod_call: function must have an explicit return type.\n\
+                 Expected `Result<T, PosixError>` where T: Copy + size_of::<T>() <= size_of::<usize>()"
+            ));
+        }
+        ReturnType::Type(_, ty) => ty,
+    };
+
+    // 2. Outer type must be a path whose last segment is `Result`.
+    let type_path = match ret_ty.as_ref() {
+        Type::Path(tp) => tp,
+        _ => {
+            return Err(Error::new_spanned(
+                ret_ty,
+                "kernelmod_call: return type must be `Result<T, PosixError>`.\n\
+                 Got a non-path type (e.g. reference, tuple, etc.)."
+            ));
+        }
+    };
+
+    let last_segment = type_path.path.segments.last().ok_or_else(|| {
+        Error::new_spanned(&type_path.path, "kernelmod_call: empty type path in return position")
+    })?;
+
+    if last_segment.ident != "Result" {
+        return Err(Error::new_spanned(
+            &last_segment.ident,
+            format!(
+                "kernelmod_call: return type must be `Result<T, PosixError>`, but found `{}`.\n\
+                 Hint: the outermost type must be `Result`.",
+                last_segment.ident
+            )
+        ));
+    }
+
+    // 3. Must have angle-bracketed generics with exactly 2 type arguments.
+    let args = match &last_segment.arguments {
+        PathArguments::AngleBracketed(ab) => &ab.args,
+        PathArguments::None => {
+            return Err(Error::new_spanned(
+                last_segment,
+                "kernelmod_call: `Result` must have type parameters.\n\
+                 Expected `Result<T, PosixError>`."
+            ));
+        }
+        PathArguments::Parenthesized(_) => {
+            return Err(Error::new_spanned(
+                last_segment,
+                "kernelmod_call: `Result` must use angle-bracket generics.\n\
+                 Expected `Result<T, PosixError>`, not `Result(...)`."
+            ));
+        }
+    };
+
+    let type_args: Vec<&Type> = args
+        .iter()
+        .filter_map(|arg| match arg {
+            GenericArgument::Type(ty) => Some(ty),
+            _ => None,
+        })
+        .collect();
+
+    if type_args.len() != 2 {
+        return Err(Error::new_spanned(
+            last_segment,
+            format!(
+                "kernelmod_call: `Result` must have exactly 2 type parameters, found {}.\n\
+                 Expected `Result<T, PosixError>`.",
+                type_args.len()
+            )
+        ));
+    }
+
+    let ok_ty = type_args[0];
+    let err_ty = type_args[1];
+
+    // 4. The error type must be (or end with) `PosixError`.
+    let err_ident = match err_ty {
+        Type::Path(tp) => tp.path.segments.last().map(|s| &s.ident),
+        _ => None,
+    };
+
+    match err_ident {
+        Some(ident) if ident == "PosixError" => {}
+        _ => {
+            return Err(Error::new_spanned(
+                err_ty,
+                format!(
+                    "kernelmod_call: error type must be `PosixError`, but found `{}`.\n\
+                     Expected `Result<T, PosixError>`.",
+                    err_ty.to_token_stream()
+                )
+            ));
+        }
+    }
+
+    Ok(ok_ty.clone())
+}
+
 fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
     let fn_name = &input.sig.ident;
     let fn_name_str = fn_name.to_string();
@@ -258,7 +373,7 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
     let pascal_name = snake_to_pascal(&fn_name_str);
     let args_struct_name = syn::Ident::new(&format!("__{}Args", pascal_name), fn_name.span());
 
-    validate_return_type(&input.sig.output)?;
+    let ok_ty = validate_and_extract_result_ok_type(&input.sig.output)?;
 
     let mut arg_fields = Vec::new();
     let mut arg_names = Vec::new();
@@ -293,19 +408,22 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
         }
     }
 
-    let ret_size_check = match &input.sig.output {
-        ReturnType::Type(_, ty) => {
-            quote! {
-                const _: () = {
-                    trait __RetOkSize { type Ok; }
-                    impl<T, E> __RetOkSize for core::result::Result<T, E> { type Ok = T; }
-                    if core::mem::size_of::<<#ty as __RetOkSize>::Ok>() > core::mem::size_of::<usize>() {
-                        panic!("kernelmod_call: Ok return type is bigger than usize. must fit in a register.");
-                    }
-                };
+    // Emit compile-time checks against the *extracted* Ok type directly.
+    // This gives clear errors instead of opaque trait-resolution failures.
+    let ret_size_check = quote_spanned! { ok_ty.span() =>
+        const _: () = {
+            if core::mem::size_of::<#ok_ty>() > core::mem::size_of::<usize>() {
+                panic!(
+                    "kernelmod_call: the Ok type in Result<T, PosixError> is larger than usize. \
+                     T must fit in a single register."
+                );
             }
-        }
-        _ => quote! {},
+        };
+        // Compile-time Copy bound check on T.
+        const _: fn() = || {
+            fn assert_copy<T: Copy>() {}
+            assert_copy::<#ok_ty>();
+        };
     };
 
     let return_handling = generate_return_handling(&input.sig.output)?;
@@ -322,7 +440,7 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
             #(#arg_fields),*
         }
 
-        #fn_vis unsafe fn #wrapper_name(args_ptr: *const u8) -> usize {
+        #fn_vis unsafe fn #wrapper_name(args_ptr: *const u8) -> isize {
             let args = &*(args_ptr as *const #args_struct_name);
 
             #(#arg_reconstructions)*
@@ -437,41 +555,27 @@ fn validate_and_generate_field(
     }
 }
 
-fn validate_return_type(return_type: &ReturnType) -> Result<(), Error> {
-    match return_type {
-        ReturnType::Default => {
-            Err(Error::new_spanned(
-                return_type,
-                "kernelmod_call: function must have an explicit return type (expected Result<T, PosixError>)"
-            ))
-        }
-        ReturnType::Type(_, _) => {
-            Ok(())
-        }
-    }
-}
-
 fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::TokenStream, Error> {
     match return_type {
         ReturnType::Type(_, _ty) => {
             Ok(quote! {
-                // SAFETY: `val` is guaranteed at most `size_of::<usize>()` by the
+                // SAFETY: `val` is guaranteed at most `size_of::<isize>()` by the
                 // compile-time const assert emitted alongside this wrapper.
                 // `raw` is zero-initialised so unwritten bytes remain zero.
                 // Both pointers are stack-local, valid, aligned, and non-overlapping.
                 match result {
                     Ok(val) => {
-                        let mut raw: usize = 0;
+                        let mut raw: isize = 0;
                         unsafe {
                             core::ptr::copy_nonoverlapping(
                                 &val as *const _ as *const u8,
-                                &mut raw as *mut usize as *mut u8,
+                                &mut raw as *mut isize as *mut u8,
                                 core::mem::size_of_val(&val),
                             );
                         }
                         raw
                     }
-                    Err(e) => e as usize,
+                    Err(e) => e as isize,
                 }
             })
         }
