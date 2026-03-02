@@ -7,16 +7,16 @@
 mod macros;
 #[macro_use]
 mod utils;
+pub mod error;
 mod faults;
 mod mem;
+pub mod modules;
 pub mod print;
 pub mod sched;
 pub mod sync;
 pub mod syscalls;
 pub mod time;
 pub mod uspace;
-pub mod modules;
-pub mod error;
 
 use hal::Machinelike;
 use interface::BootInfo;

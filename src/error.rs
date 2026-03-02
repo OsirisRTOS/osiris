@@ -313,7 +313,7 @@ impl TryFrom<i16> for PosixError {
         if value < Self::MIN || value > Self::MAX {
             return Err(());
         }
-        // SAFETY: 
+        // SAFETY:
         // The range of error values is padded with reserved fields to be continuous, so every value in the range is a valid PosixError variant
         // The bounds are validated against the provided MIN...MAX range
         Ok(unsafe { core::mem::transmute(value) })

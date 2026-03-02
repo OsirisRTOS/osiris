@@ -7,7 +7,10 @@ extern crate walkdir;
 use cfg_aliases::cfg_aliases;
 use quote::ToTokens;
 use std::io::Write;
-use syn::{Attribute, FnArg, LitInt, punctuated::Punctuated, token::Comma,Pat, PatType, Type, TypeReference, TypeSlice};
+use syn::{
+    Attribute, FnArg, LitInt, Pat, PatType, Type, TypeReference, TypeSlice, punctuated::Punctuated,
+    token::Comma,
+};
 use walkdir::WalkDir;
 
 extern crate cbindgen;
@@ -19,7 +22,8 @@ fn main() {
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
     generate_syscalls_export("src/syscalls").expect("Failed to generate syscall exports.");
     generate_modules_kernel("src/modules/").expect("Failed to generate kernel modules.");
-    generate_modules_uspace("src/modules/").expect("Failed to generate userspace kernel module wrappers.");
+    generate_modules_uspace("src/modules/")
+        .expect("Failed to generate userspace kernel module wrappers.");
 
     // Get linker script from environment variable
     if let Ok(linker_script) = std::env::var("DEP_HAL_LINKER_SCRIPT") {
@@ -67,19 +71,19 @@ fn get_arg_names(args: &str) -> String {
 
     ", ".to_owned()
         + &args.chars().fold("".to_owned(), |mut acc, char| {
-        if char.eq(&' ') {
-            in_arg_name = false;
-            return acc;
-        }
-        if char.eq(&',') {
-            in_arg_name = true;
-            return acc + ", ";
-        }
-        if in_arg_name {
-            acc.push(char);
-        }
-        acc
-    })
+            if char.eq(&' ') {
+                in_arg_name = false;
+                return acc;
+            }
+            if char.eq(&',') {
+                in_arg_name = true;
+                return acc + ", ";
+            }
+            if in_arg_name {
+                acc.push(char);
+            }
+            acc
+        })
 }
 
 fn generate_syscall_map<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
@@ -296,7 +300,8 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
             }
         };
 
-        if entry.file_type().is_file() && entry.path().extension().map_or(false, |ext| ext == "rs") {
+        if entry.file_type().is_file() && entry.path().extension().map_or(false, |ext| ext == "rs")
+        {
             let path = entry.path();
 
             println!("Processing kernel module file: {}", path.display());
@@ -323,7 +328,8 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
 
             // Compute absolute path for include!() in generated code
             let abs_path = Path::new(&manifest_dir).join(path);
-            let source_path = abs_path.canonicalize()
+            let source_path = abs_path
+                .canonicalize()
                 .unwrap_or(abs_path)
                 .to_string_lossy()
                 .replace('\\', "/");
@@ -366,7 +372,8 @@ fn collect_kernel_modules(root: &str) -> Result<Vec<KernelModule>, std::io::Erro
             }
 
             // Only add module if it has at least one of the attributes
-            let has_any_attr = module.init_fn.is_some() || module.exit_fn.is_some() || !module.call_fns.is_empty();
+            let has_any_attr =
+                module.init_fn.is_some() || module.exit_fn.is_some() || !module.call_fns.is_empty();
             if has_any_attr {
                 if module.init_fn.is_none() {
                     panic!("Module {module_name} is missing a #[kernelmod_init] function");
@@ -432,7 +439,10 @@ fn generate_modules_kernel(root: &str) -> Result<(), std::io::Error> {
 
     // 4. Lookup table with function pointers
     writeln!(file, "/// Lookup table for kernel module call wrappers")?;
-    writeln!(file, "type KernelModCallFn = unsafe fn(*const u8) -> isize;")?;
+    writeln!(
+        file,
+        "type KernelModCallFn = unsafe fn(*const u8) -> isize;"
+    )?;
     writeln!(file)?;
     writeln!(file, "const KERNELMOD_CALL_TABLE: &[KernelModCallFn] = &[")?;
 
@@ -448,21 +458,32 @@ fn generate_modules_kernel(root: &str) -> Result<(), std::io::Error> {
     // 5. execute_kernelmodcall function for call dispatch
     writeln!(file, "/// Execute a kernel module call by index")?;
     writeln!(file, "#[syscall_handler(num = 255)]")?;
-    writeln!(file, "pub fn execute_kernelmodcall(index: usize, data: *const u8) -> i32 {{")?;
+    writeln!(
+        file,
+        "pub fn execute_kernelmodcall(index: usize, data: *const u8) -> i32 {{"
+    )?;
     writeln!(file, "    if index >= KERNELMOD_CALL_TABLE.len() {{")?;
     writeln!(file, "        return PosixError::ENOSYS as i32;")?;
     writeln!(file, "    }}")?;
     writeln!(file)?;
     writeln!(file, "    let func = KERNELMOD_CALL_TABLE[index];")?;
-    writeln!(file, "    // SAFETY: index is a function address collected from the existing modules during build.")?;
-    writeln!(file, "    // data is a pointer constructed by the userspace wrapper, which is automatically generated from the kernelmodule definition")?;
-    writeln!(file, "    // The isize -> i32 truncation is safe: Ok values are at most usize-sized and error codes fit in i16.")?;
+    writeln!(
+        file,
+        "    // SAFETY: index is a function address collected from the existing modules during build."
+    )?;
+    writeln!(
+        file,
+        "    // data is a pointer constructed by the userspace wrapper, which is automatically generated from the kernelmodule definition"
+    )?;
+    writeln!(
+        file,
+        "    // The isize -> i32 truncation is safe: Ok values are at most usize-sized and error codes fit in i16."
+    )?;
     writeln!(file, "    unsafe {{ func(data) as i32 }}")?;
     writeln!(file, "}}")?;
     Ok(())
 }
 // ===== Userspace Wrapper Generation =====
-
 
 fn generate_modules_uspace(root: &str) -> Result<(), std::io::Error> {
     let modules = collect_kernel_modules(root)?;
@@ -501,7 +522,10 @@ fn generate_modules_uspace(root: &str) -> Result<(), std::io::Error> {
         writeln!(file)?;
     }
 
-    println!("cargo::warning=Generated userspace kernel modules file with {} functions", global_index);
+    println!(
+        "cargo::warning=Generated userspace kernel modules file with {} functions",
+        global_index
+    );
 
     Ok(())
 }
@@ -583,7 +607,8 @@ fn generate_userspace_function(
     writeln!(file)?;
 
     // Generate the function signature
-    let inputs_str = func.inputs
+    let inputs_str = func
+        .inputs
         .iter()
         .map(|arg| arg.to_token_stream().to_string())
         .collect::<Vec<_>>()
@@ -595,10 +620,13 @@ fn generate_userspace_function(
     };
 
     // Extract the Ok type directly from the AST for clear compile-time checks
-    let ok_type_str = extract_result_ok_type(&func.output)
-        .unwrap_or_else(|| "()".to_string());
+    let ok_type_str = extract_result_ok_type(&func.output).unwrap_or_else(|| "()".to_string());
 
-    writeln!(file, "    pub fn {}({}) -> {} {{", fn_name, inputs_str, return_type_str)?;
+    writeln!(
+        file,
+        "    pub fn {}({}) -> {} {{",
+        fn_name, inputs_str, return_type_str
+    )?;
 
     // Compile-time size checks for value-type arguments
     for arg in &func.inputs {
@@ -606,11 +634,23 @@ fn generate_userspace_function(
             if let Type::Path(_) = &*pat_type.ty {
                 let ty_str = pat_type.ty.to_token_stream().to_string();
                 writeln!(file, "        const _: () = {{")?;
-                writeln!(file, "            if core::mem::size_of::<{}>() > core::mem::size_of::<usize>() {{", ty_str)?;
-                writeln!(file, "                panic!(\"kernelmod_call: argument type is bigger than usize. arguments must fit in a register.\");")?;
+                writeln!(
+                    file,
+                    "            if core::mem::size_of::<{}>() > core::mem::size_of::<usize>() {{",
+                    ty_str
+                )?;
+                writeln!(
+                    file,
+                    "                panic!(\"kernelmod_call: argument type is bigger than usize. arguments must fit in a register.\");"
+                )?;
                 writeln!(file, "            }}")?;
                 writeln!(file, "        }};")?;
-                writeln!(file, "        fn __assert_copy_{}() {{ fn check<T: Copy>() {{}} check::<{}>(); }}", pat_type.pat.to_token_stream(), ty_str)?;
+                writeln!(
+                    file,
+                    "        fn __assert_copy_{}() {{ fn check<T: Copy>() {{}} check::<{}>(); }}",
+                    pat_type.pat.to_token_stream(),
+                    ty_str
+                )?;
             }
         }
     }
@@ -618,11 +658,22 @@ fn generate_userspace_function(
 
     // Compile-time checks on the Ok type using the extracted type directly
     writeln!(file, "        const _: () = {{")?;
-    writeln!(file, "            if core::mem::size_of::<{}>() > core::mem::size_of::<usize>() {{", ok_type_str)?;
-    writeln!(file, "                panic!(\"kernelmod_call: Ok return type is bigger than usize. must fit in a register.\");")?;
+    writeln!(
+        file,
+        "            if core::mem::size_of::<{}>() > core::mem::size_of::<usize>() {{",
+        ok_type_str
+    )?;
+    writeln!(
+        file,
+        "                panic!(\"kernelmod_call: Ok return type is bigger than usize. must fit in a register.\");"
+    )?;
     writeln!(file, "            }}")?;
     writeln!(file, "        }};")?;
-    writeln!(file, "        const _: fn() = || {{ fn assert_copy<T: Copy>() {{}} assert_copy::<{}>(); }};", ok_type_str)?;
+    writeln!(
+        file,
+        "        const _: fn() = || {{ fn assert_copy<T: Copy>() {{}} assert_copy::<{}>(); }};",
+        ok_type_str
+    )?;
     writeln!(file)?;
 
     // Layout call arguments
@@ -635,25 +686,46 @@ fn generate_userspace_function(
 
     //Execute syscall with running index
     writeln!(file, "        let result: isize = unsafe {{")?;
-    writeln!(file, "            hal::asm::syscall!(255, {}, &args as *const _ as *const u8)", index)?;
+    writeln!(
+        file,
+        "            hal::asm::syscall!(255, {}, &args as *const _ as *const u8)",
+        index
+    )?;
     writeln!(file, "        }};")?;
     writeln!(file)?;
 
     // Parse syscall return to Result type
     writeln!(file, "        if result < 0 && result > -134 {{")?;
-    writeln!(file, "            let err: PosixError = PosixError::try_from(result)")?;
+    writeln!(
+        file,
+        "            let err: PosixError = PosixError::try_from(result)"
+    )?;
     writeln!(file, "                .unwrap_or(PosixError::ENOSYS);")?;
     writeln!(file, "            Err(err)")?;
     writeln!(file, "        }} else {{")?;
 
     // Reconstruct the Ok value from the isize result using the extracted type directly
-    writeln!(file, "            // SAFETY: the compile-time assert above guarantees the Ok type fits in isize.")?;
+    writeln!(
+        file,
+        "            // SAFETY: the compile-time assert above guarantees the Ok type fits in isize."
+    )?;
     writeln!(file, "            let val = unsafe {{")?;
-    writeln!(file, "                let mut out = core::mem::MaybeUninit::<{}>::zeroed();", ok_type_str)?;
+    writeln!(
+        file,
+        "                let mut out = core::mem::MaybeUninit::<{}>::zeroed();",
+        ok_type_str
+    )?;
     writeln!(file, "                core::ptr::copy_nonoverlapping(")?;
-    writeln!(file, "                    &result as *const _ as *const u8,")?;
+    writeln!(
+        file,
+        "                    &result as *const _ as *const u8,"
+    )?;
     writeln!(file, "                    out.as_mut_ptr() as *mut u8,")?;
-    writeln!(file, "                    core::mem::size_of::<{}>(),", ok_type_str)?;
+    writeln!(
+        file,
+        "                    core::mem::size_of::<{}>(),",
+        ok_type_str
+    )?;
     writeln!(file, "                );")?;
     writeln!(file, "                out.assume_init()")?;
     writeln!(file, "            }};")?;
@@ -688,7 +760,10 @@ fn generate_args_struct_field(
         }
         Type::Reference(type_ref) => {
             if type_ref.mutability.is_some() {
-                panic!("Mutable references not supported in kernelmod_call: {}", name);
+                panic!(
+                    "Mutable references not supported in kernelmod_call: {}",
+                    name
+                );
             }
 
             match &*type_ref.elem {
@@ -723,7 +798,11 @@ fn generate_args_struct_field(
             }
         }
         _ => {
-            panic!("Unsupported type in kernelmod_call argument '{}': {}", name, ty.to_token_stream());
+            panic!(
+                "Unsupported type in kernelmod_call argument '{}': {}",
+                name,
+                ty.to_token_stream()
+            );
         }
     }
 

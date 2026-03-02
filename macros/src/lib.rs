@@ -1,7 +1,10 @@
-use quote::{quote, quote_spanned};
 use quote::{ToTokens, format_ident};
-use syn::{parse_macro_input, Error, FnArg, GenericArgument, Pat, PatType, PathArguments, ReturnType, Type, TypeReference, TypeSlice};
+use quote::{quote, quote_spanned};
 use syn::ItemFn;
+use syn::{
+    Error, FnArg, GenericArgument, Pat, PatType, PathArguments, ReturnType, Type, TypeReference,
+    TypeSlice, parse_macro_input,
+};
 
 use proc_macro2::TokenStream;
 use syn::spanned::Spanned;
@@ -218,9 +221,11 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     }
 }
 
-
 #[proc_macro_attribute]
-pub fn kernelmod_call(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn kernelmod_call(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     let input = parse_macro_input!(item as ItemFn);
 
     match generate_wrapper(input) {
@@ -260,7 +265,7 @@ fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type,
             return Err(Error::new_spanned(
                 return_type,
                 "kernelmod_call: function must have an explicit return type.\n\
-                 Expected `Result<T, PosixError>` where T: Copy + size_of::<T>() <= size_of::<usize>()"
+                 Expected `Result<T, PosixError>` where T: Copy + size_of::<T>() <= size_of::<usize>()",
             ));
         }
         ReturnType::Type(_, ty) => ty,
@@ -273,13 +278,16 @@ fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type,
             return Err(Error::new_spanned(
                 ret_ty,
                 "kernelmod_call: return type must be `Result<T, PosixError>`.\n\
-                 Got a non-path type (e.g. reference, tuple, etc.)."
+                 Got a non-path type (e.g. reference, tuple, etc.).",
             ));
         }
     };
 
     let last_segment = type_path.path.segments.last().ok_or_else(|| {
-        Error::new_spanned(&type_path.path, "kernelmod_call: empty type path in return position")
+        Error::new_spanned(
+            &type_path.path,
+            "kernelmod_call: empty type path in return position",
+        )
     })?;
 
     if last_segment.ident != "Result" {
@@ -289,7 +297,7 @@ fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type,
                 "kernelmod_call: return type must be `Result<T, PosixError>`, but found `{}`.\n\
                  Hint: the outermost type must be `Result`.",
                 last_segment.ident
-            )
+            ),
         ));
     }
 
@@ -300,14 +308,14 @@ fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type,
             return Err(Error::new_spanned(
                 last_segment,
                 "kernelmod_call: `Result` must have type parameters.\n\
-                 Expected `Result<T, PosixError>`."
+                 Expected `Result<T, PosixError>`.",
             ));
         }
         PathArguments::Parenthesized(_) => {
             return Err(Error::new_spanned(
                 last_segment,
                 "kernelmod_call: `Result` must use angle-bracket generics.\n\
-                 Expected `Result<T, PosixError>`, not `Result(...)`."
+                 Expected `Result<T, PosixError>`, not `Result(...)`.",
             ));
         }
     };
@@ -327,7 +335,7 @@ fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type,
                 "kernelmod_call: `Result` must have exactly 2 type parameters, found {}.\n\
                  Expected `Result<T, PosixError>`.",
                 type_args.len()
-            )
+            ),
         ));
     }
 
@@ -349,7 +357,7 @@ fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type,
                     "kernelmod_call: error type must be `PosixError`, but found `{}`.\n\
                      Expected `Result<T, PosixError>`.",
                     err_ty.to_token_stream()
-                )
+                ),
             ));
         }
     }
@@ -364,7 +372,7 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
     if fn_name_str.chars().any(|c| c.is_uppercase()) {
         return Err(Error::new_spanned(
             fn_name,
-            "kernelmod_call: function names must be snake_case (no uppercase letters allowed)"
+            "kernelmod_call: function names must be snake_case (no uppercase letters allowed)",
         ));
     }
 
@@ -384,12 +392,20 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
             FnArg::Typed(PatType { pat, ty, .. }) => {
                 let name = match &**pat {
                     Pat::Ident(ident) => &ident.ident,
-                    _ => return Err(Error::new_spanned(pat, "Expected simple identifier pattern")),
+                    _ => {
+                        return Err(Error::new_spanned(
+                            pat,
+                            "Expected simple identifier pattern",
+                        ));
+                    }
                 };
                 (name, ty)
             }
             FnArg::Receiver(_) => {
-                return Err(Error::new_spanned(arg, "Methods with 'self' are not supported"));
+                return Err(Error::new_spanned(
+                    arg,
+                    "Methods with 'self' are not supported",
+                ));
             }
         };
 
@@ -456,7 +472,11 @@ fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
 
 enum ArgFieldInfo {
     Direct(proc_macro2::TokenStream, proc_macro2::TokenStream),
-    Slice(proc_macro2::TokenStream, proc_macro2::TokenStream, proc_macro2::TokenStream),
+    Slice(
+        proc_macro2::TokenStream,
+        proc_macro2::TokenStream,
+        proc_macro2::TokenStream,
+    ),
 }
 
 /// Generates the args-struct field(s) and reconstruction code for a single argument.
@@ -467,10 +487,7 @@ enum ArgFieldInfo {
 ///       - `Type::Slice` → fat pointer decomposed into (ptr, len) fields
 ///       - `is_ident("str")` → same layout as &[u8], language primitive check
 ///       - other `Type::Path` → thin pointer, single field
-fn validate_and_generate_field(
-    name: &syn::Ident,
-    ty: &Type,
-) -> Result<ArgFieldInfo, Error> {
+fn validate_and_generate_field(name: &syn::Ident, ty: &Type) -> Result<ArgFieldInfo, Error> {
     match ty {
         Type::Path(_) => {
             let field = quote! { #name: #ty };
@@ -490,17 +507,21 @@ fn validate_and_generate_field(
 
             Ok(ArgFieldInfo::Direct(field, reconstruction))
         }
-        Type::Reference(TypeReference { elem, mutability, .. }) => {
+        Type::Reference(TypeReference {
+            elem, mutability, ..
+        }) => {
             if mutability.is_some() {
                 return Err(Error::new_spanned(
                     ty,
-                    "Mutable references are not supported. Only immutable references are allowed."
+                    "Mutable references are not supported. Only immutable references are allowed.",
                 ));
             }
 
             match &**elem {
                 // &[T] — structurally a slice, decomposed into (ptr, len)
-                Type::Slice(TypeSlice { elem: slice_elem, .. }) => {
+                Type::Slice(TypeSlice {
+                    elem: slice_elem, ..
+                }) => {
                     let ptr_name = syn::Ident::new(&format!("{}_ptr", name), name.span());
                     let len_name = syn::Ident::new(&format!("{}_len", name), name.span());
 
@@ -539,8 +560,8 @@ fn validate_and_generate_field(
                 }
                 _ => Err(Error::new_spanned(
                     ty,
-                    "Unsupported reference type. Only references to structs, slices (&[T]), and &str are supported."
-                ))
+                    "Unsupported reference type. Only references to structs, slices (&[T]), and &str are supported.",
+                )),
             }
         }
         _ => Err(Error::new_spanned(
@@ -550,8 +571,8 @@ fn validate_and_generate_field(
              - Structs implementing Copy (at most usize)\n\
              - References to structs (&T)\n\
              - Slices (&[T])\n\
-             - String slices (&str)"
-        ))
+             - String slices (&str)",
+        )),
     }
 }
 
@@ -579,16 +600,22 @@ fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::Tok
                 }
             })
         }
-        _ => Err(Error::new_spanned(return_type, "Invalid return type"))
+        _ => Err(Error::new_spanned(return_type, "Invalid return type")),
     }
 }
 
 #[proc_macro_attribute]
-pub fn kernelmod_init(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn kernelmod_init(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     item
 }
 
 #[proc_macro_attribute]
-pub fn kernelmod_exit(_attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn kernelmod_exit(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     item
 }
