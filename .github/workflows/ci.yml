@@ -39,7 +39,7 @@ jobs:
         id: set_output
         run: |
           REPO=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
-          CONTAINER_NAME="ghcr.io/${REPO}/devcontainer:main"
+          CONTAINER_NAME="ghcr.io/${REPO}/devcontainer:latest"
           echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
           echo "container_without_tag=ghcr.io/${REPO}/devcontainer" >> $GITHUB_OUTPUT
 

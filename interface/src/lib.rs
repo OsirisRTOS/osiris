@@ -17,6 +17,28 @@ pub struct MemMapEntry {
     pub ty: u32,
 }
 
+#[cfg(kani)]
+impl kani::Arbitrary for MemMapEntry {
+    fn any() -> Self {
+        let size: u32 = kani::any_where(|&x| x % size_of::<MemMapEntry>() as u32 == 0);
+        let length = kani::any();
+        let addr = kani::any();
+
+        kani::assume(addr > 0);
+
+        MemMapEntry {
+            size,
+            addr,
+            length,
+            ty: kani::any(),
+        }
+    }
+
+    fn any_array<const MAX_ARRAY_LENGTH: usize>() -> [Self; MAX_ARRAY_LENGTH] {
+        [(); MAX_ARRAY_LENGTH].map(|_| Self::any())
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct InitDescriptor {
