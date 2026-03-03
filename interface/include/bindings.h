@@ -39,6 +39,10 @@ typedef struct InitDescriptor {
    */
   uint64_t len;
   uint64_t entry_offset;
+  /**
+   * Byte offset from `begin` to the start of the user's writable data segment (r9 static base).
+   */
+  uint64_t static_base_offset;
 } InitDescriptor;
 
 typedef struct Args {

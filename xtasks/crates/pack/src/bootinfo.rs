@@ -21,6 +21,7 @@ impl BootInfo {
                     begin: (img_paddr + section.offset()) as u64,
                     len: section.size() as u64,
                     entry_offset: section.entry_offset() as u64,
+                    static_base_offset: section.static_base_offset() as u64,
                 },
             },
         };
@@ -63,5 +64,6 @@ mod tests {
         assert_eq!(reconstructed.args.init.begin, 0x4000 + 0x4000);
         assert_eq!(reconstructed.args.init.len, 0x2000);
         assert_eq!(reconstructed.args.init.entry_offset, 0x100);
+        assert_eq!(reconstructed.args.init.static_base_offset, 0);
     }
 }

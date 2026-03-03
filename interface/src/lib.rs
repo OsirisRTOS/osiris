@@ -47,6 +47,8 @@ pub struct InitDescriptor {
     /// Length of the binary of the init program.
     pub len: u64,
     pub entry_offset: u64,
+    /// Byte offset from `begin` to the start of the user's writable data segment (r9 static base).
+    pub static_base_offset: u64,
 }
 
 #[repr(C)]

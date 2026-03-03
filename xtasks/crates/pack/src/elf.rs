@@ -14,6 +14,7 @@ pub struct ElfInfo {
     entry_offset: usize,
     align: usize,
     size: usize,
+    static_base_offset: usize,
 }
 
 #[allow(dead_code)]
@@ -44,6 +45,8 @@ impl ElfInfo {
             )
         })?;
 
+        let static_base_offset = Self::calc_static_base_offset(&file).unwrap_or(0);
+
         Ok(Self {
             inner: data,
             path: path.to_path_buf(),
@@ -51,6 +54,7 @@ impl ElfInfo {
             entry_offset: entry_point - pstart,
             align,
             size,
+            static_base_offset,
         })
     }
 
@@ -140,6 +144,16 @@ impl ElfInfo {
         }
 
         base
+    }
+
+    fn calc_static_base_offset(bytes: &elf::ElfBytes<AnyEndian>) -> Option<usize> {
+        let base = Self::calc_base_paddr(bytes)?;
+        for seg in bytes.segments()?.iter() {
+            if seg.p_type == elf::abi::PT_LOAD && seg.p_flags & elf::abi::PF_W != 0 {
+                return Some(seg.p_paddr as usize - base);
+            }
+        }
+        None
     }
 
     pub fn add_to_image(&self, img: &mut Vec<u8>, base: usize) -> Result<()> {
@@ -336,6 +350,10 @@ impl ElfInfo {
     pub fn entry_offset(&self) -> usize {
         self.entry_offset
     }
+
+    pub fn static_base_offset(&self) -> usize {
+        self.static_base_offset
+    }
 }
 
 impl Display for ElfInfo {
@@ -346,6 +364,7 @@ impl Display for ElfInfo {
         writeln!(f, "  Entry Offset: {:#x}", self.entry_offset)?;
         writeln!(f, "  Align: {:#x}", self.align)?;
         writeln!(f, "  Size: {:#x}", self.size)?;
+        writeln!(f, "  Static Base Offset: {:#x}", self.static_base_offset)?;
         Ok(())
     }
 }

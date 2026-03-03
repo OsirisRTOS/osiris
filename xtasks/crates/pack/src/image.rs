@@ -20,6 +20,8 @@ pub struct Section {
     crc: u32,
     /// Whether the section is relocatable
     relocatable: bool,
+    /// Byte offset from the section start to the writable data segment (r9 static base for RWPI)
+    static_base_offset: usize,
 }
 
 impl Section {
@@ -36,6 +38,7 @@ impl Section {
                     align: elf.align(),
                     crc,
                     relocatable: false,
+                    static_base_offset: elf.static_base_offset(),
                 };
 
                 Ok(section)
@@ -56,6 +59,7 @@ impl Section {
                     align: elf.align(),
                     crc,
                     relocatable: true,
+                    static_base_offset: elf.static_base_offset(),
                 };
 
                 Ok(section)
@@ -75,6 +79,10 @@ impl Section {
         self.entry_offset
     }
 
+    pub fn static_base_offset(&self) -> usize {
+        self.static_base_offset
+    }
+
     #[cfg(test)]
     pub fn from_parts(
         offset: usize,
@@ -91,6 +99,7 @@ impl Section {
             align,
             crc,
             relocatable,
+            static_base_offset: 0,
         }
     }
 }
