@@ -1,6 +1,6 @@
-use std::{marker::PhantomData};
+use core::{marker::PhantomData};
 
-use crate::mem::traits::{Get, GetMut};
+use super::traits::{Get, GetMut};
 
 #[allow(dead_code)]
 pub struct RbTree<Tag, T: Copy> {
@@ -652,7 +652,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mem::traits::{Get, GetMut};
+    use super::{Get, GetMut};
     use std::borrow::Borrow;
     use std::collections::HashSet;
 

@@ -1,9 +1,8 @@
-use core::{ffi::c_void, num::NonZero, ptr::NonNull};
-
-use crate::Result;
+use core::{ffi::c_void, num::NonZero};
+use crate::{Result, mem::PhysAddr};
 
 pub struct StackDescriptor {
-    pub top: NonNull<u32>,
+    pub top: PhysAddr,
     pub size: NonZero<usize>,
     pub entry: extern "C" fn(),
     pub fin: Option<extern "C" fn() -> !>,

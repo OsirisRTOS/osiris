@@ -6,7 +6,7 @@ use hal::Stack;
 use hal::stack::Stacklike;
 use macros::TaggedLinks;
 
-use crate::{mem::{rbtree::{self, Compare}, traits::{Project, ToIndex}}, sched::task::TaskId, utils::KernelError};
+use crate::{types::{rbtree::{self, Compare}, traits::{Project, ToIndex}}, sched::task::TaskId, utils::KernelError};
 
 /// Id of a task. This is only unique within a Task.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]

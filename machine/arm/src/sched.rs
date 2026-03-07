@@ -202,6 +202,9 @@ impl hal_api::stack::Stacklike for ArmStack {
             fin,
         } = desc;
 
+        // We expect a PhysAddr, which can be converted to a ptr on nommu.
+        let top = NonNull::new(top as *mut u32).ok_or(hal_api::Error::InvalidAddress)?;
+
         let mut stack = Self {
             top,
             sp: StackPtr { offset: 0 },

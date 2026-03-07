@@ -1,7 +1,7 @@
 use core::borrow::Borrow;
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
-use crate::mem::traits::{Get, GetMut, Project, ToIndex};
+use super::traits::{Get, GetMut, Project, ToIndex};
 
 pub struct ViewMut<'a, K: ?Sized + ToIndex, P, S: GetMut<K>>
 where

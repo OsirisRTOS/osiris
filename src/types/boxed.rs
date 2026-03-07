@@ -1,6 +1,6 @@
 //! This module provides a simple heap-allocated memory block for in-kernel use.
 
-use super::{free, malloc};
+use crate::mem;
 use crate::utils::KernelError;
 use core::{
     mem::{MaybeUninit, forget},
@@ -28,7 +28,7 @@ impl<T> Box<[T]> {
             return Ok(Self::new_slice_empty());
         }
 
-        if let Some(ptr) = malloc(size_of::<T>() * len, align_of::<T>()) {
+        if let Some(ptr) = mem::malloc(size_of::<T>() * len, align_of::<T>()) {
             let ptr = slice_from_raw_parts_mut(ptr.as_ptr().cast(), len);
             Ok(Self {
                 ptr: unsafe { NonNull::new_unchecked(ptr) },
@@ -54,7 +54,7 @@ impl<T> Box<[T]> {
     ///
     /// Returns a new heap-allocated slice with the given length or an error if the allocation failed.
     pub fn new_slice_uninit(len: usize) -> Result<Box<[MaybeUninit<T>]>, KernelError> {
-        if let Some(ptr) = malloc(
+        if let Some(ptr) = mem::malloc(
             size_of::<MaybeUninit<T>>() * len,
             align_of::<MaybeUninit<T>>(),
         ) {
@@ -76,7 +76,7 @@ impl<T> Box<T> {
     ///
     /// Returns a new heap-allocated value or `None` if the allocation failed.
     pub fn new(value: T) -> Option<Self> {
-        if let Some(ptr) = malloc(size_of::<T>(), align_of::<T>()) {
+        if let Some(ptr) = mem::malloc(size_of::<T>(), align_of::<T>()) {
             unsafe {
                 write(ptr.as_ptr().cast(), value);
             }
@@ -139,7 +139,7 @@ impl<T: ?Sized> Drop for Box<T> {
             }
 
             drop_in_place(self.ptr.as_ptr());
-            free(self.ptr.cast(), size);
+            mem::free(self.ptr.cast(), size);
         }
     }
 }
@@ -238,40 +238,4 @@ impl<T> AsMut<T> for Box<T> {
     fn as_mut(&mut self) -> &mut T {
         self.as_mut()
     }
-}
-
-#[cfg(kani)]
-mod verification {
-    use crate::mem::alloc;
-
-    use super::*;
-
-    /*
-    fn alloc_range(length: usize) -> Option<Range<usize>> {
-        let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
-        let ptr = unsafe { std::alloc::alloc(alloc_range) };
-
-        if ptr.is_null() || ((ptr as usize) >= isize::MAX as usize - length) {
-            None
-        } else {
-            Some(ptr as usize..ptr as usize + length)
-        }
-    }
-
-    #[kani::proof]
-    fn proof_new_slice_zero() {
-        let mut allocator = alloc::BestFitAllocator::new();
-        allocator
-
-        let len = kani::any();
-        kani::assume(len < alloc::MAX_ADDR);
-
-        let b = Box::<u8>::new_slice_zeroed(len);
-
-        let index = kani::any();
-        kani::assume(index < len);
-
-        assert!(b[index] == 0);
-    }
-    */
 }

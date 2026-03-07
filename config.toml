@@ -1,0 +1,10 @@
+[env]
+OSIRIS_ARM_HAL = "stm32l4xx"
+OSIRIS_ARM_STM32L4XX_VARIANT = "r5zi"
+OSIRIS_DEBUG_UART = "UART5"
+OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
+OSIRIS_TUNING_ENABLEFPU = "false"
+OSIRIS_STACKPAGES = "1"
+
+[build]
+target = "thumbv7em-none-eabi"

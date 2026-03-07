@@ -1090,6 +1090,7 @@ name = "osiris"
 version = "0.1.0"
 dependencies = [
  "bindgen 0.69.5",
+ "bitflags",
  "cbindgen",
  "cfg_aliases",
  "dtgen",

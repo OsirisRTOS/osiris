@@ -6,14 +6,8 @@ use alloc::Allocator;
 use core::ptr::NonNull;
 
 pub mod alloc;
-pub mod array;
-pub mod boxed;
-pub mod heap;
-pub mod pool;
-pub mod queue;
-pub mod rbtree;
-pub mod traits;
-pub mod view;
+pub mod vmm;
+pub mod pfa;
 
 /// The possible types of memory. Which is compatible with the multiboot2 memory map.
 /// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
@@ -41,7 +35,9 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
 /// `regions` - The memory node module of device tree codegen file.
 ///
 /// Returns an error if the memory allocator could not be initialized.
-pub fn init_memory(regions: &[(&str, usize, usize)]) -> Result<(), utils::KernelError> {
+pub fn init_memory(boot_info: &BootInfo) -> Result<(), utils::KernelError> {
+    pfa::init_pfa(0x20000000)?; // TODO: Get this from the DeviceTree.
+
     let mut allocator = GLOBAL_ALLOCATOR.lock();
 
     for &(_, base, size) in regions {

@@ -1,4 +1,4 @@
-use crate::{mem::{rbtree::RbTree, traits::{Get, GetMut}, view::ViewMut}, sched::{ThreadMap, thread::{self}}};
+use crate::{types::{rbtree::RbTree, traits::{Get, GetMut}, view::ViewMut}, sched::{ThreadMap, thread::{self}}};
 
 pub struct Scheduler<const N: usize> {
     edf: RbTree<thread::RtTree, thread::UId>,

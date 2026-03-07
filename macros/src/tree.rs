@@ -42,13 +42,13 @@ fn impl_rbtree(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Fi
             let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
             let impl_block = quote! {
-                impl #impl_generics crate::mem::rbtree::Linkable<#tag_path, #idx_path> for #struct_ident #ty_generics #where_clause {
+                impl #impl_generics crate::types::rbtree::Linkable<#tag_path, #idx_path> for #struct_ident #ty_generics #where_clause {
                     #[inline]
-                    fn links(&self) -> &crate::mem::rbtree::Links<#tag_path, #idx_path> {
+                    fn links(&self) -> &crate::types::rbtree::Links<#tag_path, #idx_path> {
                         &self.#field_ident
                     }
                     #[inline]
-                    fn links_mut(&mut self) -> &mut crate::mem::rbtree::Links<#tag_path, #idx_path> {
+                    fn links_mut(&mut self) -> &mut crate::types::rbtree::Links<#tag_path, #idx_path> {
                         &mut self.#field_ident
                     }
                 }
