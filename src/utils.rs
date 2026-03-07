@@ -58,6 +58,7 @@ pub enum KernelError {
     InvalidAddress,
     InvalidArgument,
     HalError(hal::Error),
+    CustomError(&'static str),
 }
 
 /// Debug msg implementation for KernelError.
@@ -70,6 +71,7 @@ impl Debug for KernelError {
             KernelError::InvalidAddress => write!(f, "Invalid address"),
             KernelError::InvalidArgument => write!(f, "Invalid argument"),
             KernelError::HalError(e) => write!(f, "{e} (in HAL)"),
+            KernelError::CustomError(msg) => write!(f, "{}", msg),
         }
     }
 }

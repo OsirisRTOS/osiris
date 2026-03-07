@@ -22,10 +22,12 @@ hal = { package = "hal-select", path = "machine/select" }
 macros = { path = "macros" }
 interface = { path = "interface" }
 envparse = "0.1.0"
+bitflags = "2.10.0"
 
 [dev-dependencies]
 # This is a host-compatible HAL which will be used for running tests and verification on the host.
 hal-testing = { path = "machine/testing", features = [] }
+rand = "0.8.5"
 
 [target.'cfg(kani_ra)'.dependencies]
 kani = { git = "https://github.com/model-checking/kani" }

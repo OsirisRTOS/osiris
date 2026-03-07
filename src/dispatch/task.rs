@@ -2,74 +2,43 @@
 use core::num::NonZero;
 use core::ops::Range;
 use core::ptr::NonNull;
+use std::borrow::Borrow;
 
-use hal::Stack;
+use hal::{Stack, stack};
 
 use hal::stack::Stacklike;
 
-use crate::mem;
+use crate::{mem, sched};
 
 use crate::mem::alloc::{Allocator, BestFitAllocator};
-use crate::sched::thread::{ThreadDescriptor, ThreadId, Timing};
+use crate::mem::vmm::{AddressSpace, AddressSpacelike, Region};
+use crate::types::traits::ToIndex;
 use crate::utils::KernelError;
 
 /// Id of a task. This is unique across all tasks.
-#[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub enum TaskId {
-    // Task with normal user privileges in user mode.
-    User(usize),
-    // Task with kernel privileges in user mode.
-    Kernel(usize),
+pub struct UId {
+    uid: usize,
 }
 
-#[allow(dead_code)]
-impl TaskId {
-    /// Check if the task is a user task.
-    pub fn is_user(&self) -> bool {
-        matches!(self, TaskId::User(_))
-    }
-
-    /// Check if the task is a kernel task.
-    pub fn is_kernel(&self) -> bool {
-        matches!(self, TaskId::Kernel(_))
-    }
-
-    pub fn new_user(id: usize) -> Self {
-        TaskId::User(id)
-    }
-
-    pub fn new_kernel(id: usize) -> Self {
-        TaskId::Kernel(id)
+impl ToIndex for UId {
+    fn to_index<Q: Borrow<Self>>(idx: Option<Q>) -> usize {
+        idx.as_ref().map_or(0, |uid| uid.borrow().uid)
     }
 }
 
-impl From<TaskId> for usize {
-    fn from(val: TaskId) -> Self {
-        match val {
-            TaskId::User(id) => id,
-            TaskId::Kernel(id) => id,
-        }
-    }
-}
-
-
-
-/// Descibes a task.
-pub struct TaskDescriptor {
-    /// The size of the memory that the task requires.
-    pub mem_size: usize,
+pub struct Attributes {
+    reserved: Option<NonZero<usize>>,
 }
 
 /// The struct representing a task.
-#[derive(Debug)]
 pub struct Task {
     /// The unique identifier of the task.
-    pub id: TaskId,
-    /// The memory of the task.
-    memory: TaskMemory,
+    pub id: UId,
     /// The counter for the thread ids.
     tid_cntr: usize,
+    /// Sets up the memory for the task.
+    address_space: mem::vmm::AddressSpace,
 }
 
 impl Task {
@@ -78,45 +47,51 @@ impl Task {
     /// `memory_size` - The size of the memory that the task requires.
     ///
     /// Returns a new task if the task was created successfully, or an error if the task could not be created.
-    pub fn new(memory_size: usize, id: TaskId) -> Result<Self, KernelError> {
-        let memory = TaskMemory::new(memory_size)?;
-
+    pub fn new(id: UId, attrs: &Attributes) -> Result<Self, KernelError> {
         Ok(Self {
             id,
-            memory,
+            address_space: AddressSpace::new(),
             tid_cntr: 0,
         })
     }
 
-    fn allocate_tid(&mut self) -> ThreadId {
+    fn allocate_tid(&mut self) -> sched::thread::Id {
         let tid = self.tid_cntr;
         self.tid_cntr += 1;
 
-        ThreadId::new(tid, self.id)
+        sched::thread::Id::new(tid, self.id)
+    }
+
+    pub fn allocate(&mut self, size: usize, align: usize) -> Result<mem::vmm::Region, KernelError> {
+        self.address_space.map(size, align)
     }
 
     pub fn create_thread(
         &mut self,
         entry: extern "C" fn(),
         fin: Option<extern "C" fn() -> !>,
-        timing: Timing,
     ) -> Result<ThreadDescriptor, KernelError> {
-        // Safe unwrap because stack size is non zero.
-        // TODO: Make this configurable
-        let stack_size = NonZero::new(4096usize).unwrap();
-        // TODO: Revert if error occurs
-        let stack_mem = self.memory.malloc(stack_size.into(), align_of::<u128>())?;
-        let stack_top = unsafe { stack_mem.byte_add(stack_size.get()) };
+
+        // Create the stack for the thread.
+        let size = 1 * mem::pfa::PAGE_SIZE; // TODO: Make this configurable
+        let start = self.address_space.end() - size;
+        let region = mem::vmm::Region::new(
+            start,
+            size,
+            mem::vmm::Backing::Uninit,
+            mem::vmm::Perms::Read | mem::vmm::Perms::Write,
+        );
+        let stack_pa = self.address_space.map(region)?;
 
         let stack = hal::stack::StackDescriptor {
-            top: stack_top,
-            size: stack_size,
+            top: stack_pa,
+            // Safe unwrap because stack size is non zero.
+            size: NonZero::new(size).unwrap(),
             entry,
             fin,
         };
 
         let stack = unsafe { Stack::new(stack) }?;
-
         let tid = self.allocate_tid();
 
         // TODO: Revert if error occurs
@@ -185,5 +160,3 @@ impl Drop for TaskMemory {
         unsafe { mem::free(self.begin, self.size) };
     }
 }
-
-    

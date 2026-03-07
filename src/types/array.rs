@@ -1,12 +1,14 @@
 //! This module implements static and dynamic arrays for in-kernel use.
 
-use super::boxed::Box;
-use crate::{
-    mem::traits::{Get, GetMut, ToIndex},
-    utils::KernelError,
+use super::{
+    traits::{Get, GetMut, ToIndex},
+    boxed::Box,
 };
+
+use crate::utils::KernelError;
+
 use core::{borrow::Borrow, mem::MaybeUninit};
-use std::{
+use core::{
     ops::{Index, IndexMut},
 };
 
@@ -171,12 +173,17 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
             return (None, None);
         }
 
-        let ptr1 = &mut self.data[index1] as *mut Option<V>;
-        let ptr2 = &mut self.data[index2] as *mut Option<V>;
+        let (left, right) = self.data.split_at_mut(index1.max(index2));
 
-        // Safety: the elements at index1 and index2 are nowhere else borrowed mutably by function contract.
-        // And they are disjoint because of the check above.
-        unsafe { ((*ptr1).as_mut(), (*ptr2).as_mut()) }
+        if index1 < index2 {
+            let elem1 = left[index1].as_mut();
+            let elem2 = right[0].as_mut();
+            (elem1, elem2)
+        } else {
+            let elem1 = right[0].as_mut();
+            let elem2 = left[index2].as_mut();
+            (elem1, elem2)
+        }
     }
 
     fn get3_mut<Q: Borrow<K>>(

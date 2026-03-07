@@ -1,13 +1,11 @@
 //! This module provides access to the scheduler.
 
 pub mod rt;
-//pub mod scheduler;
-pub mod task;
-pub mod thread;
+//pub mod thread;
 
 use hal::Schedable;
 
-use crate::mem::{array::IndexMap, rbtree::RbTree, view::ViewMut};
+use crate::types::{array::IndexMap, rbtree::RbTree, view::ViewMut};
 
 type ThreadMap<const N: usize> = IndexMap<thread::UId, thread::Thread, N>;
 

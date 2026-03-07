@@ -2,7 +2,7 @@
 
 use core::{fmt::Display, ops::Range};
 
-pub mod stack;
+pub mod mem;
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub enum Error {
