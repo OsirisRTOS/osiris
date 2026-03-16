@@ -1,0 +1,16 @@
+[package]
+name = "dtgen"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "dtgen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dtgen"
+path = "src/main.rs"
+
+[dependencies]
+fdt = "0.1.5"
+clap = { version = "4", features = ["derive"] }
