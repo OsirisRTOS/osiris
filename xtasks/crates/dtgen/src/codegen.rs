@@ -401,7 +401,7 @@ fn opt_u32(v: Option<u32>) -> String {
 
 fn opt_usize(v: Option<usize>) -> String {
     match v {
-        Some(n) => format!("Some({n:#010x})"),
+        Some(n) => format!("Some({n})"),
         None => "None".to_string(),
     }
 }
