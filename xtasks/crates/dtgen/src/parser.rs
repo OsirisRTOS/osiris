@@ -34,16 +34,16 @@ pub fn dts_to_dtb(
     }
 
     // stage 2 - dts compilation
-    let dtc_status = std::process::Command::new("dtc")
-        .args([
-            "-I",
-            "dts",
-            "-O",
-            "dtb",
-            "-o",
-            dtb_path.to_str().unwrap(),
-            preprocessed_path.to_str().unwrap(),
-        ])
+    let mut dtc_cmd = std::process::Command::new("dtc");
+    dtc_cmd
+        .arg("-I")
+        .arg("dts")
+        .arg("-O")
+        .arg("dtb")
+        .arg("-o")
+        .arg(&dtb_path)
+        .arg(&preprocessed_path);
+    let dtc_status = dtc_cmd
         .status()
         .map_err(|e| {
             format!("dtc not found: {e}. Install with: apt install device-tree-compiler")
