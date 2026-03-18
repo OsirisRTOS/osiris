@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-// ================================================================================================
+// ------------------------------------------------------------------------------------------------
 // DTS object attribute types
-// ================================================================================================
+// ------------------------------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum PropValue {
@@ -73,15 +73,15 @@ impl Node {
     }
 }
 
-// ================================================================================================
+// ------------------------------------------------------------------------------------------------
 // Raw devicetree as output from parsing in-memory DTB
-// ================================================================================================
+// ------------------------------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub struct DeviceTree {
     pub nodes: Vec<Node>,
     pub by_phandle: HashMap<u32, usize>,
-    pub by_name: HashMap<String, usize>,
+    pub by_name: HashMap<String, Vec<usize>>,
     pub root: usize,
 }
 
@@ -129,17 +129,5 @@ impl DeviceTree {
             .first()
             .cloned()
             .unwrap_or_else(|| "unknown".to_string())
-    }
-
-    // resolve stdout-path in /chosen to the first compatible string of that node.
-    pub fn stdout_compat(&self) -> Option<String> {
-        let chosen_idx = *self.by_name.get("chosen")?;
-        let path = self.nodes[chosen_idx].extra_str("stdout-path")?.to_string();
-        // strip optional baud suffix: "/soc/serial@deadbeef:115200" -> "/soc/serial@deadbeef"
-        let path = path.split(':').next()?;
-        // match by last path component
-        let name = path.split('/').last()?;
-        let idx = self.by_name.get(name)?;
-        self.nodes[*idx].compatible.first().cloned()
     }
 }
