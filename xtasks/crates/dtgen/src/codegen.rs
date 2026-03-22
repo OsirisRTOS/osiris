@@ -278,7 +278,7 @@ fn emit_peripherals(out: &mut String, dt: &DeviceTree) {
         let phandle = opt_u32(node.phandle);
 
         out.push_str(&format!(
-            "    // {i} — node {idx}: {:?}\n    Peripheral {{ node: {idx}, compatible: {compat_inline}, reg: {reg}, interrupts: {irqs}, phandle: {phandle}, props: PERIPH_{i}_PROPS }},\n",
+            "    // {i} - node {idx}: {:?}\n    Peripheral {{ node: {idx}, compatible: {compat_inline}, reg: {reg}, interrupts: {irqs}, phandle: {phandle}, props: PERIPH_{i}_PROPS }},\n",
             node.name,
         ));
     }
@@ -506,10 +506,6 @@ fn emit_memory_module(out: &mut String, dt: &DeviceTree) {
     out.push_str("}\n");
 }
 
-// ------------------------------------------------------------------------------------------------
-// Chosen module
-// ------------------------------------------------------------------------------------------------
-
 fn emit_chosen_module(out: &mut String, dt: &DeviceTree) {
     let chosen = dt
         .by_name
@@ -517,15 +513,16 @@ fn emit_chosen_module(out: &mut String, dt: &DeviceTree) {
         .and_then(|indices| indices.first())
         .map(|&idx| &dt.nodes[idx]);
 
-    // reconstruct the same peripheral indices vec that emit_peripherals uses
-    // so we can map a node index to a PERIPHERALS array index
-    // used as Peripheral index retrieval for stdout path resolve
     let mut periph_indices: Vec<usize> = Vec::new();
     dt.walk(|idx, node| {
         if !node.compatible.is_empty() {
             periph_indices.push(idx);
         }
     });
+
+    // --------------------------------------------------------------------------------------------
+    // Standard properties
+    // --------------------------------------------------------------------------------------------
 
     let stdout_periph_idx: Option<usize> = chosen.and_then(|n| {
         if let Some(crate::ir::PropValue::Str(raw)) = n.extra.get("stdout-path") {
@@ -548,7 +545,6 @@ fn emit_chosen_module(out: &mut String, dt: &DeviceTree) {
                     })
             }?;
 
-            // position in PERIPHERALS = position of node_idx in periph_indices
             periph_indices.iter().position(|&idx| idx == node_idx)
         } else {
             None
@@ -563,27 +559,46 @@ fn emit_chosen_module(out: &mut String, dt: &DeviceTree) {
         }
     });
 
-    let initrd_start: Option<u32> = chosen.and_then(|n| {
-        if let Some(crate::ir::PropValue::U32(v)) = n.extra.get("linux,initrd-start") {
-            Some(*v)
-        } else {
-            None
-        }
-    });
+    // --------------------------------------------------------------------------------------------
+    // Extra properties
+    // --------------------------------------------------------------------------------------------
 
-    let initrd_end: Option<u32> = chosen.and_then(|n| {
-        if let Some(crate::ir::PropValue::U32(v)) = n.extra.get("linux,initrd-end") {
-            Some(*v)
-        } else {
-            None
-        }
-    });
+    const KNOWN: &[&str] = &["stdout-path", "bootargs"];
+    let extras: Vec<(&str, &crate::ir::PropValue)> = chosen
+        .map(|n| {
+            let mut v: Vec<_> = n
+                .extra
+                .iter()
+                .filter(|(k, _)| !KNOWN.contains(&k.as_str()))
+                .map(|(k, v)| (k.as_str(), v))
+                .collect();
+            v.sort_by_key(|(k, _)| *k);
+            v
+        })
+        .unwrap_or_default();
+
+    // --------------------------------------------------------------------------------------------
+    // Emit
+    // --------------------------------------------------------------------------------------------
 
     out.push('\n');
-
     out.push_str(&format!("// {}\n", "-".repeat(96)));
     out.push_str("// Chosen\n");
     out.push_str(&format!("// {}\n\n", "-".repeat(96)));
+
+    // U32Array and Bytes backing statics must live outside the mod block
+    for (i, (_, val)) in extras.iter().enumerate() {
+        match val {
+            crate::ir::PropValue::U32Array(arr) => {
+                out.push_str(&format!("static CHOSEN_EXTRA_{i}: &[u32] = &{arr:?};\n"));
+            }
+            crate::ir::PropValue::Bytes(arr) => {
+                out.push_str(&format!("static CHOSEN_EXTRA_{i}: &[u8] = &{arr:?};\n"));
+            }
+            _ => {}
+        }
+    }
+
     out.push_str("pub mod chosen {\n");
     out.push_str("    use super::*;\n\n");
 
@@ -591,9 +606,7 @@ fn emit_chosen_module(out: &mut String, dt: &DeviceTree) {
         Some(idx) => out.push_str(&format!(
             "    // index into PERIPHERALS of the stdout peripheral, resolved from stdout-path\n    pub const STDOUT: Option<usize> = Some({idx});\n"
         )),
-        None => out.push_str(
-            "    // no stdout-path declared in /chosen.\n    pub const STDOUT: Option<usize> = None;\n",
-        ),
+        None => out.push_str("    pub const STDOUT: Option<usize> = None;\n"),
     }
 
     match bootargs {
@@ -604,22 +617,26 @@ fn emit_chosen_module(out: &mut String, dt: &DeviceTree) {
         None => out.push_str("    pub const BOOTARGS: Option<&str> = None;\n"),
     }
 
-    match initrd_start {
-        Some(v) => out.push_str(&format!(
-            "    pub const INITRD_START: Option<u32> = Some({:#010x});\n",
-            v
-        )),
-        None => out.push_str("    pub const INITRD_START: Option<u32> = None;\n"),
+    out.push('\n');
+    out.push_str("    // non-standard properties of the chosen node\n");
+    out.push_str("    pub const EXTRAS: &[(&str, PropValue)] = &[\n");
+    for (i, (key, val)) in extras.iter().enumerate() {
+        let expr = match val {
+            crate::ir::PropValue::Empty => "PropValue::Empty".to_string(),
+            crate::ir::PropValue::U32(v) => format!("PropValue::U32({v:#010x})"),
+            crate::ir::PropValue::U32Array(_) => {
+                format!("PropValue::U32Array(CHOSEN_EXTRA_{i}.to_vec())")
+            }
+            crate::ir::PropValue::Str(s) => format!("PropValue::Str({s:?})"),
+            crate::ir::PropValue::StringList(sl) => format!("PropValue::StringList(vec!{sl:?})"),
+            crate::ir::PropValue::Bytes(_) => {
+                format!("PropValue::Bytes(CHOSEN_EXTRA_{i}.to_vec())")
+            }
+        };
+        out.push_str(&format!("        ({key:?}, {expr}),\n"));
     }
 
-    match initrd_end {
-        Some(v) => out.push_str(&format!(
-            "    pub const INITRD_END: Option<u32> = Some({:#010x});\n\n",
-            v
-        )),
-        None => out.push_str("    pub const INITRD_END: Option<u32> = None;\n\n"),
-    }
-
+    out.push_str("    ];\n\n");
     out.push_str(
         r#"    // resolve stdout to its Peripheral directly via PERIPHERALS index
     pub fn stdout() -> Option<&'static Peripheral> {
