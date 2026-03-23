@@ -529,6 +529,10 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "fdt",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
