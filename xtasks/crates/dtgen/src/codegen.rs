@@ -475,13 +475,7 @@ fn emit_memory_module(dt: &DeviceTree) -> TokenStream {
     let mut regions: Vec<(&str, u64, u64)> = dt
         .nodes
         .iter()
-        .filter(|n| {
-            n.extra
-                .get("device_type")
-                // memory nodes attribute which must always exist like that
-                .map(|v| matches!(v, crate::ir::PropValue::Str(s) if s == "memory"))
-                .unwrap_or(false)
-        })
+        .filter(|n| n.name.starts_with("memory@") || n.name == "memory")
         .filter_map(|n| {
             let (base, size) = n.reg?;
             Some((n.name.as_str(), base, size))
@@ -492,6 +486,7 @@ fn emit_memory_module(dt: &DeviceTree) -> TokenStream {
     let entries = regions.iter().map(|(name, base, size)| {
         let base = *base as usize;
         let size = *size as usize;
+
         quote! { (#name, #base, #size), }
     });
 
@@ -499,6 +494,7 @@ fn emit_memory_module(dt: &DeviceTree) -> TokenStream {
         pub mod memory {
             use super::*;
 
+            #[doc = "physical memory regions"]
             pub const REGIONS: &[(&str, usize, usize)] = &[
                 #(#entries)*
             ];
