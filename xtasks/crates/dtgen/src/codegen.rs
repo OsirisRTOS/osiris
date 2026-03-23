@@ -15,15 +15,16 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         emit_chosen_module(dt),
     ];
 
+    let combined = segments.iter().cloned().collect::<TokenStream>();
+    let wrapped = quote! {
+        pub mod device_tree {
+            #combined
+        }
+    };
+
+    let file: syn::File = syn::parse2(wrapped).unwrap();
     let mut out = emit_header();
-    for tokens in segments {
-        let file: syn::File = syn::parse2(tokens.clone()).unwrap();
-
-        // concat each segment with empty line inbetween
-        out.push_str(&prettyplease::unparse(&file));
-        out.push('\n');
-    }
-
+    out.push_str(&prettyplease::unparse(&file));
     out
 }
 
