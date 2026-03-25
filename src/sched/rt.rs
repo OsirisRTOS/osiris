@@ -7,7 +7,7 @@ pub struct Scheduler<const N: usize> {
 pub type ServerView<'a, const N: usize> = ViewMut<'a, thread::UId, thread::RtServer, ThreadMap<N>>;
 
 impl<const N: usize> Scheduler<N> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             edf: RbTree::new(),
         }
@@ -23,7 +23,7 @@ impl<const N: usize> Scheduler<N> {
         }
     }
 
-    pub fn pick(&mut self, now: u64, storage: &mut ServerView<N>) -> Option<thread::UId> {
+    pub fn pick(&mut self, now: u64, storage: &mut ServerView<N>) -> Option<(thread::UId, u64)> {
         let id = self.edf.min()?;
         
         if storage.get(id)?.budget() == 0 {
@@ -33,7 +33,7 @@ impl<const N: usize> Scheduler<N> {
         }
 
         // Insert updated the min cache.
-        self.edf.min()
+        self.edf.min().and_then(|id| storage.get(id).map(|s| (id, s.budget())))
     }
 
     pub fn dequeue(&mut self, uid: thread::UId, storage: &mut ServerView<N>) {

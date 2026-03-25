@@ -1,10 +1,11 @@
 // The top level page frame allocator.
 
+use hal::mem::PhysAddr;
+
 use crate::sync::spinlock::SpinLocked;
 use crate::types::boxed::Box;
 use crate::utils::KernelError;
 
-use interface::PhysAddr;
 use core::pin::Pin;
 
 mod bitset;
@@ -12,7 +13,7 @@ mod bitset;
 /// Page size constant (typically 4KB)
 pub const PAGE_SIZE: usize = 4096;
 
-const PAGE_CNT: usize = 1024; // TODO: This should be determined by the DeviceTree.
+const PAGE_CNT: usize = 100; // TODO: This should be determined by the DeviceTree.
 
 type AllocatorType = bitset::Allocator<PAGE_CNT>;
 

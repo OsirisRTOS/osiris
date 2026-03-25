@@ -1,13 +1,17 @@
 //! This module provides access to the global memory allocator.
 
+use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 use crate::sync::spinlock::SpinLocked;
-use crate::{BootInfo, utils};
+use crate::{BootInfo, sched, utils};
 use alloc::Allocator;
+use hal::mem::{PhysAddr, VirtAddr};
 use core::ptr::NonNull;
 
 pub mod alloc;
 pub mod vmm;
 pub mod pfa;
+
+pub const BITS_PER_PTR: usize = core::mem::size_of::<usize>() * 8;
 
 /// The possible types of memory. Which is compatible with the multiboot2 memory map.
 /// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
@@ -35,22 +39,31 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
 /// `boot_info` - The boot information. This contains the memory map.
 ///
 /// Returns an error if the memory allocator could not be initialized.
-pub fn init_memory(boot_info: &BootInfo) -> Result<(), utils::KernelError> {
-    pfa::init_pfa(0x20000000)?; // TODO: Get this from the DeviceTree.
+pub fn init_memory(boot_info: &BootInfo) -> vmm::AddressSpace {
+    if let Err(e) = pfa::init_pfa(PhysAddr::new(0x20000000)) { // TODO: Get this from the DeviceTree.
+        panic!("[Kernel] Error: failed to initialize PFA. Error: {e:?}");
+    }
+
+    // TODO: Configure.
+    let pgs = 4;
+
+    let kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
+        panic!("[Kernel] Error: failed to create kernel address space.");  
+    });
+
+    let begin = kaddr_space.map(Region::new(VirtAddr::new(0), len, Backing::Zeroed, Perms::all())).unwrap_or_else(|e| {
+        panic!("[Kernel] Error: failed to map kernel address space.");
+    });
 
     let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-    for entry in boot_info.mmap.iter().take(boot_info.mmap_len as usize) {
-        // We only add available memory to the allocator.
-        if entry.ty == MemoryTypes::Available as u32 {
-            let range = entry.addr as usize..(entry.addr + entry.length) as usize;
-            unsafe {
-                allocator.add_range(range)?;
-            }
-        }
+    let range = begin.as_usize()..(begin.as_usize() + pgs * vmm::PAGE_SIZE);
+
+    if let Err(e) = unsafe { allocator.add_range(range) } {
+        panic!("[Kernel] Error: failed to add range to allocator.");
     }
 
-    Ok(())
+    kaddr_space
 }
 
 /// Allocate a memory block. Normally Box<T> or SizedPool<T> should be used instead of this function.

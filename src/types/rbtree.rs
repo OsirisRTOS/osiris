@@ -51,7 +51,7 @@ enum Color {
 #[allow(dead_code)]
 impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             root: None,
             min: None,

@@ -1,15 +1,13 @@
-use crate::{sched, sync::spinlock::SpinLocked};
-use hal::Schedable;
+use core::sync::atomic::Ordering;
+
+use crate::sched;
+use crate::sync::atomic::AtomicU64;
 
 // This variable is only allowed to be modified by the systick handler.
-static TIME: SpinLocked<u64> = SpinLocked::new(0);
+static TIME: AtomicU64 = AtomicU64::new(0);
 
 fn tick() {
-    // Increment the global time counter.
-    {
-        let mut time = TIME.lock();
-        *time += 1;
-    }
+    TIME.fetch_add(1, Ordering::Release);
 }
 
 /*
@@ -18,32 +16,16 @@ fn tick() {
  */
 #[allow(dead_code)]
 pub fn time() -> u64 {
-    if !hal::asm::are_interrupts_enabled() {
-        // If interrupts are disabled, we can just read the time.
-        return *TIME.lock();
-    } else {
-        let time;
-        // We need to disable interrupts to ensure that systick is always able to lock the time.
-        hal::asm::disable_interrupts();
-        // Return the current time.
-        {
-            time = *TIME.lock();
-        }
-        hal::asm::enable_interrupts();
-        // Now systick can be called again.
-        time
-    }
+    TIME.load(Ordering::Acquire)
 }
 
 /// cbindgen:ignore
 /// cbindgen:no-export
 #[unsafe(no_mangle)]
 pub extern "C" fn systick_hndlr() {
-    tick();
+    let time = TIME.fetch_add(1, Ordering::Release) + 1;
 
-    let resched = { sched::tick_scheduler() };
-
-    if resched {
-        hal::Machine::trigger_reschedule();
+    if sched::needs_reschedule(time) {
+        sched::reschedule();
     }
 }

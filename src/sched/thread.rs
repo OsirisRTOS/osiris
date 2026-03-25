@@ -2,22 +2,28 @@
 
 use core::{borrow::Borrow, ffi::c_void};
 
-use hal::Stack;
-use hal::stack::Stacklike;
+use hal::{Stack, stack::EntryFn};
+use hal::stack::{FinFn, Stacklike};
 use macros::TaggedLinks;
 
-use crate::{types::{rbtree::{self, Compare}, traits::{Project, ToIndex}}, sched::task::TaskId, utils::KernelError};
+use crate::sched::task::{self, KERNEL_TASK};
+use crate::{types::{rbtree::{self, Compare}, traits::{Project, ToIndex}}, utils::KernelError};
+
+pub const IDLE_THREAD: UId = UId {
+    uid: 0,
+    tid: Id { id: 0, owner: KERNEL_TASK },
+};
 
 /// Id of a task. This is only unique within a Task.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Id {
     id: usize,
-    owner: TaskId,
+    owner: task::UId,
 }
 
 #[allow(dead_code)]
 impl Id {
-    pub fn new(id: usize, owner: TaskId) -> Self {
+    pub fn new(id: usize, owner: task::UId) -> Self {
         Self { id, owner }
     }
 
@@ -25,7 +31,7 @@ impl Id {
         self.id
     }
 
-    pub fn owner(&self) -> TaskId {
+    pub fn owner(&self) -> task::UId {
         self.owner
     }
 
@@ -38,7 +44,9 @@ impl Id {
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub struct UId {
+    /// A globally unique identifier for the thread.
     uid: usize,
+    /// The task-local identifier for the thread.
     tid: Id,
 }
 
@@ -46,6 +54,10 @@ pub struct UId {
 impl UId {
     pub fn tid(&self) -> Id {
         self.tid
+    }
+
+    pub fn owner(&self) -> task::UId {
+        self.tid.owner
     }
 }
 
@@ -60,15 +72,6 @@ impl Eq for UId {}
 impl Into<usize> for UId {
     fn into(self) -> usize {
         self.uid
-    }
-}
-
-impl Default for UId {
-    fn default() -> Self {
-        Self {
-            uid: 0,
-            tid: Id::new(0, TaskId::User(0)),
-        }
     }
 }
 
@@ -91,11 +94,6 @@ impl ToIndex for UId {
 }
 
 // -------------------------------------------------------------------------
-
-pub struct Descriptor {
-    pub tid: Id,
-    pub stack: Stack,
-}
 
 /// The state of a thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,6 +186,11 @@ pub struct WakupTree;
 #[derive(Debug, Clone, Copy)]
 pub struct RtTree;
 
+pub struct Attributes {
+    pub entry: EntryFn,
+    pub fin: Option<FinFn>,
+}
+
 /// The struct representing a thread.
 #[derive(Debug, Clone, Copy)]
 #[derive(TaggedLinks)]
@@ -210,7 +213,7 @@ impl Thread {
     /// `stack` - The stack of the thread.
     ///
     /// Returns a new thread.
-    fn new(uid: UId, stack: Stack) -> Self {
+    pub fn new(uid: UId, stack: Stack) -> Self {
         Self {
             state: State {
                 run_state: RunState::Ready,
@@ -242,6 +245,10 @@ impl Thread {
 
     pub fn uid(&self) -> UId {
         self.uid
+    }
+
+    pub fn task_id(&self) -> task::UId {
+        self.uid.tid().owner
     }
 }
 

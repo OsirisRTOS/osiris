@@ -1,8 +1,8 @@
 use core::ops::Range;
 
-use crate::{utils::KernelError};
+use hal::mem::{PhysAddr, VirtAddr};
 
-use interface::{PhysAddr, VirtAddr};
+use crate::{utils::KernelError};
 
 mod nommu;
 
@@ -45,7 +45,7 @@ impl Region {
     }
 
     pub fn len(&self) -> usize {
-        self.range.end.saturating_sub(self.range.start)
+        self.range.end.saturating_sub(self.range.start.into()).into()
     }
 
     pub fn contains(&self, addr: VirtAddr) -> bool {
