@@ -33,7 +33,7 @@ include!(concat!(env!("OUT_DIR"), "/syscalls_export.rs"));
 /// The `boot_info` pointer must be valid and point to a properly initialized `BootInfo` structure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
-    hal::asm::disable_interrupts!();
+    hal::asm::disable_interrupts();
     // Initialize basic hardware and the logging system.
     hal::Machine::init();
     hal::Machine::bench_start();
@@ -50,8 +50,15 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize the memory allocator.
     let kaddr_space = mem::init_memory(boot_info);
 
+    kprintln!("[Kernel] Memory initialized.");
+
     sched::init(kaddr_space);
+
+    kprintln!("[Kernel] Scheduler initialized.");
+
     idle::init();
+
+    kprintln!("[Kernel] Idle thread initialized.");
 
     let (cyc, ns) = hal::Machine::bench_end();
     kprintln!(
@@ -65,7 +72,7 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
         panic!("[Kernel] Error: failed to start init application. Error: {e:?}");
     }
 
-    hal::asm::enable_interrupts!();
+    hal::asm::enable_interrupts();
 
     loop {
         hal::asm::nop!();

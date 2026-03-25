@@ -10,7 +10,7 @@ use core::ffi::c_void;
 use hal::Schedable;
 
 use crate::{
-    sync::spinlock::SpinLocked, types::{
+    mem, sync::spinlock::SpinLocked, types::{
         array::IndexMap,
         rbtree::RbTree,
         traits::{Get, GetMut},

@@ -2,6 +2,8 @@
 
 use ::core::mem::transmute;
 
+use crate::sched;
+
 pub fn init_app(boot_info: &crate::BootInfo) -> Result<(), crate::utils::KernelError> {
     let len = boot_info.args.init.len;
 
@@ -15,8 +17,10 @@ pub fn init_app(boot_info: &crate::BootInfo) -> Result<(), crate::utils::KernelE
         )
     };
 
-    // We don't expect coming back from the init program.
-    // But for future user mode support the init program will be run by the scheduler, thus we leave a result as a return value here.
-    entry();
+    let attrs = sched::thread::Attributes {
+        entry,
+        fin: None,
+    };
+    sched::create_thread(sched::task::KERNEL_TASK, &attrs)?;
     Ok(())
 }
