@@ -1,5 +1,6 @@
 //! This module provides access to the global memory allocator.
 
+use crate::mem::pfa::PAGE_SIZE;
 use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 use crate::sync::spinlock::SpinLocked;
 use crate::{BootInfo, sched, utils};
@@ -47,17 +48,17 @@ pub fn init_memory(boot_info: &BootInfo) -> vmm::AddressSpace {
     // TODO: Configure.
     let pgs = 4;
 
-    let kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
+    let mut kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
         panic!("[Kernel] Error: failed to create kernel address space.");  
     });
 
-    let begin = kaddr_space.map(Region::new(VirtAddr::new(0), len, Backing::Zeroed, Perms::all())).unwrap_or_else(|e| {
+    let begin = kaddr_space.map(Region::new(VirtAddr::new(0), pgs * PAGE_SIZE, Backing::Zeroed, Perms::all())).unwrap_or_else(|e| {
         panic!("[Kernel] Error: failed to map kernel address space.");
     });
 
     let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-    let range = begin.as_usize()..(begin.as_usize() + pgs * vmm::PAGE_SIZE);
+    let range = begin.as_usize()..(begin.as_usize() + pgs * PAGE_SIZE);
 
     if let Err(e) = unsafe { allocator.add_range(range) } {
         panic!("[Kernel] Error: failed to add range to allocator.");

@@ -2,13 +2,13 @@ use crate::sched;
 
 extern "C" fn entry() {
     loop {
-        hal::asm::wfi!();
+        hal::asm::nop!();
     }
 }
 
 pub fn init() {
     let attrs = sched::thread::Attributes {
-        entry: entry,
+        entry,
         fin: None,
     };
     if let Err(e) = sched::create_thread(sched::task::KERNEL_TASK, &attrs) {
