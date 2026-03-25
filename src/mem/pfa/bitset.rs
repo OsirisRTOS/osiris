@@ -1,12 +1,12 @@
 use core::pin::Pin;
 use core::ptr::NonNull;
 
+use hal::mem::PhysAddr;
+
 use crate::{
     types::boxed::{self, Box},
     utils::KernelError,
 };
-
-use interface::PhysAddr;
 
 pub struct Allocator<const N: usize> {
     begin: PhysAddr,
@@ -43,7 +43,7 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                 return Err(KernelError::InvalidAlign);
             }
 
-            let ptr = NonNull::new(addr as *mut Self).ok_or(KernelError::InvalidAddress)?;
+            let ptr = NonNull::new(addr.as_mut_ptr::<Self>()).ok_or(KernelError::InvalidAddress)?;
 
             // Safety: Ptr is properly aligned and non-null. The validity of the memory at that address is valid by the call contract.
             Ok(Pin::new(unsafe { boxed::Box::from_raw(ptr) }))
@@ -119,7 +119,7 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                     self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - rem) as u32) >> skip);
 
                     if len <= rem {
-                        return Some(start);
+                        return Some(PhysAddr::new(start));
                     }
 
                     len -= rem;
@@ -151,8 +151,8 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
             panic!("Address must be page aligned");
         }
 
-        let mut idx = (addr - self.begin) / super::PAGE_SIZE / Self::BITS_PER_WORD;
-        let mut bit_idx = ((addr - self.begin) / super::PAGE_SIZE) % Self::BITS_PER_WORD;
+        let mut idx = (addr.as_usize() - self.begin.as_usize()) / super::PAGE_SIZE / Self::BITS_PER_WORD;
+        let mut bit_idx = ((addr.as_usize() - self.begin.as_usize()) / super::PAGE_SIZE) % Self::BITS_PER_WORD;
 
         // TODO: slow
         for _ in 0..page_count {
@@ -181,7 +181,7 @@ mod tests {
             const BITS: usize = Allocator::<N>::BITS_PER_WORD;
             const ALLOC_SIZE: usize = 100;
 
-            let mut allocator = Allocator::<N>::new(0x0).unwrap();
+            let mut allocator = Allocator::<N>::new(PhysAddr::new(0x0)).unwrap();
 
             // Generate a random bit pattern.
             for i in 0..N {

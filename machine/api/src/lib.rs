@@ -3,6 +3,7 @@
 use core::{fmt::Display, ops::Range};
 
 pub mod mem;
+pub mod stack;
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub enum Error {
@@ -10,6 +11,7 @@ pub enum Error {
     Generic,
     OutOfMemory(usize),
     OutOfBoundsPtr(usize, Range<usize>),
+    InvalidAddress(usize),
 }
 
 pub enum Fault {
@@ -30,7 +32,8 @@ impl Display for Error {
                     "Pointer {:p} out of bounds (expected in {:p}..{:p})",
                     *ptr as *const u8, range.start as *const u8, range.end as *const u8
                 )
-            }
+            },
+            Error::InvalidAddress(addr) => write!(f, "Invalid address {:p}", *addr as *const u8),
         }
     }
 }

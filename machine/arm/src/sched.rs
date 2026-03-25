@@ -7,7 +7,7 @@ use core::{
     ptr::NonNull,
 };
 
-use hal_api::{Result, stack::StackDescriptor};
+use hal_api::{Result, stack::Descriptor};
 
 use crate::print::println;
 
@@ -191,11 +191,11 @@ impl hal_api::stack::Stacklike for ArmStack {
     type ElemSize = u32;
     type StackPtr = StackPtr;
 
-    unsafe fn new(desc: StackDescriptor) -> Result<Self>
+    unsafe fn new(desc: Descriptor) -> Result<Self>
     where
         Self: Sized,
     {
-        let StackDescriptor {
+        let Descriptor {
             top,
             size,
             entry,
@@ -203,7 +203,7 @@ impl hal_api::stack::Stacklike for ArmStack {
         } = desc;
 
         // We expect a PhysAddr, which can be converted to a ptr on nommu.
-        let top = NonNull::new(top as *mut u32).ok_or(hal_api::Error::InvalidAddress)?;
+        let top = NonNull::new(top.as_mut_ptr::<u32>()).ok_or(hal_api::Error::InvalidAddress(top.as_usize()))?;
 
         let mut stack = Self {
             top,

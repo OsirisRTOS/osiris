@@ -26,6 +26,12 @@ description = "Enables the Floating Point Unit (FPU). This is required for appli
 type = "Boolean"
 default = false
 
+[stackpages]
+name = "Stack Pages"
+description = "Number of pages to allocate for the kernel stack."
+type = { type = "Integer", min = 1 }
+default = 4
+
 [tuning.appmemsize]
 name = "Application Memory Size"
 description = "Sets the size of the initial memory region for the init application. This memory is used for the heap and stack."

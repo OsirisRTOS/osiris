@@ -10,12 +10,13 @@ mod utils;
 mod faults;
 mod mem;
 mod types;
+mod idle;
+
 pub mod print;
-//pub mod sched;
-mod dispatch;
+pub mod sched;
 pub mod sync;
 pub mod syscalls;
-//pub mod time;
+pub mod time;
 pub mod uspace;
 
 use hal::Machinelike;
@@ -33,6 +34,7 @@ include!(concat!(env!("OUT_DIR"), "/device_tree.rs"));
 /// The `boot_info` pointer must be valid and point to a properly initialized `BootInfo` structure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
+    hal::asm::disable_interrupts!();
     // Initialize basic hardware and the logging system.
     hal::Machine::init();
     hal::Machine::bench_start();
@@ -47,9 +49,10 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     print::print_header();
 
     // Initialize the memory allocator.
-    if let Err(e) = mem::init_memory(&device_tree::memory::REGIONS) {
-        panic!("[Kernel] Error: failed to initialize memory allocator. Error: {e:?}");
-    }
+    let kaddr_space = mem::init_memory(boot_info);
+
+    sched::init(kaddr_space);
+    idle::init();
 
     let (cyc, ns) = hal::Machine::bench_end();
     kprintln!(
@@ -62,6 +65,8 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     if let Err(e) = uspace::init_app(boot_info) {
         panic!("[Kernel] Error: failed to start init application. Error: {e:?}");
     }
+
+    hal::asm::enable_interrupts!();
 
     loop {
         hal::asm::nop!();
