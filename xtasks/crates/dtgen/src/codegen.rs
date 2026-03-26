@@ -334,8 +334,8 @@ fn emit_query_api() -> TokenStream {
         #[doc = "find a peripheral by its phandle value"]
         #[doc = "ignores enabled status - phandle targets like clock providers may have no status prop"]
         #[doc = "phandle values are unique"]
-        pub fn peripheral_by_phandle(p: u32) -> Option<&'static Peripheral> {
-            PERIPHERALS.iter().find(|ph| p.phandle == Some(p))
+        pub fn peripheral_by_phandle(ph: u32) -> Option<&'static Peripheral> {
+            PERIPHERALS.iter().find(|p| p.phandle == Some(ph))
         }
 
         #[doc = "find a peripheral by its NODES index"]
