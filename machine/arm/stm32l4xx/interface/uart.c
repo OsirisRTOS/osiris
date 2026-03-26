@@ -29,7 +29,7 @@ int write_debug_uart(const char *buf, int len) {
   if (HAL_UART_Transmit(&HDBG_UART, (uint8_t *)buf, len, 100) != HAL_OK) {
     return -1;
   }
-  return len;
+  return len; // Return number of bytes written
 }
 
 void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
@@ -40,7 +40,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
 
   if (huart->Instance == USART1) {
-    // TX: PA9 (AF7), RX: PA10 (AF7) — Nucleo CN12 pins 21, 33
+    // TX: PA9 (AF7), RX: PA10 (AF7)
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
     PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) return;
@@ -51,7 +51,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   } else if (huart->Instance == USART2) {
-    // TX: PA2 (AF7), RX: PA3 (AF7) — Nucleo CN12 pins 35, 37
+    // TX: PA2 (AF7), RX: PA3 (AF7)
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2;
     PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) return;
@@ -62,7 +62,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   } else if (huart->Instance == USART3) {
-    // TX: PC10 (AF7), RX: PC11 (AF7) — Nucleo CN11 pins 1, 2
+    // TX: PC10 (AF7), RX: PC11 (AF7)
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART3;
     PeriphClkInit.Usart3ClockSelection = RCC_USART3CLKSOURCE_PCLK1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) return;
@@ -73,8 +73,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   } else if (huart->Instance == UART4) {
-    // TX: PA0 (AF8), RX: PA1 (AF8) — Nucleo CN11 pins 28, 30
-    // Note: PA0 is also connected to user button B1 via SB197; cut SB197 to use UART4 TX
+    // TX: PA0 (AF8), RX: PA1 (AF8)
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_UART4;
     PeriphClkInit.Uart4ClockSelection = RCC_UART4CLKSOURCE_PCLK1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) return;
@@ -85,7 +84,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   } else if (huart->Instance == UART5) {
-    // TX: PC12 (AF8), RX: PD2 (AF8) — Nucleo CN11 pins 3, 4
+    // TX: PC12 (AF8), RX: PD2 (AF8)
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_UART5;
     PeriphClkInit.Uart5ClockSelection = RCC_UART5CLKSOURCE_PCLK1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) return;
@@ -99,9 +98,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   } else if (huart->Instance == LPUART1) {
-    // TX: PG7 (AF8), RX: PG8 (AF8) — Nucleo CN12 pins 67, 66
-    // Note: SB130/SB131 connect PG7/PG8 to the ST-LINK VCP by default;
-    //       cut them to route LPUART1 to external pins instead.
+    // TX: PG7 (AF8), RX: PG8 (AF8)
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_LPUART1;
     PeriphClkInit.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) return;
