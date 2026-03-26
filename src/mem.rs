@@ -95,12 +95,7 @@ mod verification {
     use super::*;
     use crate::mem::alloc::MAX_ADDR;
 
-    fn mock_ptr_write<T>(dst: *mut T, src: T) {
-        // Just a noop
-    }
-
     #[kani::proof]
-    #[kani::stub(core::ptr::write, mock_ptr_write)]
     fn proof_init_allocator_good() {
         const MAX_REGIONS: usize = 8;
         let regions: [(&str, usize, usize); MAX_REGIONS] =
@@ -108,14 +103,11 @@ mod verification {
 
         // contrain all regions
         for &(_, base, size) in regions.iter() {
-            kani::assume(base % align_of::<u128>() as u64 == 0);
+            kani::assume(base % align_of::<u128>() == 0);
             kani::assume(base > 0);
             kani::assume(size > 0);
-            kani::assume(
-                size < alloc::MAX_ADDR as u64
-                    && size > alloc::BestFitAllocator::MIN_RANGE_SIZE as u64,
-            );
-            kani::assume(base < alloc::MAX_ADDR as u64 - size);
+            kani::assume(size < alloc::MAX_ADDR && size > alloc::BestFitAllocator::MIN_RANGE_SIZE);
+            kani::assume(base < alloc::MAX_ADDR - size);
         }
 
         // for any i, j, i != j as indices into the memory regions the following should hold
@@ -126,8 +118,8 @@ mod verification {
         kani::assume(i != j);
 
         /// non-overlapping regions
-        let (base_i, size_i) = regions[i];
-        let (base_j, size_j) = regions[j];
+        let (_, base_i, size_i) = regions[i];
+        let (_, base_j, size_j) = regions[j];
         kani::assert(
             base_i + size_i <= base_j || base_j + size_j <= base_i,
             "memory regions should not overlap",
