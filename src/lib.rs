@@ -19,6 +19,7 @@ pub mod uspace;
 use hal::Machinelike;
 use interface::BootInfo;
 include!(concat!(env!("OUT_DIR"), "/syscalls_export.rs"));
+include!(concat!(env!("OUT_DIR"), "/device_tree.rs"));
 
 /// The kernel initialization function.
 ///
@@ -44,7 +45,7 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     print::print_header();
 
     // Initialize the memory allocator.
-    if let Err(e) = mem::init_memory(boot_info) {
+    if let Err(e) = mem::init_memory(&device_tree::memory::REGIONS) {
         panic!("[Kernel] Error: failed to initialize memory allocator. Error: {e:?}");
     }
 
