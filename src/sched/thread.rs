@@ -7,6 +7,7 @@ use hal::stack::{FinFn, Stacklike};
 use macros::TaggedLinks;
 
 use crate::sched::task::{self, KERNEL_TASK};
+use crate::types::list;
 use crate::{types::{rbtree::{self, Compare}, traits::{Project, ToIndex}}, utils::KernelError};
 
 pub const IDLE_THREAD: UId = UId {
@@ -186,6 +187,9 @@ pub struct WakupTree;
 #[derive(Debug, Clone, Copy)]
 pub struct RtTree;
 
+#[derive(Debug, Clone, Copy)]
+pub struct RRList;
+
 pub struct Attributes {
     pub entry: EntryFn,
     pub fin: Option<FinFn>,
@@ -204,6 +208,9 @@ pub struct Thread {
     /// Wakup tree links for the thread.
     #[rbtree(tag = WakupTree, idx = UId)]
     _wakeup_links: rbtree::Links<WakupTree, UId>,
+
+    #[list(tag = RRList, idx = UId)]
+    rr_links: list::Links<RRList, UId>,
 }
 
 #[allow(dead_code)]
@@ -222,6 +229,7 @@ impl Thread {
             uid,
             rt_server: None,
             _wakeup_links: rbtree::Links::new(),
+            rr_links: list::Links::new(),
         }
     }
 

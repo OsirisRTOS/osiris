@@ -30,7 +30,7 @@ default = false
 name = "Stack Pages"
 description = "Number of pages to allocate for the kernel stack."
 type = { type = "Integer", min = 1 }
-default = 4
+default = 1
 
 [tuning.appmemsize]
 name = "Application Memory Size"

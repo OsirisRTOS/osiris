@@ -10,13 +10,6 @@
 .thumb_func
 .global bootstrap
 bootstrap:
-    /*
-     * Initialize r9 to point to the start of the .data section.
-     * This is needed because all .data/.bss accesses are relative to r9.
-     * We need this because the offset between .text and .data is not known at compile time (relocatable).
-     */
-    ldr r9, =__data_start
-
     @ Copy initialized data from flash to RAM.
     ldr r0, =__data
     ldr r1, =__data_start

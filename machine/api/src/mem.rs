@@ -1,7 +1,7 @@
-use core::ops::{Add, Sub, Div, Rem};
+use core::{fmt::Display, ops::{Add, Div, Rem, Sub}, ptr::NonNull};
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct PhysAddr(usize);
 
 impl PhysAddr {
@@ -31,6 +31,29 @@ impl PhysAddr {
 
     pub fn is_multiple_of(&self, align: usize) -> bool {
        self.0.is_multiple_of(align)
+    }
+
+    pub fn diff(&self, other: Self) -> usize {
+        if self.0 >= other.0 {
+            // Cannot underflow because of the check above.
+            self.0.checked_sub(other.0).unwrap()
+        } else {
+            // Cannot underflow because of the check above.
+            other.0.checked_sub(self.0).unwrap()
+        }
+    }
+}
+
+impl<T> From<NonNull<T>> for PhysAddr {
+    #[inline]
+    fn from(ptr: NonNull<T>) -> Self {
+        Self(ptr.as_ptr() as usize)
+    }
+}
+
+impl Display for PhysAddr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "0x{:x}", self.0)
     }
 }
 

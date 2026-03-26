@@ -47,6 +47,11 @@ pub trait Machinelike {
     fn bench_start();
     fn bench_end() -> (u32, f32);
 
+    fn monotonic_now() -> u64;
+    fn monotonic_freq() -> u64;
+    // Returns the frequency of the machine's systick timer in Hz.
+    fn systick_freq() -> u64;
+
     type ExcepBacktrace: Display;
     type ExcepStackFrame: Display;
     fn backtrace(initial_fp: *const usize, stack_ptr: *const usize) -> Self::ExcepBacktrace;

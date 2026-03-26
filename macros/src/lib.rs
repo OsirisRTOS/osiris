@@ -5,7 +5,7 @@ use proc_macro2::TokenStream;
 
 mod tree;
 
-#[proc_macro_derive(TaggedLinks, attributes(rbtree))]
+#[proc_macro_derive(TaggedLinks, attributes(rbtree, list))]
 pub fn derive_tagged_links(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 

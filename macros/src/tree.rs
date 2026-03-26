@@ -23,9 +23,11 @@ pub fn derive_tagged_links(input: &DeriveInput) -> syn::Result<proc_macro2::Toke
     };
 
     let rbtree_impls = impl_rbtree(input, fields)?;
+    let list_impls = impl_list(input, fields)?;
 
     Ok(quote! {
         #rbtree_impls
+        #list_impls
     })
 }
 
@@ -38,7 +40,7 @@ fn impl_rbtree(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Fi
     for field in fields {
         let Some(field_ident) = field.ident.clone() else { continue };
 
-        if let (Some(tag_path), Some(idx_path)) = find_rbtree(&field.attrs)? {
+        if let (Some(tag_path), Some(idx_path)) = find_tagged(&field.attrs, "rbtree")? {
             let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
             let impl_block = quote! {
@@ -58,19 +60,44 @@ fn impl_rbtree(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Fi
         }
     }
 
-    if impls.is_empty() {
-        return Err(Error::new(
-            input.span(),
-            "No fields found with #[rbtree(tag = ..., idx = ...)] attribute",
-        ));
+    Ok(quote! { #(#impls)* })
+}
+
+fn impl_list(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>) -> syn::Result<proc_macro2::TokenStream> {
+    let struct_ident = &input.ident;
+    let generics = &input.generics;
+
+    let mut impls = Vec::new();
+
+    for field in fields {
+        let Some(field_ident) = field.ident.clone() else { continue };
+
+        if let (Some(tag_path), Some(idx_path)) = find_tagged(&field.attrs, "list")? {
+            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+            let impl_block = quote! {
+                impl #impl_generics crate::types::list::Linkable<#tag_path, #idx_path> for #struct_ident #ty_generics #where_clause {
+                    #[inline]
+                    fn links(&self) -> &crate::types::list::Links<#tag_path, #idx_path> {
+                        &self.#field_ident
+                    }
+                    #[inline]
+                    fn links_mut(&mut self) -> &mut crate::types::list::Links<#tag_path, #idx_path> {
+                        &mut self.#field_ident
+                    }
+                }
+            };
+
+            impls.push(impl_block);
+        }
     }
 
     Ok(quote! { #(#impls)* })
 }
 
-fn find_rbtree(attrs: &[syn::Attribute]) -> syn::Result<(Option<Path>, Option<Path>)> {
+fn find_tagged(attrs: &[syn::Attribute], attr_name: &str) -> syn::Result<(Option<Path>, Option<Path>)> {
     for attr in attrs {
-        if !attr.path().is_ident("rbtree") {
+        if !attr.path().is_ident(attr_name) {
             continue;
         }
 

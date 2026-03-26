@@ -26,6 +26,18 @@ impl hal_api::Machinelike for TestingMachine {
         (0, 0.0)
     }
 
+    fn monotonic_now() -> u64 {
+        0
+    }
+
+    fn monotonic_freq() -> u64 {
+        0
+    }
+
+    fn systick_freq() -> u64 {
+        0
+    }
+
     type ExcepBacktrace = String;
     type ExcepStackFrame = String;
 

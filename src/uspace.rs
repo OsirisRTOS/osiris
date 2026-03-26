@@ -21,6 +21,7 @@ pub fn init_app(boot_info: &crate::BootInfo) -> Result<(), crate::utils::KernelE
         entry,
         fin: None,
     };
-    sched::create_thread(sched::task::KERNEL_TASK, &attrs)?;
-    Ok(())
+    let uid = sched::create_thread(sched::task::KERNEL_TASK, &attrs)?;
+    
+    sched::enqueue(uid)
 }

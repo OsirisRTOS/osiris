@@ -10,10 +10,26 @@ compile_error!(
     "The `atomic-cas` feature requires the target to have atomic operations on at least 8-bit integers."
 );
 
-// ----------------------------AtomicU8----------------------------
-#[cfg(any(feature = "no-atomic-cas", not(target_has_atomic = "64")))]
+#[allow(unused_imports)]
 pub use core::sync::atomic::Ordering;
 
+#[inline(always)]
+pub fn irq_free<T>(f: impl FnOnce() -> T) -> T {
+    let enabled = hal::asm::are_interrupts_enabled();
+    if enabled {
+        hal::asm::disable_interrupts();
+    }
+
+    let result = f();
+
+    if enabled {
+        hal::asm::enable_interrupts();
+    }
+
+    result
+}
+
+// ----------------------------AtomicU8----------------------------
 #[cfg(any(feature = "no-atomic-cas", not(target_has_atomic = "64")))]
 use core::cell::UnsafeCell;
 
@@ -130,25 +146,9 @@ impl AtomicU64 {
         }
     }
 
-    #[inline(always)]
-    fn with_interrupts_disabled<T>(f: impl FnOnce() -> T) -> T {
-        let were_enabled = hal::asm::are_interrupts_enabled();
-        if were_enabled {
-            hal::asm::disable_interrupts();
-        }
-
-        let result = f();
-
-        if were_enabled {
-            hal::asm::enable_interrupts();
-        }
-
-        result
-    }
-
     /// Loads the value.
     pub fn load(&self, _: Ordering) -> u64 {
-        Self::with_interrupts_disabled(|| {
+        irq_free(|| {
             // SAFETY: Interrupts are disabled, so this read is exclusive with writes.
             unsafe { *self.value.get() }
         })
@@ -156,7 +156,7 @@ impl AtomicU64 {
 
     /// Stores a value.
     pub fn store(&self, value: u64, _: Ordering) {
-        Self::with_interrupts_disabled(|| {
+        irq_free(|| {
             // SAFETY: Interrupts are disabled, so this write is exclusive with other access.
             unsafe {
                 *self.value.get() = value;
@@ -172,7 +172,7 @@ impl AtomicU64 {
         _: Ordering,
         _: Ordering,
     ) -> Result<u64, u64> {
-        Self::with_interrupts_disabled(|| {
+        irq_free(|| {
             // SAFETY: Interrupts are disabled, so this read-modify-write is exclusive.
             unsafe {
                 let value = self.value.get();
@@ -188,7 +188,7 @@ impl AtomicU64 {
 
     /// Fetches and adds, returning the previous value.
     pub fn fetch_add(&self, value: u64, _: Ordering) -> u64 {
-        Self::with_interrupts_disabled(|| {
+        irq_free(|| {
             // SAFETY: Interrupts are disabled, so this read-modify-write is exclusive.
             unsafe {
                 let ptr = self.value.get();
@@ -204,7 +204,7 @@ impl AtomicU64 {
     where
         F: FnMut(u64) -> Option<u64>,
     {
-        Self::with_interrupts_disabled(|| {
+        irq_free(|| {
             // SAFETY: Interrupts are disabled, so this read-modify-write is exclusive.
             unsafe {
                 let ptr = self.value.get();

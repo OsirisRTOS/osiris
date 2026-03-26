@@ -7,3 +7,4 @@ void reschedule(void) {
   __ISB();
   __DSB();
 }
+
