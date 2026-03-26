@@ -12,6 +12,6 @@ pub fn init() {
         fin: None,
     };
     if let Err(e) = sched::create_thread(sched::task::KERNEL_TASK, &attrs) {
-        panic!("[Idle] Error: failed to create idle thread. Error: {e:?}");
+        panic!("failed to create idle thread. Error: {e:?}");
     }
 }

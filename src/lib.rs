@@ -34,13 +34,12 @@ include!(concat!(env!("OUT_DIR"), "/device_tree.rs"));
 /// The `boot_info` pointer must be valid and point to a properly initialized `BootInfo` structure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
-    hal::asm::disable_interrupts();
     // Initialize basic hardware and the logging system.
     hal::Machine::init();
     hal::Machine::bench_start();
 
     if boot_info.is_null() || !boot_info.is_aligned() {
-        panic!("[Kernel] Error: boot_info pointer is null or unaligned.");
+        panic!("boot_info pointer is null or unaligned.");
     }
 
     // Safety: We trust the bootloader to provide a valid boot_info structure.
@@ -51,31 +50,29 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize the memory allocator.
     let kaddr_space = mem::init_memory(boot_info);
 
-    kprintln!("[Kernel] Memory initialized.");
+    kprintln!("Memory initialized.");
 
-    sched::init(kaddr_space);
+    if let Err(e) = sched::init(kaddr_space) {
+        panic!("failed to initialize scheduler. Error: {e:?}");
+    }
 
-    kprintln!("[Kernel] Scheduler initialized.");
+    kprintln!("Scheduler initialized.");
 
     idle::init();
 
-    kprintln!("[Kernel] Idle thread initialized.");
+    kprintln!("Idle thread initialized.");
 
     let (cyc, ns) = hal::Machine::bench_end();
     kprintln!(
-        "[Osiris] Kernel init took {} cycles taking {} ms",
-        cyc,
-        ns as u32 / 1000000
+        "Kernel init took {} cycles.", cyc
     );
 
     // Start the init application.
     if let Err(e) = uspace::init_app(boot_info) {
-        panic!("[Kernel] Error: failed to start init application. Error: {e:?}");
+        panic!("failed to start init application. Error: {e:?}");
     }
+    
+    sched::enable();
 
-    hal::asm::enable_interrupts();
-
-    loop {
-        hal::asm::nop!();
-    }
+    loop {}
 }

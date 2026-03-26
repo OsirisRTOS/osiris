@@ -1,5 +1,3 @@
-use core::ops::Range;
-
 use hal::mem::{PhysAddr, VirtAddr};
 
 use crate::{utils::KernelError};
@@ -26,30 +24,39 @@ pub enum Backing {
 
 #[derive(Clone)]
 pub struct Region {
-    range: Range<VirtAddr>,
+    start: Option<VirtAddr>,
+    len: usize,
     backing: Backing,
     perms: Perms,
 }
 
 impl Region {
-    pub fn new(start: VirtAddr, len: usize, backing: Backing, perms: Perms) -> Self {
+    /// Creates a new region.
+    /// 
+    /// - `start` is the starting virtual address of the region. If `None`, the system will choose a suitable address.
+    /// - `len` is the length of the region in bytes.
+    /// - `backing` is the backing type of the region, which determines how the region is initialized and where its contents come from.
+    /// - `perms` is the permissions of the region, which determines how the region can be accessed.
+    /// 
+    pub fn new(start: Option<VirtAddr>, len: usize, backing: Backing, perms: Perms) -> Self {
         Self {
-            range: start..start.saturating_add(len),
+            start,
+            len,
             backing,
             perms,
         }
     }
 
     pub fn start(&self) -> VirtAddr {
-        self.range.start
+        self.start.unwrap_or_else(|| VirtAddr::new(0))
     }
 
     pub fn len(&self) -> usize {
-        self.range.end.saturating_sub(self.range.start.into()).into()
+        self.len
     }
 
     pub fn contains(&self, addr: VirtAddr) -> bool {
-        self.range.contains(&addr)
+        self.start().saturating_add(self.len()) > addr && addr >= self.start()
     }
 }
 

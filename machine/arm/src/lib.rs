@@ -65,6 +65,18 @@ impl hal_api::Machinelike for ArmMachine {
         (cycles as u32, ns)
     }
 
+    fn monotonic_now() -> u64 {
+        unsafe { bindings::monotonic_now() }
+    }
+
+    fn monotonic_freq() -> u64 {
+        unsafe { bindings::monotonic_freq() }
+    }
+
+    fn systick_freq() -> u64 {
+        unsafe { bindings::systick_freq() }
+    }
+
     type ExcepBacktrace = excep::ExcepBacktrace;
     type ExcepStackFrame = excep::ExcepStackFrame;
 

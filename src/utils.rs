@@ -13,6 +13,8 @@ pub(crate) use core::convert::{identity as likely, identity as unlikely};
 #[cfg(feature = "nightly")]
 pub(crate) use core::hint::{likely, unlikely};
 
+use hal::mem::PhysAddr;
+
 
 
 /// This is a macro that is used to panic when a bug is detected.
@@ -55,7 +57,7 @@ pub enum KernelError {
     /// The kernel is out of memory.
     OutOfMemory,
     InvalidSize,
-    InvalidAddress,
+    InvalidAddress(PhysAddr),
     InvalidArgument,
     HalError(hal::Error),
     CustomError(&'static str),
@@ -68,7 +70,7 @@ impl Debug for KernelError {
             KernelError::InvalidAlign => write!(f, "Invalid alignment"),
             KernelError::OutOfMemory => write!(f, "Out of memory"),
             KernelError::InvalidSize => write!(f, "Invalid size"),
-            KernelError::InvalidAddress => write!(f, "Invalid address"),
+            KernelError::InvalidAddress(addr) => write!(f, "Invalid address ({})", addr),
             KernelError::InvalidArgument => write!(f, "Invalid argument"),
             KernelError::HalError(e) => write!(f, "{e} (in HAL)"),
             KernelError::CustomError(msg) => write!(f, "{}", msg),

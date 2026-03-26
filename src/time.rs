@@ -1,31 +1,29 @@
-use core::sync::atomic::Ordering;
+use hal::Machinelike;
 
-use crate::sched;
-use crate::sync::atomic::AtomicU64;
+use crate::{sched, sync};
 
-// This variable is only allowed to be modified by the systick handler.
-static TIME: AtomicU64 = AtomicU64::new(0);
+static TICKS: sync::atomic::AtomicU64 = sync::atomic::AtomicU64::new(0);
 
-fn tick() {
-    TIME.fetch_add(1, Ordering::Release);
+pub fn tick() -> u64 {
+    TICKS.load(sync::atomic::Ordering::Acquire)
 }
 
-/*
- * Returns the current time in milliseconds after boot.
- *
- */
-#[allow(dead_code)]
-pub fn time() -> u64 {
-    TIME.load(Ordering::Acquire)
+pub fn mono_now() -> u64 {
+    // TODO: This will break on SMP systems without native u64 atomic store.
+    sync::atomic::irq_free(|| hal::Machine::monotonic_now() )
+}
+
+pub fn mono_freq() -> u64 {
+    hal::Machine::monotonic_freq()
 }
 
 /// cbindgen:ignore
 /// cbindgen:no-export
 #[unsafe(no_mangle)]
 pub extern "C" fn systick_hndlr() {
-    let time = TIME.fetch_add(1, Ordering::Release) + 1;
+    let tick = TICKS.fetch_add(1, sync::atomic::Ordering::Release) + 1;
 
-    if sched::needs_reschedule(time) {
+    if sched::needs_reschedule(tick) {
         sched::reschedule();
     }
 }

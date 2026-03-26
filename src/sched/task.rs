@@ -69,20 +69,15 @@ impl Task {
         // TODO: On MMU systems, the resrv_pgs attribute will be ignored, as memory will not be reserved.
         let resrv_pgs = attrs.resrv_pgs.ok_or(KernelError::OutOfMemory)?;
         let address_space = mem::vmm::AddressSpace::new(resrv_pgs.get())?;
+        Self::from_addr_space(id, address_space)
+    }
 
+    pub fn from_addr_space(id: UId, address_space: mem::vmm::AddressSpace) -> Result<Self, KernelError> {
         Ok(Self {
             id,
             address_space,
             tid_cntr: 0,
         })
-    }
-
-    pub fn from_addr_space(id: UId, address_space: mem::vmm::AddressSpace) -> Self {
-        Self {
-            id,
-            address_space,
-            tid_cntr: 0,
-        }
     }
 
     fn allocate_tid(&mut self) -> sched::thread::Id {
@@ -97,9 +92,8 @@ impl Task {
         attrs: &thread::Attributes,
     ) -> Result<hal::stack::Descriptor, KernelError> {
         let size = DEFAULTS.stack_pages * mem::pfa::PAGE_SIZE;
-        let start = self.address_space.end().saturating_sub(size);
         let region = mem::vmm::Region::new(
-            start,
+            None,
             size,
             mem::vmm::Backing::Uninit,
             mem::vmm::Perms::Read | mem::vmm::Perms::Write,

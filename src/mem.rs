@@ -3,7 +3,7 @@
 use crate::mem::pfa::PAGE_SIZE;
 use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 use crate::sync::spinlock::SpinLocked;
-use crate::{BootInfo, sched, utils};
+use crate::BootInfo;
 use alloc::Allocator;
 use hal::mem::{PhysAddr, VirtAddr};
 use core::ptr::NonNull;
@@ -31,9 +31,13 @@ enum MemoryTypes {
     BadMemory = 5,
 }
 
+unsafe extern "C" {
+   unsafe static __stack_top: u8;
+}
+
 /// The global memory allocator.
-static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
-    SpinLocked::new(alloc::BestFitAllocator::new());
+static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
+    SpinLocked::new(alloc::bestfit::BestFitAllocator::new());
 
 /// Initialize the memory allocator.
 ///
@@ -41,27 +45,29 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
 ///
 /// Returns an error if the memory allocator could not be initialized.
 pub fn init_memory(boot_info: &BootInfo) -> vmm::AddressSpace {
-    if let Err(e) = pfa::init_pfa(PhysAddr::new(0x20000000)) { // TODO: Get this from the DeviceTree.
-        panic!("[Kernel] Error: failed to initialize PFA. Error: {e:?}");
+    let stack_top = &raw const __stack_top as usize;
+    if let Err(e) = pfa::init_pfa(PhysAddr::new(stack_top)) { // TODO: Get this from the DeviceTree.
+        panic!("failed to initialize PFA. Error: {e:?}");
     }
 
     // TODO: Configure.
-    let pgs = 4;
+    let pgs = 10;
 
     let mut kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
-        panic!("[Kernel] Error: failed to create kernel address space.");  
+        panic!("failed to create kernel address space. Error: {e:?}");  
     });
 
-    let begin = kaddr_space.map(Region::new(VirtAddr::new(0), pgs * PAGE_SIZE, Backing::Zeroed, Perms::all())).unwrap_or_else(|e| {
-        panic!("[Kernel] Error: failed to map kernel address space.");
+    let begin = kaddr_space.map(Region::new(None, 2 * PAGE_SIZE, Backing::Zeroed, Perms::all())).unwrap_or_else(|e| {
+        panic!("failed to map kernel address space. Error: {e:?}");
     });
 
-    let mut allocator = GLOBAL_ALLOCATOR.lock();
+    {
+        let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-    let range = begin.as_usize()..(begin.as_usize() + pgs * PAGE_SIZE);
-
-    if let Err(e) = unsafe { allocator.add_range(range) } {
-        panic!("[Kernel] Error: failed to add range to allocator.");
+        let range = begin..(begin + pgs * PAGE_SIZE);
+        if let Err(e) = unsafe { allocator.add_range(&range) } {
+            panic!("failed to add range to allocator. Error: {e:?}");
+        }
     }
 
     kaddr_space
@@ -75,7 +81,7 @@ pub fn init_memory(boot_info: &BootInfo) -> vmm::AddressSpace {
 /// Returns a pointer to the allocated memory block if the allocation was successful, or `None` if the allocation failed.
 pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
-    allocator.malloc(size, align).ok()
+    allocator.malloc(size, align, None).ok()
 }
 
 /// Free a memory block.

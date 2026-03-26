@@ -4,6 +4,7 @@ use hal::mem::{PhysAddr, VirtAddr};
 
 use crate::{
     mem::{
+        alloc::{Allocator, bestfit},
         pfa, vmm,
     },
     utils::KernelError,
@@ -12,53 +13,45 @@ use crate::{
 pub struct AddressSpace {
     begin: PhysAddr,
     end: PhysAddr,
+    allocator: bestfit::BestFitAllocator,
 }
 
 impl vmm::AddressSpacelike for AddressSpace {
-    fn new(size: usize) -> Result<Self, KernelError> {
-        let pg_cnt = size.div_ceil(pfa::PAGE_SIZE);
-        let begin = pfa::alloc_page(pg_cnt).ok_or(KernelError::OutOfMemory)?;
-        let end = begin.checked_add(pg_cnt * pfa::PAGE_SIZE).ok_or(KernelError::OutOfMemory)?;
+    fn new(pgs: usize) -> Result<Self, KernelError> {
+        let begin = pfa::alloc_page(pgs).ok_or(KernelError::OutOfMemory)?;
+        let end = begin
+            .checked_add(pgs * pfa::PAGE_SIZE)
+            .ok_or(KernelError::OutOfMemory)?;
+
+        let mut allocator = bestfit::BestFitAllocator::new();
+        unsafe { allocator.add_range(&(begin..end))? };
 
         Ok(Self {
             begin,
             end,
+            allocator,
         })
     }
 
     fn map(&mut self, region: vmm::Region) -> Result<PhysAddr, KernelError> {
-        // Do both checks in one statement.
-        let phys = self.virt_to_phys(region.start()).and_then(|phys| {
-            if phys > self.end {
-                None
-            } else {
-                Some(phys)
-            }
-        }).ok_or(KernelError::InvalidArgument)?;
+        let req = region.start.and_then(|virt| self.virt_to_phys(virt));
+        // TODO: per page align
+        let align = core::mem::align_of::<u128>();
+        let start = self.allocator.malloc::<u8>(region.len(), align, req)?;
 
         match region.backing {
             vmm::Backing::Anon(phys) => {
                 unsafe {
-                    copy_nonoverlapping(
-                        phys.as_mut_ptr::<u8>(),
-                        phys.as_mut_ptr::<u8>(),
-                        region.len(),
-                    )
+                    copy_nonoverlapping(phys.as_mut_ptr::<u8>(), start.as_ptr(), region.len())
                 };
-            },
+            }
             vmm::Backing::Zeroed => {
-                unsafe {
-                    core::ptr::write_bytes(
-                        phys.as_mut_ptr::<u8>(),
-                        0,
-                        region.len(),
-                    )
-                };
-            },
-            vmm::Backing::Uninit => {},
+                unsafe { core::ptr::write_bytes(start.as_ptr(), 0, region.len()) };
+            }
+            vmm::Backing::Uninit => {}
         }
 
-         Ok(phys)
+        Ok(start.into())
     }
 
     fn unmap(&mut self, _region: &vmm::Region) -> Result<(), KernelError> {
@@ -70,11 +63,12 @@ impl vmm::AddressSpacelike for AddressSpace {
     }
 
     fn phys_to_virt(&self, addr: PhysAddr) -> Option<VirtAddr> {
-        addr.checked_sub(self.begin.as_usize()).map(|phys| VirtAddr::new(phys.as_usize()))
+        addr.checked_sub(self.begin.as_usize())
+            .map(|phys| VirtAddr::new(phys.as_usize()))
     }
 
     fn virt_to_phys(&self, addr: VirtAddr) -> Option<PhysAddr> {
-       self.begin.checked_add(addr.as_usize())
+        self.begin.checked_add(addr.as_usize())
     }
 
     fn end(&self) -> VirtAddr {

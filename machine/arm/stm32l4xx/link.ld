@@ -39,15 +39,6 @@ SECTIONS
         KEEP(*(.ivt.ext));
     } > FLASH :text
 
-    .stack (NOLOAD) :
-    {
-        . = ALIGN(4);
-        __stack_start = .;
-        . = . + __stack_size;
-        . = ALIGN(4);
-        __stack_top = .;
-    } > RAM
-
     .text :
     {
         *(.text .text.* .gnu.linkonce.t*)
@@ -129,6 +120,15 @@ SECTIONS
         . = ALIGN(4);
         __bss_end = .;
     } > RAM :data
+
+    .stack (NOLOAD) :
+    {
+        . = ALIGN(4);
+        __stack_start = .;
+        . = . + __stack_size;
+        . = ALIGN(4);
+        __stack_top = .;
+    } > RAM
 
     /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
 }

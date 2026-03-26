@@ -1,5 +1,6 @@
 [workspace]
 members = ["examples/*", "xtasks", "xtasks/crates/*"]
+default-members = ["."]
 
 [workspace.dependencies]
 interface = { path = "interface" }

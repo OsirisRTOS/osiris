@@ -43,7 +43,16 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                 return Err(KernelError::InvalidAlign);
             }
 
-            let ptr = NonNull::new(addr.as_mut_ptr::<Self>()).ok_or(KernelError::InvalidAddress)?;
+            let ptr = NonNull::new(addr.as_mut_ptr::<Self>()).ok_or(KernelError::InvalidAddress(addr))?;
+            // Align this up to PAGE_SIZE
+            let begin = addr + size_of::<Self>();
+            let begin = if begin.is_multiple_of(super::PAGE_SIZE) {
+                begin
+            } else {
+                PhysAddr::new((begin.as_usize() + super::PAGE_SIZE - 1) & !(super::PAGE_SIZE - 1))
+            };
+            // TODO: Subtract the needed pages from the available
+            unsafe { core::ptr::write(ptr.as_ptr(), Self::new(begin).ok_or(KernelError::InvalidAddress(begin))?) };
 
             // Safety: Ptr is properly aligned and non-null. The validity of the memory at that address is valid by the call contract.
             Ok(Pin::new(unsafe { boxed::Box::from_raw(ptr) }))
@@ -119,7 +128,7 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                     self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - rem) as u32) >> skip);
 
                     if len <= rem {
-                        return Some(PhysAddr::new(start));
+                        return Some(self.begin + (start * super::PAGE_SIZE));
                     }
 
                     len -= rem;
@@ -201,7 +210,7 @@ mod tests {
             let pre = allocator.l1.clone();
 
             let addr = super::super::Allocator::alloc(&mut allocator, ALLOC_SIZE).unwrap();
-            let idx = addr / super::super::PAGE_SIZE;
+            let idx = addr.as_usize() / super::super::PAGE_SIZE;
 
             // Check that the bits in returned addresses is all ones in pre.
             for i in 0..ALLOC_SIZE {
