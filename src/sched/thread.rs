@@ -4,7 +4,7 @@ use core::{borrow::Borrow, ffi::c_void};
 
 use hal::{Stack, stack::EntryFn};
 use hal::stack::{FinFn, Stacklike};
-use macros::TaggedLinks;
+use proc_macros::TaggedLinks;
 
 use crate::sched::task::{self, KERNEL_TASK};
 use crate::types::list;

@@ -10,7 +10,6 @@ pack *args:
 
 example name *args: (build args)
     cargo build -p {{name}} {{args}}
-    cargo xtask pack --output {{name}}.bin --init examples/{{name}} {{args}}
 
 fmt *args:
     cargo fmt {{args}}

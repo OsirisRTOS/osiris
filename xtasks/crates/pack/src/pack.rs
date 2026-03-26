@@ -4,7 +4,6 @@ use anyhow::{Result, anyhow, bail};
 use cargo_metadata::MetadataCommand;
 
 use crate::{
-    bootinfo,
     elf::ElfInfo,
     image::{self},
 };
@@ -126,8 +125,7 @@ pub fn pack(init_info: &ElfInfo, kernel_info: &mut ElfInfo, out: &Path) -> Resul
     let init_section = img.add_elf(init_info, image::SectionDescripter::Loadable(None))?;
 
     // Patch bootinfo into kernel.
-    let boot_info = bootinfo::BootInfo::new(img.paddr(), &init_section);
-    kernel_info.patch_section(".bootinfo", 0, boot_info.inner())?;
+    //kernel_info.patch_section(".bootinfo", 0, boot_info.inner())?;
 
     // Update kernel in image.
     img.update(kernel_info, 0)?;

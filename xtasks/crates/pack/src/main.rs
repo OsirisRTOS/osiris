@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-mod bootinfo;
 mod elf;
 mod image;
 mod pack;

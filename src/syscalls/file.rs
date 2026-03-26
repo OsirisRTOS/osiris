@@ -1,7 +1,5 @@
 use core::{ffi::c_int, str};
-
-use crate::kprintln;
-use macros::syscall_handler;
+use proc_macros::syscall_handler;
 
 #[syscall_handler(num = 0)]
 fn syscall_print(fd: usize, buf: *const u8, len: usize) -> c_int {

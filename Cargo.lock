@@ -832,15 +832,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "interface"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "cbindgen",
- "cfg_aliases",
-]
-
-[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1097,7 +1088,6 @@ dependencies = [
  "envparse",
  "hal-select",
  "hal-testing",
- "interface",
  "kani",
  "macros",
  "quote",
@@ -1116,7 +1106,6 @@ dependencies = [
  "clap",
  "crc-fast",
  "elf",
- "interface",
  "log",
  "logging",
  "tempfile",
