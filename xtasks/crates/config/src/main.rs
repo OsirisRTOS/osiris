@@ -58,7 +58,9 @@ pub fn main() {
 }
 
 fn ask_confirmation(prompt: &str) -> bool {
-    print!("{} (y/N): ", prompt);
+    print!("{}\n\n(y/N): ",
+        prompt
+    );
 
     if let Err(_) = std::io::Write::flush(&mut std::io::stdout()) {
         return false;
@@ -79,14 +81,13 @@ fn run_load_preset(preset_name: &str, no_confirm: bool, current_dir: &Path) -> R
     let preset_path = PathBuf::from("presets").join(format!("{preset_name}.toml"));
     let preset = config::load_toml(&preset_path)?;
 
-    let config_path = current_dir.join(".cargo/config.toml");
+    let config_path = current_dir.join("config.toml");
 
     let mut config = config::load_toml_mut(&config_path)?;
 
     // Ask for confirmation
     if !no_confirm
-        && !ask_confirmation(&format!(
-            "Are you sure you want to apply the preset '{preset_name}' to {}?\nThis will overwrite all existing configuration options.",
+        && !ask_confirmation(&format!("\nApply preset '{preset_name}' to '{}'?\nThis overwrites all existing configuration options.",
             config_path.display()
         ))
     {
@@ -111,14 +112,14 @@ fn run_clean(no_confirm: bool, current_dir: &Path) -> Result<(), Error> {
     // Ask for confirmation
     if !no_confirm
         && !ask_confirmation(
-            "Are you sure you want to remove all configuration options from .cargo/config.toml?",
+            "Are you sure you want to remove all configuration options from config.toml?",
         )
     {
         log::info!("Abort.");
         return Ok(());
     }
 
-    let config_path = current_dir.join(".cargo/config.toml");
+    let config_path = current_dir.join("config.toml");
 
     let mut config = config::load_toml_mut(&config_path)?;
 
@@ -142,7 +143,7 @@ fn run_clean(no_confirm: bool, current_dir: &Path) -> Result<(), Error> {
 }
 
 fn run_ui(current_dir: &Path) {
-    let config_path = current_dir.join(".cargo/config.toml");
+    let config_path = current_dir.join("config.toml");
 
     let node = config::load_config(&current_dir, "options.toml");
 

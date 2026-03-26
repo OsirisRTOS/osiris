@@ -10,3 +10,4 @@ symbols.map
 compile_commands.json
 .cache/
 *.img
+config.toml
