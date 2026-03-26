@@ -7,23 +7,17 @@ pub extern "C" fn main() -> ! {
     hal::asm::startup_trampoline!();
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn app_main() -> ! {
+    osiris::syscall_print(0, "Hello World!".as_bytes().as_ptr(), 12);
+    loop {}
+}
+
 /// The panic handler.
 #[cfg(freestanding)]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    use hal::Machinelike;
-
-    osiris::kprintln!("**************************** PANIC ****************************");
-    osiris::kprintln!("");
-    osiris::kprintln!("Message: {}", info.message());
-
-    if let Some(location) = info.location() {
-        osiris::kprintln!("Location: {}:{}", location.file(), location.line());
-    }
-
-    osiris::kprintln!("**************************** PANIC ****************************");
-
-    hal::Machine::panic_handler(info);
+    osiris::panic(info);
 }
 
 #[cfg(not(freestanding))]

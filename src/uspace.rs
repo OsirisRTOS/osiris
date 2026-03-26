@@ -1,24 +1,19 @@
 //! This module provides access to userspace structures and services.
 
-use ::core::mem::transmute;
-
 use crate::sched;
 
-pub fn init_app(boot_info: &crate::BootInfo) -> Result<(), crate::utils::KernelError> {
-    let len = boot_info.args.init.len;
+unsafe extern "C" {
+    /// The entry point for the userspace application.
+    fn app_main() -> ();
+}
 
-    if len == 0 {
-        return Err(crate::utils::KernelError::InvalidArgument);
-    }
+extern "C" fn app_main_entry() {
+    unsafe { app_main() }
+}
 
-    let entry = unsafe {
-        transmute::<usize, extern "C" fn()>(
-            boot_info.args.init.begin as usize + boot_info.args.init.entry_offset as usize,
-        )
-    };
-
+pub fn init_app() -> Result<(), crate::utils::KernelError> {
     let attrs = sched::thread::Attributes {
-        entry,
+        entry: app_main_entry,
         fin: None,
     };
     let uid = sched::create_thread(sched::task::KERNEL_TASK, &attrs)?;

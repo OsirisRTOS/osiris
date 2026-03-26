@@ -33,7 +33,6 @@ set_property(SOURCE irq.S APPEND PROPERTY COMPILE_OPTIONS "-x" "assembler-with-c
 
 add_library(common STATIC
     ivt.S
-    entry.c
     syscall.c
     irq.S
     crt0.S

@@ -16,6 +16,33 @@ pub fn derive_tagged_links(input: proc_macro::TokenStream) -> proc_macro::TokenS
 }
 
 #[proc_macro_attribute]
+pub fn app_main(input: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let item = syn::parse_macro_input!(item as syn::ItemFn);
+    let block = &item.block;
+
+    let expanded = quote::quote! {
+        #[unsafe(no_mangle)]
+        #[unsafe(naked)]
+        extern "C" fn main() {
+            osiris::hal::asm::startup_trampoline!();
+        }
+
+        #[cfg(freestanding)]
+        #[panic_handler]
+        fn panic(info: &core::panic::PanicInfo) -> ! {
+            osiris::panic(info);
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn app_main() -> () {
+            #block
+        }
+    };
+
+    expanded.into()
+}
+
+#[proc_macro_attribute]
 pub fn service(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,

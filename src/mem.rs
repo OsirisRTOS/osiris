@@ -3,9 +3,8 @@
 use crate::mem::pfa::PAGE_SIZE;
 use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 use crate::sync::spinlock::SpinLocked;
-use crate::BootInfo;
 use alloc::Allocator;
-use hal::mem::{PhysAddr, VirtAddr};
+use hal::mem::{PhysAddr};
 use core::ptr::NonNull;
 
 pub mod alloc;
@@ -44,7 +43,7 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
 /// `boot_info` - The boot information. This contains the memory map.
 ///
 /// Returns an error if the memory allocator could not be initialized.
-pub fn init_memory(boot_info: &BootInfo) -> vmm::AddressSpace {
+pub fn init_memory() -> vmm::AddressSpace {
     let stack_top = &raw const __stack_top as usize;
     if let Err(e) = pfa::init_pfa(PhysAddr::new(stack_top)) { // TODO: Get this from the DeviceTree.
         panic!("failed to initialize PFA. Error: {e:?}");

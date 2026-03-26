@@ -3,8 +3,8 @@ members = ["examples/*", "xtasks", "xtasks/crates/*"]
 default-members = ["."]
 
 [workspace.dependencies]
-interface = { path = "interface" }
 logging = { path = "xtasks/logging" }
+osiris = { path = "." }
 
 [package]
 name = "osiris"
@@ -20,8 +20,7 @@ path = "src/main.rs"
 
 [dependencies]
 hal = { package = "hal-select", path = "machine/select" }
-macros = { path = "macros" }
-interface = { path = "interface" }
+proc_macros = { package = "macros", path = "macros" }
 envparse = "0.1.0"
 bitflags = "2.10.0"
 
