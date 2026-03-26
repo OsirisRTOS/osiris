@@ -303,13 +303,12 @@ fn merge_compile_commands(files: &[String]) -> String {
 /// # Returns
 ///
 /// PathBuf pointing to the workspace root directory
-fn workspace_dir() -> PathBuf {
+fn workspace_dir() -> Option<PathBuf> {
     let output = Command::new("cargo")
         .args(["locate-project", "--workspace", "--message-format=plain"])
-        .output()
-        .expect("failed to run cargo locate-project");
+        .output().ok()?;
     let path = String::from_utf8(output.stdout).expect("utf8");
-    PathBuf::from(path.trim()).parent().unwrap().to_path_buf()
+    Some(PathBuf::from(path.trim()).parent()?.to_path_buf())
 }
 
 /// Main build script entry point.
@@ -388,8 +387,10 @@ fn main() {
     // Merge and export compile_commands.json for IDE integration
     let merged = merge_compile_commands(&[hal_cc, common_cc]);
 
-    let project_root = workspace_dir();
-    let out_file = project_root.join("compile_commands.json");
-
-    fs::write(out_file, merged).expect("write merged compile_commands.json");
+    if let Some(project_root) = workspace_dir() {
+        let out_file = project_root.join("compile_commands.json");
+        fs::write(out_file, merged).expect("write merged compile_commands.json");
+    } else {
+        println!("cargo::warning=Could not determine workspace root, skipping compile_commands.json generation.");
+    }
 }
