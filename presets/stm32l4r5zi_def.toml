@@ -18,8 +18,3 @@ OSIRIS_TUNING_APPMEMSIZE = "8192"
 
 [build]
 target = "thumbv7em-none-eabi"
-
-[target.'cfg(target_os = "none")']
-rustflags = [
-  "-C", "link-arg=--entry=main",
-]

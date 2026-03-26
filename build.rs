@@ -20,15 +20,6 @@ fn main() {
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
     generate_syscalls_export("src/syscalls").expect("Failed to generate syscall exports.");
 
-    generate_device_tree().expect("Failed to generate device tree.");
-
-    // Get linker script from environment variable
-    if let Ok(linker_script) = std::env::var("DEP_HAL_LINKER_SCRIPT") {
-        println!("cargo::rustc-link-arg=-T{linker_script}");
-    } else {
-        println!("cargo::warning=LD_SCRIPT_PATH environment variable not set.");
-    }
-
     cfg_aliases! {
         freestanding: { all(not(test), not(doctest), not(doc), not(kani), any(target_os = "none", target_os = "unknown")) },
     }

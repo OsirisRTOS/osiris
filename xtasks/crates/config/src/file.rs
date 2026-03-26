@@ -20,6 +20,15 @@ pub fn load_file(path: &Path) -> Result<File> {
     })
 }
 
+pub fn create_if_not_exists(path: &Path) -> Result<()> {
+    if !path.exists() {
+        std::fs::write(path, "")
+            .with_context(|| format!("failed to create file {}", path.display()))?;
+    }
+
+    Ok(())
+}
+
 pub fn load_files(root: &Path, filename: &str) -> Vec<Result<File>> {
     let mut files = Vec::new();
 

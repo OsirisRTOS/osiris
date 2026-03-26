@@ -337,7 +337,8 @@ fn workspace_dir() -> PathBuf {
 ///
 /// Exits with error code 1 if any critical build step fails
 fn main() {
-    let out = env::var("OUT_DIR").unwrap_or("src".to_string());
+    let out = env::var("OUT_DIR").unwrap();
+    println!("cargo::rustc-link-search={out}");
 
     let hal = fail_on_error(env::var("OSIRIS_ARM_HAL").with_context(
         || "OSIRIS_ARM_HAL environment variable not set. Please set it to the path of the ARM HAL.",
@@ -363,7 +364,7 @@ fn main() {
     let libhal = libhal_config.build();
 
     println!("cargo::rustc-link-search=native={}", libhal.display());
-    println!("cargo::metadata=linker-script={out}/link.ld");
+    println!("cargo::rerun-if-changed={out}/link.ld");
 
     // Extract compile commands for HAL
     let hal_cc = build_dir.join("compile_commands.json");
