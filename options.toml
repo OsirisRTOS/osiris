@@ -26,26 +26,14 @@ description = "Enables the Floating Point Unit (FPU). This is required for appli
 type = "Boolean"
 default = false
 
-[stackpages]
-name = "Stack Pages"
-description = "Number of pages to allocate for the kernel stack."
-type = { type = "Integer", min = 1 }
-default = 1
-
-[tuning.appmemsize]
-name = "Application Memory Size"
-description = "Sets the size of the initial memory region for the init application. This memory is used for the heap and stack."
-type = { type = "Integer", min = 0 }
-default = 8192
-
-[tuning.appstacksize]
-name = "Application Stack Size"
-description = "Sets the size of the stack for the init application. This must be less than the application memory size."
-type = { type = "Integer", min = 0 }
-default = 2048
-
 [tuning.dts]
 name = "Device Tree Source"
 description = "Board DTS file targeted to build OS for. Relative to the toplevel boards/ directory."
 type = "String"
 default = "nucleo_l4r5zi.dts"
+
+[stackpages]
+name = "Stack Pages"
+description = "Number of pages to allocate for the kernel stack."
+type = { type = "Integer", min = 1 }
+default = 1
