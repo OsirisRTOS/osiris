@@ -35,7 +35,8 @@ fn main() {
 }
 
 fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
-    let dts_path = std::env::var("OSIRIS_TUNING_DEVICETREE").expect("OSIRIS_DTS not set");
+    let dts_path =
+        std::env::var("OSIRIS_TUNING_DEVICETREE").expect("OSIRIS_TUNING_DEVICETREE not set");
     let dts = Path::new(&dts_path);
 
     println!("cargo::rerun-if-changed={dts_path}");
