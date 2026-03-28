@@ -3,11 +3,10 @@ use core::ptr::copy_nonoverlapping;
 use hal::mem::{PhysAddr, VirtAddr};
 
 use crate::{
-    mem::{
+    error::Result, mem::{
         alloc::{Allocator, bestfit},
         pfa, vmm,
-    },
-    utils::KernelError,
+    }
 };
 
 pub struct AddressSpace {
@@ -17,11 +16,11 @@ pub struct AddressSpace {
 }
 
 impl vmm::AddressSpacelike for AddressSpace {
-    fn new(pgs: usize) -> Result<Self, KernelError> {
-        let begin = pfa::alloc_page(pgs).ok_or(KernelError::OutOfMemory)?;
+    fn new(pgs: usize) -> Result<Self> {
+        let begin = pfa::alloc_page(pgs).ok_or(kerr!(OutOfMemory))?;
         let end = begin
             .checked_add(pgs * pfa::PAGE_SIZE)
-            .ok_or(KernelError::OutOfMemory)?;
+            .ok_or(kerr!(OutOfMemory))?;
 
         let mut allocator = bestfit::BestFitAllocator::new();
         unsafe { allocator.add_range(&(begin..end))? };
@@ -33,7 +32,7 @@ impl vmm::AddressSpacelike for AddressSpace {
         })
     }
 
-    fn map(&mut self, region: vmm::Region) -> Result<PhysAddr, KernelError> {
+    fn map(&mut self, region: vmm::Region) -> Result<PhysAddr> {
         let req = region.start.and_then(|virt| self.virt_to_phys(virt));
         // TODO: per page align
         let align = core::mem::align_of::<u128>();
@@ -54,11 +53,11 @@ impl vmm::AddressSpacelike for AddressSpace {
         Ok(start.into())
     }
 
-    fn unmap(&mut self, _region: &vmm::Region) -> Result<(), KernelError> {
+    fn unmap(&mut self, _region: &vmm::Region) -> Result<()> {
         Ok(())
     }
 
-    fn protect(&mut self, _region: &vmm::Region, _perms: vmm::Perms) -> Result<(), KernelError> {
+    fn protect(&mut self, _region: &vmm::Region, _perms: vmm::Perms) -> Result<()> {
         Ok(())
     }
 
@@ -76,7 +75,7 @@ impl vmm::AddressSpacelike for AddressSpace {
         self.phys_to_virt(self.end).unwrap()
     }
 
-    fn activate(&self) -> Result<(), KernelError> {
+    fn activate(&self) -> Result<()> {
         Ok(())
     }
 }

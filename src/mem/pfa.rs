@@ -2,9 +2,9 @@
 
 use hal::mem::PhysAddr;
 
+use crate::error::Result;
 use crate::sync::spinlock::SpinLocked;
 use crate::types::boxed::Box;
-use crate::utils::KernelError;
 
 use core::pin::Pin;
 
@@ -27,16 +27,16 @@ trait Allocator<const N: usize> {
     /// Safety:
     /// 
     /// - The returned function must only be called with a useable and valid physical address.
-    fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>, KernelError>;
+    fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>>;
 
     fn alloc(&mut self, page_count: usize) -> Option<PhysAddr>;
     fn free(&mut self, addr: PhysAddr, page_count: usize);
 }
 
-pub fn init_pfa(addr: PhysAddr) -> Result<(), KernelError> {
+pub fn init_pfa(addr: PhysAddr) -> Result<()> {
     let mut pfa = PFA.lock();
     if pfa.is_some() {
-        return Err(KernelError::CustomError("Page frame allocator is already initialized"));
+        return Err(kerr!(InvalidArgument));
     }
 
     let initializer = AllocatorType::initializer();

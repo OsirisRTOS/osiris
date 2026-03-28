@@ -13,13 +13,20 @@ impl<const N: usize> Scheduler<N> {
         }
     }
 
-    pub fn enqueue(&mut self, uid: thread::UId, storage: &mut ServerView<N>) {
-        self.edf.insert(uid, storage);
+    pub fn enqueue(&mut self, uid: thread::UId, now: u64, storage: &mut ServerView<N>) {
+        if let Some(server) = storage.get_mut(uid) {
+            server.replenish(now);
+            self.edf.insert(uid, storage);
+        }
     }
 
     pub fn put(&mut self, uid: thread::UId, dt: u64, storage: &mut ServerView<N>) {
-        if let Some(server) = storage.get_mut(uid) {
-            server.consume(dt);
+        if Some(uid) == self.edf.min() {
+            if let Some(server) = storage.get_mut(uid) {
+                server.consume(dt);
+            } else {
+                bug!("thread {} not found in storage", uid);
+            }
         }
     }
 

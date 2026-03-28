@@ -3,11 +3,11 @@
 use core::ffi::{c_int, c_uint};
 
 mod file;
-mod tasks;
+mod sched;
 
 // We need to import everything so that the macro is able to find the entry functions.
 use file::*;
-use tasks::*;
+use sched::*;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn handle_syscall(number: usize, args: *const c_uint) -> c_int {

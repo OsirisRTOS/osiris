@@ -1,7 +1,7 @@
-use core::{fmt::Display, ops::{Add, Div, Rem, Sub}, ptr::NonNull};
+use core::{fmt::{Display, LowerHex, UpperHex}, ops::{Add, Div, Rem, Sub}, ptr::NonNull};
 
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct PhysAddr(usize);
 
 impl PhysAddr {
@@ -97,6 +97,18 @@ impl From<PhysAddr> for usize {
     #[inline]
     fn from(addr: PhysAddr) -> Self {
         addr.0
+    }
+}
+
+impl LowerHex for PhysAddr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:x}", self.0)
+    }
+}
+
+impl UpperHex for PhysAddr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:X}", self.0)
     }
 }
 

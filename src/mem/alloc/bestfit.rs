@@ -2,7 +2,7 @@ use core::{ops::Range, ptr::NonNull};
 
 use hal::mem::PhysAddr;
 
-use crate::utils::{self, KernelError};
+use crate::error::Result;
 
 /// The metadata that is before any block in the BestFitAllocator.
 struct BestFitMeta {
@@ -44,13 +44,13 @@ impl BestFitAllocator {
     /// The range must be valid, 128bit aligned and must not overlapping with any other current or future range.
     /// The range must also be at least as large as `MIN_RANGE_SIZE`.
     /// Also the range must stay valid, for the whole lifetime of the allocator. Also the lifetime of any allocation is only valid as long as the allocator is valid.
-    pub unsafe fn add_range(&mut self, range: &Range<PhysAddr>) -> Result<(), utils::KernelError> {
+    pub unsafe fn add_range(&mut self, range: &Range<PhysAddr>) -> Result<()> {
         let ptr = range.start;
 
         // Check if the pointer is 128bit aligned.
         if !ptr.is_multiple_of(align_of::<u128>()) {
-            return Err(utils::KernelError::InvalidAlign);
-        }
+                return Err(kerr!(InvalidArgument));
+            }
 
         debug_assert!(range.end > range.start);
         debug_assert!(range.end.diff(range.start) > size_of::<BestFitMeta>() + Self::align_up());
@@ -92,8 +92,8 @@ impl BestFitAllocator {
         &mut self,
         size: usize,
         requested: Option<PhysAddr>,
-    ) -> Result<(NonNull<u8>, Option<NonNull<u8>>), utils::KernelError> {
-        let mut best_fit = Err(utils::KernelError::OutOfMemory);
+    ) -> Result<(NonNull<u8>, Option<NonNull<u8>>)> {
+        let mut best_fit = Err(kerr!(OutOfMemory));
         let mut best_fit_size = usize::MAX;
 
         let mut current = self.head;
@@ -190,27 +190,27 @@ impl super::Allocator for BestFitAllocator {
     /// `align` - The alignment of the block.
     ///
     /// Returns the user pointer to the block if successful, otherwise an error.
-    fn malloc<T>(&mut self, size: usize, align: usize, request: Option<PhysAddr>) -> Result<NonNull<T>, utils::KernelError> {
+    fn malloc<T>(&mut self, size: usize, align: usize, request: Option<PhysAddr>) -> Result<NonNull<T>> {
         // Check if the alignment is valid.
         if align > align_of::<u128>() {
-            return Err(utils::KernelError::InvalidAlign);
+            return Err(kerr!(InvalidArgument));
         }
 
         if let Some(request) = request {
             if !request.is_multiple_of(align) {
-                return Err(utils::KernelError::InvalidAlign);
+                return Err(kerr!(InvalidArgument));
             }
         }   
 
         // Check if the size is valid.
         if size == 0 {
-            return Err(utils::KernelError::InvalidSize);
+            return Err(kerr!(InvalidArgument));
         }
 
         // For some cfg this warning is correct. But for others its not.
         #[allow(clippy::absurd_extreme_comparisons)]
         if size >= super::MAX_ADDR {
-            return Err(utils::KernelError::InvalidSize);
+            return Err(kerr!(InvalidArgument));
         }
 
         // Align the size.
@@ -324,7 +324,7 @@ impl super::Allocator for BestFitAllocator {
         meta.next = self.head;
 
         // Check if the size of the block is correct.
-        BUG_ON!(meta.size != super::super::align_up(size), "Invalid size in free()");
+        bug_on!(meta.size != super::super::align_up(size), "Invalid size in free()");
 
         // Set the size of the block.
         meta.size = size;
@@ -338,6 +338,8 @@ impl super::Allocator for BestFitAllocator {
 
 #[cfg(test)]
 mod tests {
+    use crate::error::Kind;
+
     use super::*;
     use super::super::*;
 
@@ -421,7 +423,7 @@ mod tests {
         let request = range.start + 4096;
         let ptr = allocator.malloc::<u8>(128, 1, Some(request));
 
-        assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
 
     #[test]
@@ -436,7 +438,7 @@ mod tests {
         let request = range.start + 127;
         let ptr = allocator.malloc::<u8>(128, 8, Some(request));
 
-        assert!(ptr.is_err_and(|e| e == utils::KernelError::InvalidAlign));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::InvalidAlign));
     }
 
     #[test]
@@ -453,7 +455,7 @@ mod tests {
         verify_block(ptr, 128, None);
 
         let ptr = allocator.malloc::<u8>(128, 1, Some(request));
-        assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
 
     #[test]
@@ -468,7 +470,7 @@ mod tests {
         let request = range.end + 128;
         let ptr = allocator.malloc::<u8>(128, 1, Some(request));
 
-        assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
 
     #[test]
@@ -534,7 +536,7 @@ mod tests {
         }
 
         let ptr = allocator.malloc::<u8>(SIZE, 1, None);
-        assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
 
     #[test]
@@ -646,7 +648,7 @@ mod tests {
         }
 
         let ptr = allocator.malloc::<u8>(SIZE, 1, None);
-        assert!(ptr.is_err_and(|e| e == utils::KernelError::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
 
         verify_ptrs_not_overlaping(ptrs.as_slice());
     }

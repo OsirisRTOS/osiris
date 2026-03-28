@@ -6,21 +6,22 @@
 #[macro_use]
 mod macros;
 #[macro_use]
-mod utils;
+mod error;
 mod faults;
 mod mem;
 mod types;
 mod idle;
+mod uspace;
+mod print;
 
-pub mod print;
-pub mod sched;
-pub mod sync;
-pub mod syscalls;
-pub mod time;
-pub mod uspace;
+mod sched;
+mod sync;
+mod syscalls;
+mod time;
+
+pub mod uapi;
 
 use hal::Machinelike;
-include!(concat!(env!("OUT_DIR"), "/syscalls_export.rs"));
 
 pub use hal;
 pub use proc_macros::app_main;
@@ -43,17 +44,12 @@ pub unsafe extern "C" fn kernel_init() -> ! {
 
     // Initialize the memory allocator.
     let kaddr_space = mem::init_memory();
-
     kprintln!("Memory initialized.");
 
-    if let Err(e) = sched::init(kaddr_space) {
-        panic!("failed to initialize scheduler. Error: {e:?}");
-    }
-
+    sched::init(kaddr_space);
     kprintln!("Scheduler initialized.");
 
     idle::init();
-
     kprintln!("Idle thread initialized.");
 
     let (cyc, ns) = hal::Machine::bench_end();
@@ -62,9 +58,7 @@ pub unsafe extern "C" fn kernel_init() -> ! {
     );
 
     // Start the init application.
-    if let Err(e) = uspace::init_app() {
-        panic!("failed to start init application. Error: {e:?}");
-    }
+    uspace::init_app();
     
     sched::enable();
 

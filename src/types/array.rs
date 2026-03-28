@@ -1,11 +1,11 @@
 //! This module implements static and dynamic arrays for in-kernel use.
 
+use crate::error::Result;
+
 use super::{
     traits::{Get, GetMut, ToIndex},
     boxed::Box,
 };
-
-use crate::utils::KernelError;
 
 use core::{borrow::Borrow, mem::MaybeUninit};
 use core::{
@@ -39,14 +39,14 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
     /// `value` - The value to insert.
     ///
     /// Returns `Ok(())` if the index was in-bounds, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn insert(&mut self, idx: &K, value: V) -> Result<(), KernelError> {
+    pub fn insert(&mut self, idx: &K, value: V) -> Result<()> {
         let idx = K::to_index(Some(idx));
 
         if idx < N {
             self.data[idx] = Some(value);
             Ok(())
         } else {
-            Err(KernelError::OutOfMemory)
+            Err(kerr!(OutOfMemory))
         }
     }
 
@@ -55,7 +55,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
     /// `value` - The value to insert.
     ///
     /// Returns `Ok(index)` if the value was inserted, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn insert_next(&mut self, value: V) -> Result<usize, KernelError> {
+    pub fn insert_next(&mut self, value: V) -> Result<usize> {
         for (i, slot) in self.data.iter_mut().enumerate() {
             if slot.is_none() {
                 *slot = Some(value);
@@ -63,7 +63,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
             }
         }
 
-        Err(KernelError::OutOfMemory)
+        Err(kerr!(OutOfMemory))
     }
 
     /// Remove the value at the given index.
@@ -111,6 +111,14 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
         }
 
         None
+    }
+
+    pub fn at_cont(&self, idx: usize) -> Option<&V> {
+        if idx < N {
+            self.data[idx].as_ref()
+        } else {
+            None
+        }
     }
 
     pub fn find_empty(&self) -> Option<usize> {
@@ -237,7 +245,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// `additional` - The additional space to reserve.
     ///
     /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn reserve(&mut self, additional: usize) -> Result<(), KernelError> {
+    pub fn reserve(&mut self, additional: usize) -> Result<()> {
         let len_extra = self.extra.len();
 
         // Check if we have enough space in the inline storage.
@@ -250,7 +258,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         let mut new_extra = Box::new_slice_uninit(grow)?;
 
         // Check that the new extra storage has the requested length.
-        BUG_ON!(new_extra.len() != grow);
+        bug_on!(new_extra.len() != grow);
 
         // Copy the old extra storage into the new one.
         new_extra[..len_extra].copy_from_slice(&self.extra);
@@ -265,7 +273,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// `total_capacity` - The total space to be reserved.
     ///
     /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn reserve_total_capacity(&mut self, total_capacity: usize) -> Result<(), KernelError> {
+    pub fn reserve_total_capacity(&mut self, total_capacity: usize) -> Result<()> {
         // Check if we already have enough space
         if self.capacity() >= total_capacity {
             return Ok(());
@@ -276,7 +284,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         let mut new_extra = Box::new_slice_uninit(new_out_of_line_cap)?;
 
         // Check that the new extra storage has the requested length.
-        BUG_ON!(new_extra.len() != new_out_of_line_cap);
+        bug_on!(new_extra.len() != new_out_of_line_cap);
 
         let curr_out_of_line_size = self.extra.len();
         // Copy the old extra storage into the new one.
@@ -293,7 +301,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// `value` - The value to initialize the elements in the Vec with.
     ///
     /// Returns the new Vec or `Err(KernelError::OutOfMemory)` if the allocation failed.
-    pub fn new_init(length: usize, value: T) -> Result<Self, KernelError> {
+    pub fn new_init(length: usize, value: T) -> Result<Self> {
         let mut vec = Self::new();
 
         // Check if we can fit all elements in the inline storage.
@@ -329,7 +337,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// `value` - The value to push.
     ///
     /// Returns `Ok(())` if the value was pushed, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn push(&mut self, value: T) -> Result<(), KernelError> {
+    pub fn push(&mut self, value: T) -> Result<()> {
         // Check if we have enough space in the inline storage.
         if self.len < N {
             // Push the value into the inline storage.
@@ -350,7 +358,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
                 let grow = (len_extra + 1) * 2;
                 let mut new_extra = Box::new_slice_uninit(grow)?;
 
-                BUG_ON!(new_extra.len() != grow);
+                bug_on!(new_extra.len() != grow);
 
                 // Copy the old extra storage into the new one.
                 new_extra[..len_extra].copy_from_slice(&self.extra);

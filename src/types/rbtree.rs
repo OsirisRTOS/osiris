@@ -61,6 +61,19 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 
     pub fn insert<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<(), ()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,{
+        let already_linked = {
+            let node = storage.get(id).ok_or(())?;
+            let links = node.links();
+            self.root == Some(id)
+                || links.parent.is_some()
+                || links.left.is_some()
+                || links.right.is_some()
+        };
+
+        if already_linked {
+            self.remove(id, storage)?;
+        }
+
         let mut last = None;
 
         {
@@ -869,6 +882,24 @@ mod tests {
         }
 
         validate_tree(&tree, &store, &keys);
+    }
+
+    #[test]
+    fn reinsert_same_id_is_stable() {
+        let keys = vec![10, 5, 15];
+        let mut store = NodeStore::new(&keys);
+        let mut tree = RbTree::new();
+
+        tree.insert(0, &mut store).unwrap();
+        tree.insert(1, &mut store).unwrap();
+        tree.insert(2, &mut store).unwrap();
+
+        // Reinsert existing node id. This should not create duplicate structural links.
+        tree.insert(1, &mut store).unwrap();
+
+        let mut expected = keys.clone();
+        expected.sort();
+        validate_tree(&tree, &store, &expected);
     }
 
     #[test]

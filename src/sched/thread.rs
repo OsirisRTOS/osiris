@@ -1,17 +1,20 @@
 // ----------------------------------- Identifiers -----------------------------------
 
+use core::fmt::Display;
 use core::{borrow::Borrow, ffi::c_void};
 
 use hal::{Stack, stack::EntryFn};
 use hal::stack::{FinFn, Stacklike};
 use proc_macros::TaggedLinks;
 
+use crate::error::Result;
 use crate::sched::task::{self, KERNEL_TASK};
+use crate::time::tick;
 use crate::types::list;
-use crate::{types::{rbtree::{self, Compare}, traits::{Project, ToIndex}}, utils::KernelError};
+use crate::{types::{rbtree::{self, Compare}, traits::{Project, ToIndex}}};
 
 pub const IDLE_THREAD: UId = UId {
-    uid: 0,
+    uid: 1,
     tid: Id { id: 0, owner: KERNEL_TASK },
 };
 
@@ -94,6 +97,12 @@ impl ToIndex for UId {
     }
 }
 
+impl Display for UId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "T{}-{}", self.tid.owner(), self.tid.as_usize())
+    }
+}
+
 // -------------------------------------------------------------------------
 
 /// The state of a thread.
@@ -118,9 +127,8 @@ pub struct State {
 #[derive(TaggedLinks)]
 pub struct RtServer {
     budget: u64,
-    total_budget: u64,
-
-    reservation: u64,
+    budget_left: u64,
+    period: u64,
     deadline: u64,
 
     // Back-reference to the thread uid.
@@ -132,15 +140,19 @@ pub struct RtServer {
 }
 
 impl RtServer {
-    pub fn new(budget: u64, reservation: u64, deadline: u64, uid: UId) -> Self {
+    pub fn new(budget: u64, period: u64, uid: UId) -> Self {
         Self {
             budget,
-            total_budget: budget,
-            reservation,
-            deadline,
+            budget_left: budget,
+            period,
+            deadline: tick() + period,
             uid,
             _rt_links: rbtree::Links::new(),
         }
+    }
+
+    pub fn budget_left(&self) -> u64 {
+        self.budget_left
     }
 
     pub fn budget(&self) -> u64 {
@@ -148,16 +160,15 @@ impl RtServer {
     }
 
     pub fn replenish(&mut self, now: u64) {
-        let next = self.deadline + self.reservation;
-        self.deadline = next.max(now + self.reservation);
-        self.budget = self.total_budget;
+        self.deadline += self.period;
+        self.budget_left = self.budget;
     }
 
     pub fn consume(&mut self, dt: u64) {
-        if self.budget >= dt {
-            self.budget -= dt;
+        if self.budget_left >= dt {
+            self.budget_left -= dt;
         } else {
-            self.budget = 0;
+            self.budget_left = 0;
         }
     }
 
@@ -178,6 +189,46 @@ impl Compare<RtTree, UId> for RtServer {
             self.uid.cmp(&other.uid)
         } else {
             ord
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[derive(TaggedLinks)]
+pub struct Waiter {
+    /// The time when the Thread will be awakened.
+    until: u64,
+
+    // Back-reference to the thread uid.
+    uid: UId,
+    /// Wakup tree links for the thread.
+    #[rbtree(tag = WakupTree, idx = UId)]
+    _wakeup_links: rbtree::Links<WakupTree, UId>,
+}
+
+impl Waiter {
+    pub fn new(until: u64, uid: UId) -> Self {
+        Self {
+            until,
+            uid,
+            _wakeup_links: rbtree::Links::new(),
+        }
+    }
+
+    pub fn until(&self) -> u64 {
+        self.until
+    }
+
+    pub fn set_until(&mut self, until: u64) {
+        self.until = until;
+    }
+}
+
+impl Compare<WakupTree, UId> for Waiter {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        match self.until.cmp(&other.until) {
+            core::cmp::Ordering::Equal => self.uid.cmp(&other.uid),
+            ord => ord,
         }
     }
 }
@@ -205,9 +256,8 @@ pub struct Thread {
     uid: UId,
     /// If the thread is real-time, its contains a constant bandwidth server.
     rt_server: Option<RtServer>,
-    /// Wakup tree links for the thread.
-    #[rbtree(tag = WakupTree, idx = UId)]
-    _wakeup_links: rbtree::Links<WakupTree, UId>,
+
+    waiter: Option<Waiter>,
 
     #[list(tag = RRList, idx = UId)]
     rr_links: list::Links<RRList, UId>,
@@ -228,12 +278,20 @@ impl Thread {
             },
             uid,
             rt_server: None,
-            _wakeup_links: rbtree::Links::new(),
+            waiter: None,
             rr_links: list::Links::new(),
         }
     }
 
-    pub fn save_ctx(&mut self, ctx: *mut c_void) -> Result<(), KernelError> {
+    pub fn set_waiter(&mut self, waiter: Option<Waiter>) {
+        self.waiter = waiter;
+    }
+
+    pub fn waiter(&self) -> Option<&Waiter> {
+        self.waiter.as_ref()
+    }
+
+    pub fn save_ctx(&mut self, ctx: *mut c_void) -> Result<()> {
         let sp = self.state.stack.create_sp(ctx)?;
         self.state.stack.set_sp(sp);
         Ok(())
@@ -260,12 +318,6 @@ impl Thread {
     }
 }
 
-impl Compare<WakupTree, UId> for Thread {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.uid.cmp(&other.uid)
-    }
-}
-
 impl Project<RtServer> for Thread {
     fn project(&self) -> Option<&RtServer> {
          self.rt_server.as_ref()
@@ -273,5 +325,15 @@ impl Project<RtServer> for Thread {
 
     fn project_mut(&mut self) -> Option<&mut RtServer> {
         self.rt_server.as_mut()
+    }
+}
+
+impl Project<Waiter> for Thread {
+    fn project(&self) -> Option<&Waiter> {
+         self.waiter.as_ref()
+    }
+
+    fn project_mut(&mut self) -> Option<&mut Waiter> {
+        self.waiter.as_mut()
     }
 }

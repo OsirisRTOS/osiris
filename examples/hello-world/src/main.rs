@@ -5,6 +5,12 @@ use osiris::app_main;
 
 #[app_main]
 fn main() {
-    osiris::syscall_print(0, "Hello World!".as_bytes().as_ptr(), 12);
-    loop {}
+    osiris::uprintln!("Hello World!");
+    let mut tick = 0;
+
+    loop {
+        osiris::uprintln!("Tick: {}", tick);
+        tick += 1;
+        osiris::uapi::sched::sleep_for(1000);
+    }
 }

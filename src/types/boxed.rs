@@ -1,7 +1,7 @@
 //! This module provides a simple heap-allocated memory block for in-kernel use.
 
-use crate::mem;
-use crate::utils::KernelError;
+use crate::{error::Result, mem};
+
 use core::{
     mem::{MaybeUninit, forget},
     ops::{Deref, DerefMut, Index, IndexMut, Range, RangeFrom, RangeTo},
@@ -23,7 +23,7 @@ impl<T> Box<[T]> {
     /// `len` - The length of the slice.
     ///
     /// Returns a new heap-allocated slice with the given length or an error if the allocation failed.
-    pub fn new_slice_zeroed(len: usize) -> Result<Self, KernelError> {
+    pub fn new_slice_zeroed(len: usize) -> Result<Self> {
         if len == 0 {
             return Ok(Self::new_slice_empty());
         }
@@ -34,7 +34,7 @@ impl<T> Box<[T]> {
                 ptr: unsafe { NonNull::new_unchecked(ptr) },
             })
         } else {
-            Err(KernelError::OutOfMemory)
+            Err(kerr!(OutOfMemory))
         }
     }
 
@@ -53,7 +53,7 @@ impl<T> Box<[T]> {
     /// `len` - The length of the slice.
     ///
     /// Returns a new heap-allocated slice with the given length or an error if the allocation failed.
-    pub fn new_slice_uninit(len: usize) -> Result<Box<[MaybeUninit<T>]>, KernelError> {
+    pub fn new_slice_uninit(len: usize) -> Result<Box<[MaybeUninit<T>]>> {
         if let Some(ptr) = mem::malloc(
             size_of::<MaybeUninit<T>>() * len,
             align_of::<MaybeUninit<T>>(),
@@ -63,7 +63,7 @@ impl<T> Box<[T]> {
                 ptr: unsafe { NonNull::new_unchecked(ptr) },
             })
         } else {
-            Err(KernelError::OutOfMemory)
+            Err(kerr!(OutOfMemory))
         }
     }
 }

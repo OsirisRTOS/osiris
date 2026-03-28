@@ -1,6 +1,6 @@
 use hal::mem::{PhysAddr, VirtAddr};
 
-use crate::{utils::KernelError};
+use crate::error::Result;
 
 mod nommu;
 
@@ -62,12 +62,12 @@ impl Region {
 
 pub trait AddressSpacelike {
     // Size is the amount of pages in the address space. On nommu systems this will be reserved.
-    fn new(pages: usize) -> Result<Self, KernelError> where Self: Sized;
-    fn map(&mut self, region: Region) -> Result<PhysAddr, KernelError>;
-    fn unmap(&mut self, region: &Region) -> Result<(), KernelError>;
-    fn protect(&mut self, region: &Region, perms: Perms) -> Result<(), KernelError>;
+    fn new(pages: usize) -> Result<Self> where Self: Sized;
+    fn map(&mut self, region: Region) -> Result<PhysAddr>;
+    fn unmap(&mut self, region: &Region) -> Result<()>;
+    fn protect(&mut self, region: &Region, perms: Perms) -> Result<()>;
     fn virt_to_phys(&self, addr: VirtAddr) -> Option<PhysAddr>;
     fn phys_to_virt(&self, addr: PhysAddr) -> Option<VirtAddr>;
     fn end(&self) -> VirtAddr;
-    fn activate(&self) -> Result<(), KernelError>;
+    fn activate(&self) -> Result<()>;
 }
