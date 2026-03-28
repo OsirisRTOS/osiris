@@ -4,8 +4,7 @@ use core::ptr::NonNull;
 use hal::mem::PhysAddr;
 
 use crate::{
-    types::boxed::{self, Box},
-    utils::KernelError,
+    error::Result, types::boxed::{self, Box}
 };
 
 pub struct Allocator<const N: usize> {
@@ -33,17 +32,17 @@ impl<const N: usize> Allocator<N> {
 }
 
 impl<const N: usize> super::Allocator<N> for Allocator<N> {
-    fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>, KernelError> {
-        |addr: PhysAddr, pcnt: usize| -> Result<Pin<Box<Self>>, KernelError> {
+    fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>> {
+        |addr: PhysAddr, pcnt: usize| -> Result<Pin<Box<Self>>> {
             if pcnt > N {
                 todo!("Runtime page frame allocator for more than {} pages", N)
             }
 
             if !addr.is_multiple_of(core::mem::align_of::<Self>()) {
-                return Err(KernelError::InvalidAlign);
+                return Err(kerr!(InvalidArgument));
             }
 
-            let ptr = NonNull::new(addr.as_mut_ptr::<Self>()).ok_or(KernelError::InvalidAddress(addr))?;
+            let ptr = NonNull::new(addr.as_mut_ptr::<Self>()).ok_or(kerr!(InvalidArgument))?;
             // Align this up to PAGE_SIZE
             let begin = addr + size_of::<Self>();
             let begin = if begin.is_multiple_of(super::PAGE_SIZE) {
@@ -52,7 +51,7 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                 PhysAddr::new((begin.as_usize() + super::PAGE_SIZE - 1) & !(super::PAGE_SIZE - 1))
             };
             // TODO: Subtract the needed pages from the available
-            unsafe { core::ptr::write(ptr.as_ptr(), Self::new(begin).ok_or(KernelError::InvalidAddress(begin))?) };
+            unsafe { core::ptr::write(ptr.as_ptr(), Self::new(begin).ok_or(kerr!(InvalidArgument))?) };
 
             // Safety: Ptr is properly aligned and non-null. The validity of the memory at that address is valid by the call contract.
             Ok(Pin::new(unsafe { boxed::Box::from_raw(ptr) }))

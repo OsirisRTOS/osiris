@@ -13,23 +13,6 @@ pub mod pfa;
 
 pub const BITS_PER_PTR: usize = core::mem::size_of::<usize>() * 8;
 
-/// The possible types of memory. Which is compatible with the multiboot2 memory map.
-/// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
-#[repr(C)]
-#[allow(unused)]
-enum MemoryTypes {
-    /// Memory that is available for use.
-    Available = 1,
-    /// Memory that is reserved for the system.
-    Reserved = 2,
-    /// Memory that is reclaimable after ACPI tables are read.
-    ACPIReclaimable = 3,
-    /// ACPI Non-volatile-sleeping memory.
-    Nvs = 4,
-    /// Memory that is bad.
-    BadMemory = 5,
-}
-
 unsafe extern "C" {
    unsafe static __stack_top: u8;
 }
@@ -46,18 +29,18 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
 pub fn init_memory() -> vmm::AddressSpace {
     let stack_top = &raw const __stack_top as usize;
     if let Err(e) = pfa::init_pfa(PhysAddr::new(stack_top)) { // TODO: Get this from the DeviceTree.
-        panic!("failed to initialize PFA. Error: {e:?}");
+        panic!("failed to initialize PFA. Error: {e}");
     }
 
     // TODO: Configure.
     let pgs = 10;
 
     let mut kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
-        panic!("failed to create kernel address space. Error: {e:?}");  
+        panic!("failed to create kernel address space. Error: {e}");  
     });
 
     let begin = kaddr_space.map(Region::new(None, 2 * PAGE_SIZE, Backing::Zeroed, Perms::all())).unwrap_or_else(|e| {
-        panic!("failed to map kernel address space. Error: {e:?}");
+        panic!("failed to map kernel address space. Error: {e}");
     });
 
     {
@@ -65,7 +48,7 @@ pub fn init_memory() -> vmm::AddressSpace {
 
         let range = begin..(begin + pgs * PAGE_SIZE);
         if let Err(e) = unsafe { allocator.add_range(&range) } {
-            panic!("failed to add range to allocator. Error: {e:?}");
+            panic!("failed to add range to allocator. Error: {e}");
         }
     }
 

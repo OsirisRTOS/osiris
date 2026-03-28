@@ -9,7 +9,6 @@ pub extern "C" fn main() -> ! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
-    osiris::syscall_print(0, "Hello World!".as_bytes().as_ptr(), 12);
     loop {}
 }
 

@@ -40,14 +40,14 @@ impl hal_api::Machinelike for ArmMachine {
 
     fn print(s: &str) -> Result<()> {
         use crate::asm;
-        asm::disable_interrupts();
+        let state = asm::disable_irq_save();
 
         if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0)
         {
-            asm::enable_interrupts();
+            asm::enable_irq_restr(state);
             Ok(())
         } else {
-            asm::enable_interrupts();
+            asm::enable_irq_restr(state);
             Err(hal_api::Error::default())
         }
     }

@@ -1,4 +1,5 @@
 //! This module provides the basic task and thread structures for the scheduler.
+use core::fmt::Display;
 use core::num::NonZero;
 use core::borrow::Borrow;
 
@@ -7,12 +8,12 @@ use hal::{Stack};
 
 use hal::stack::{Stacklike};
 
+use crate::error::Result;
 use crate::sched::thread;
 use crate::{mem, sched};
 
 use crate::mem::vmm::{AddressSpacelike};
 use crate::types::traits::ToIndex;
-use crate::utils::KernelError;
 
 pub struct Defaults {
     pub stack_pages: usize,
@@ -50,6 +51,12 @@ impl ToIndex for UId {
     }
 }
 
+impl Display for UId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Task-{}", self.uid)
+    }
+}
+
 pub struct Attributes {
     pub resrv_pgs: Option<NonZero<usize>>,
 }
@@ -65,14 +72,14 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(id: UId, attrs: &Attributes) -> Result<Self, KernelError> {
+    pub fn new(id: UId, attrs: &Attributes) -> Result<Self> {
         // TODO: On MMU systems, the resrv_pgs attribute will be ignored, as memory will not be reserved.
-        let resrv_pgs = attrs.resrv_pgs.ok_or(KernelError::OutOfMemory)?;
+        let resrv_pgs = attrs.resrv_pgs.ok_or(kerr!(InvalidArgument))?;
         let address_space = mem::vmm::AddressSpace::new(resrv_pgs.get())?;
         Self::from_addr_space(id, address_space)
     }
 
-    pub fn from_addr_space(id: UId, address_space: mem::vmm::AddressSpace) -> Result<Self, KernelError> {
+    pub fn from_addr_space(id: UId, address_space: mem::vmm::AddressSpace) -> Result<Self> {
         Ok(Self {
             id,
             address_space,
@@ -90,7 +97,7 @@ impl Task {
     fn allocate_stack(
         &mut self,
         attrs: &thread::Attributes,
-    ) -> Result<hal::stack::Descriptor, KernelError> {
+    ) -> Result<hal::stack::Descriptor> {
         let size = DEFAULTS.stack_pages * mem::pfa::PAGE_SIZE;
         let region = mem::vmm::Region::new(
             None,
@@ -112,12 +119,16 @@ impl Task {
         &mut self,
         uid: usize,
         attrs: &thread::Attributes,
-    ) -> Result<sched::thread::Thread, KernelError> {
+    ) -> Result<sched::thread::Thread> {
         let stack = self.allocate_stack(attrs)?;
 
         let stack = unsafe { Stack::new(stack) }?;
         let tid = self.allocate_tid();
 
         Ok(sched::thread::Thread::new(tid.get_uid(uid), stack))
+    }
+
+    pub fn tid_cntr(&self) -> usize {
+        self.tid_cntr
     }
 }

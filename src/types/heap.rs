@@ -1,7 +1,8 @@
 //! This module provides a binary heap implementation.
 
+use crate::error::Result;
+
 use super::array::Vec;
-use crate::utils::KernelError;
 
 /// An array-based binary heap, with N elements stored inline.
 #[derive(Debug)]
@@ -20,7 +21,7 @@ impl<T: Clone + Copy + Ord, const N: usize> BinaryHeap<T, N> {
     /// `value` - The value to push onto the binary heap.
     ///
     /// Returns `Ok(())` if the value was pushed onto the binary heap, or an error if the heap cannot be extended (e.g. OOM).
-    pub fn push(&mut self, value: T) -> Result<(), KernelError> {
+    pub fn push(&mut self, value: T) -> Result<()> {
         self.vec.push(value)?;
         self.sift_up(self.len() - 1);
         Ok(())

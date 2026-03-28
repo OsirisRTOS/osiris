@@ -22,31 +22,57 @@ macro_rules! __macro_syscall {
     ($num:expr) => {
         use core::arch::asm;
         unsafe {
-            asm!("svc {0}", const $num);
+            asm!("svc {num}", num = const $num, clobber_abi("C"));
         }
     };
     ($num:expr, $arg0:expr) => {
         use core::arch::asm;
         unsafe {
-            asm!("mov r0, {0}", "svc {1}", in(reg)$arg0, const $num);
+            asm!(
+                "svc {num}",
+                in("r0") $arg0,
+                num = const $num,
+                clobber_abi("C")
+            );
         }
     };
     ($num:expr, $arg0:expr, $arg1:expr) => {
         use core::arch::asm;
         unsafe {
-            asm!("mov r0, {0}", "mov r1, {1}", "svc {2}", in(reg)$arg0, in(reg)$arg1, const $num);
+            asm!(
+                "svc {num}",
+                in("r0") $arg0,
+                in("r1") $arg1,
+                num = const $num,
+                clobber_abi("C")
+            );
         }
     };
     ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {
         use core::arch::asm;
         unsafe {
-            asm!("mov r0, {0}", "mov r1, {1}", "mov r2, {2}", "svc {3}", in(reg)$arg0, in(reg)$arg1, in(reg)$arg2, const $num);
+            asm!(
+                "svc {num}",
+                in("r0") $arg0,
+                in("r1") $arg1,
+                in("r2") $arg2,
+                num = const $num,
+                clobber_abi("C")
+            );
         }
     };
     ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {
         use core::arch::asm;
         unsafe {
-            asm!("mov r0, {0}", "mov r1, {1}", "mov r2, {2}", "mov r3, {3}", "svc {4}", in(reg)$arg0, in(reg)$arg1, in(reg)$arg2, in(reg)$arg3, const $num);
+            asm!(
+                "svc {num}",
+                in("r0") $arg0,
+                in("r1") $arg1,
+                in("r2") $arg2,
+                in("r3") $arg3,
+                num = const $num,
+                clobber_abi("C")
+            );
         }
     };
 }
@@ -65,17 +91,28 @@ pub use crate::__macro_syscall as syscall;
 
 #[cfg(not(feature = "host"))]
 #[inline(always)]
-pub fn disable_interrupts() {
+pub fn disable_irq_save() -> usize {
     use core::arch::asm;
-    use core::sync::atomic::compiler_fence;
 
-    unsafe { asm!("cpsid i", options(nomem, nostack, preserves_flags)) };
-    compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    let old: usize;
+
+    unsafe { 
+        asm!(
+            "mrs {old}, primask",
+            "cpsid i",
+            "isb",
+            old = out(reg) old,
+            options(nostack, preserves_flags)
+        );
+    }
+    old
 }
 
 #[cfg(feature = "host")]
 #[inline(always)]
-pub fn disable_interrupts() {}
+pub fn disable_irq_save() -> usize {
+    0
+}
 
 #[cfg(not(feature = "host"))]
 #[inline(always)]
@@ -97,17 +134,23 @@ pub fn are_interrupts_enabled() -> bool {
 
 #[cfg(not(feature = "host"))]
 #[inline(always)]
-pub fn enable_interrupts() {
+pub fn enable_irq_restr(state: usize) {
     use core::arch::asm;
-    use core::sync::atomic::compiler_fence;
-
-    unsafe { asm!("cpsie i", options(nomem, nostack, preserves_flags)) };
-    compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    
+    unsafe { 
+        asm!(
+            "dsb",
+            "msr primask, {state}",
+            "isb",
+            state = in(reg) state,
+            options(nostack, preserves_flags)
+        );
+    }
 }
 
 #[cfg(feature = "host")]
 #[inline(always)]
-pub fn enable_interrupts() {}
+pub fn enable_irq_restr(state: usize) {}
 
 #[cfg(not(feature = "host"))]
 #[macro_export]

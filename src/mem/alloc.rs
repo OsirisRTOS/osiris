@@ -5,7 +5,7 @@ use core::ptr::NonNull;
 
 use hal::mem::PhysAddr;
 
-use crate::utils;
+use crate::error::Result;
 
 pub mod bestfit;
 
@@ -25,7 +25,7 @@ pub const MAX_ADDR: usize = usize::MAX;
 /// Each range added to the allocator must be valid for the whole lifetime of the allocator and must not overlap with any other range.
 /// The lifetime of any allocation is only valid as long as the allocator is valid. (A pointer must not be used after the allocator is dropped.)
 pub trait Allocator {
-    fn malloc<T>(&mut self, size: usize, align: usize, request: Option<PhysAddr>) -> Result<NonNull<T>, utils::KernelError>;
+    fn malloc<T>(&mut self, size: usize, align: usize, request: Option<PhysAddr>) -> Result<NonNull<T>>;
     unsafe fn free<T>(&mut self, ptr: NonNull<T>, size: usize);
 }
 

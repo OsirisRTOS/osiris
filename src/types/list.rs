@@ -188,9 +188,23 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
     where
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
-        let node = storage.get_mut(id).ok_or(())?;
-        node.links_mut().prev = None;
-        node.links_mut().next = None;
+        let linked = {
+            let node = storage.get(id).ok_or(())?;
+            let links = node.links();
+            self.head == Some(id)
+                || self.tail == Some(id)
+                || links.prev.is_some()
+                || links.next.is_some()
+        };
+
+        if linked {
+            self.remove(id, storage)?;
+        } else {
+            let node = storage.get_mut(id).ok_or(())?;
+            node.links_mut().prev = None;
+            node.links_mut().next = None;
+        }
+
         Ok(())
     }
 }
@@ -239,7 +253,7 @@ mod tests {
     fn storage() -> IndexMap<Id, Node, 8> {
         let mut map = IndexMap::new();
         for i in 0..4 {
-            map.insert(&Id(i), Node::new()).unwrap();
+            assert!(map.insert(&Id(i), Node::new()).is_ok());
         }
         map
     }
@@ -266,6 +280,36 @@ mod tests {
         let n1 = s.get(Id(1)).unwrap();
         assert_eq!(n3.links().next, Some(Id(1)));
         assert_eq!(n1.links().prev, Some(Id(3)));
+    }
+
+    #[test]
+    fn push_back_and_remove() {
+        let mut s = storage();
+        let mut list = List::<TestTag, Id>::new();
+
+        list.push_back(Id(1), &mut s).unwrap();
+        list.remove(Id(1), &mut s);
+
+        assert_eq!(list.head(), None);
+        assert_eq!(list.tail(), None);
+        assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    fn push_back_same_id_reinserts() {
+        let mut s = storage();
+        let mut list = List::<TestTag, Id>::new();
+
+        list.push_back(Id(1), &mut s).unwrap();
+        list.push_back(Id(1), &mut s).unwrap();
+
+        assert_eq!(list.head(), Some(Id(1)));
+        assert_eq!(list.tail(), Some(Id(1)));
+        assert_eq!(list.len(), 1);
+
+        let n1 = s.get(Id(1)).unwrap();
+        assert_eq!(n1.links().prev, None);
+        assert_eq!(n1.links().next, None);
     }
 
     #[test]

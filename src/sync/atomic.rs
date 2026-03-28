@@ -15,16 +15,9 @@ pub use core::sync::atomic::Ordering;
 
 #[inline(always)]
 pub fn irq_free<T>(f: impl FnOnce() -> T) -> T {
-    let enabled = hal::asm::are_interrupts_enabled();
-    if enabled {
-        hal::asm::disable_interrupts();
-    }
-
+    let state = hal::asm::disable_irq_save();
     let result = f();
-
-    if enabled {
-        hal::asm::enable_interrupts();
-    }
+    hal::asm::enable_irq_restr(state);
 
     result
 }

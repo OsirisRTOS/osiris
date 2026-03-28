@@ -1,0 +1,29 @@
+//! This module provides task management related syscalls.
+
+use core::ffi::c_int;
+
+use proc_macros::syscall_handler;
+
+use crate::{sched, time};
+
+#[syscall_handler(num = 1)]
+fn sleep(until_hi: u32, until_lo: u32) -> c_int {
+    let until = ((until_hi as u64) << 32) | (until_lo as u64);
+    sched::with(|sched| {
+        sched.sleep_until(until, time::tick());
+    });
+    0
+}
+
+#[syscall_handler(num = 2)]
+fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
+    let duration = ((duration_hi as u64) << 32) | (duration_lo as u64);
+    sched::with(|sched| {
+        let now = time::tick();
+        if sched.sleep_until(now + duration, now).is_err() {
+            panic!("failed to sleep for duration: {duration}");
+        }
+    });
+    0
+}
+

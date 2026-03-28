@@ -6,9 +6,8 @@ extern crate syn;
 extern crate walkdir;
 
 use cfg_aliases::cfg_aliases;
-use quote::ToTokens;
 use std::io::Write;
-use syn::{Attribute, FnArg, LitInt, punctuated::Punctuated, token::Comma};
+use syn::{Attribute, LitInt};
 use walkdir::WalkDir;
 
 extern crate cbindgen;
@@ -18,7 +17,6 @@ fn main() {
     println!("cargo::rerun-if-changed=build.rs");
 
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
-    generate_syscalls_export("src/syscalls").expect("Failed to generate syscall exports.");
 
     cfg_aliases! {
         freestanding: { all(not(test), not(doctest), not(doc), not(kani), any(target_os = "none", target_os = "unknown")) },
@@ -312,62 +310,6 @@ fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallData> {
                     }
 
                     syscalls.insert(name.clone(), num);
-                    numbers.insert(num, name);
-                }
-            }
-        }
-    }
-
-    syscalls
-}
-
-type SyscallDataExport = (u16, Punctuated<FnArg, Comma>);
-
-fn collect_syscalls_export<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallDataExport> {
-    let mut syscalls = HashMap::new();
-    let mut numbers = HashMap::new();
-
-    for entry in WalkDir::new(&root) {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(_) => continue,
-        };
-
-        if entry.file_type().is_file() {
-            let path = entry.path();
-
-            println!("Processing file: {}", path.display());
-
-            let contents = match std::fs::read_to_string(path) {
-                Ok(contents) => contents,
-                Err(_) => continue,
-            };
-
-            let file = match syn::parse_file(&contents) {
-                Ok(file) => file,
-                Err(_) => continue,
-            };
-
-            for item in file.items {
-                let item = match item {
-                    syn::Item::Fn(item) => item,
-                    _ => continue,
-                };
-
-                let name = item.sig.ident.to_string();
-
-                if let Some(num) = is_syscall(&item.attrs, &name) {
-                    if syscalls.contains_key(&name) {
-                        println!("cargo:warning=Duplicate syscall handler: {name}");
-                        continue;
-                    }
-
-                    if numbers.contains_key(&num) {
-                        println!("cargo:warning=Duplicate syscall number: {num} for {name}");
-                        continue;
-                    }
-
-                    syscalls.insert(name.clone(), (num, item.sig.inputs));
                     numbers.insert(num, name);
                 }
             }

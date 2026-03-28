@@ -21,7 +21,9 @@ macro_rules! __macro_syscall {
 pub use crate::__macro_syscall as syscall;
 
 #[inline(always)]
-pub fn disable_interrupts() {}
+pub fn disable_irq_save() -> usize {
+    0
+}
 
 #[inline(always)]
 pub fn are_interrupts_enabled() -> bool {
@@ -29,7 +31,7 @@ pub fn are_interrupts_enabled() -> bool {
 }
 
 #[inline(always)]
-pub fn enable_interrupts() {}
+pub fn enable_irq_restr(state: usize) {}
 
 #[macro_export]
 macro_rules! __macro_startup_trampoline {
