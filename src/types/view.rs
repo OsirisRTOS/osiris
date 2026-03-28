@@ -23,6 +23,11 @@ where
             _proj: PhantomData,
         }
     }
+
+    pub fn with<F: FnOnce(&mut Self) -> R, R>(data: &'a mut S, f: F) -> R {
+        let mut view = Self::new(data);
+        f(&mut view)
+    }
 }
 
 impl<'a, K: ?Sized + ToIndex, P, S: GetMut<K>> Get<K> for ViewMut<'a, K, P, S>

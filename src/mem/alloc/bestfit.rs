@@ -24,7 +24,7 @@ pub struct BestFitAllocator {
 
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
-     pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
+    pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
 
     /// Creates a new BestFitAllocator.
     ///
@@ -50,7 +50,11 @@ impl BestFitAllocator {
         // Check if the pointer is 128bit aligned.
         if !ptr.is_multiple_of(align_of::<u128>()) {
                 return Err(kerr!(InvalidArgument));
-            }
+        }
+
+        if range.end.diff(range.start) < Self::MIN_RANGE_SIZE {
+            return Err(kerr!(InvalidArgument));
+        }
 
         debug_assert!(range.end > range.start);
         debug_assert!(range.end.diff(range.start) > size_of::<BestFitMeta>() + Self::align_up());
@@ -192,13 +196,13 @@ impl super::Allocator for BestFitAllocator {
     /// Returns the user pointer to the block if successful, otherwise an error.
     fn malloc<T>(&mut self, size: usize, align: usize, request: Option<PhysAddr>) -> Result<NonNull<T>> {
         // Check if the alignment is valid.
-        if align > align_of::<u128>() {
-            return Err(kerr!(InvalidArgument));
+        if align == 0 || align > align_of::<u128>() {
+            return Err(kerr!(InvalidAlign));
         }
 
         if let Some(request) = request {
             if !request.is_multiple_of(align) {
-                return Err(kerr!(InvalidArgument));
+                return Err(kerr!(InvalidAlign));
             }
         }   
 

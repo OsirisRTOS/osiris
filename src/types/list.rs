@@ -1,5 +1,7 @@
 use core::marker::PhantomData;
 
+use crate::error::Result;
+
 use super::traits::{Get, GetMut};
 
 #[allow(dead_code)]
@@ -62,7 +64,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         self.len == 0
     }
 
-    pub fn push_front<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<(), ()>
+    pub fn push_front<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
@@ -71,7 +73,9 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         match self.head {
             Some(old_head) => {
                 let (new_node, old_head_node) = storage.get2_mut(id, old_head);
-                let (new_node, old_head_node) = (new_node.ok_or(())?, old_head_node.ok_or(())?);
+                let (new_node, old_head_node) = (new_node.ok_or(kerr!(NotFound))?, old_head_node.unwrap_or_else(|| {
+                    bug!("node linked from list does not exist in storage.");
+                }));
 
                 new_node.links_mut().prev = None;
                 new_node.links_mut().next = Some(old_head);
@@ -79,7 +83,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
                 old_head_node.links_mut().prev = Some(id);
             }
             None => {
-                let new_node = storage.get_mut(id).ok_or(())?;
+                let new_node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
                 new_node.links_mut().prev = None;
                 new_node.links_mut().next = None;
                 self.tail = Some(id);
@@ -91,7 +95,10 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         Ok(())
     }
 
-    pub fn push_back<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<(), ()>
+    /// Pushes `id` to the back of the list. If `id` is already in the list, it is moved to the back.
+    /// 
+    /// Errors if `id` does not exist in `storage` or if the node corresponding to `id` is linked but not in the list.
+    pub fn push_back<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
@@ -100,7 +107,9 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         match self.tail {
             Some(old_tail) => {
                 let (new_node, old_tail_node) = storage.get2_mut(id, old_tail);
-                let (new_node, old_tail_node) = (new_node.ok_or(())?, old_tail_node.ok_or(())?);
+                let (new_node, old_tail_node) = (new_node.ok_or(kerr!(NotFound))?, old_tail_node.unwrap_or_else(|| {
+                    bug!("node linked from list does not exist in storage.");
+                }));
 
                 new_node.links_mut().next = None;
                 new_node.links_mut().prev = Some(old_tail);
@@ -108,7 +117,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
                 old_tail_node.links_mut().next = Some(id);
             }
             None => {
-                let new_node = storage.get_mut(id).ok_or(())?;
+                let new_node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
                 new_node.links_mut().next = None;
                 new_node.links_mut().prev = None;
                 self.head = Some(id);
@@ -120,7 +129,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         Ok(())
     }
 
-    pub fn pop_front<S: Get<T> + GetMut<T>>(&mut self, storage: &mut S) -> Result<Option<T>, ()>
+    pub fn pop_front<S: Get<T> + GetMut<T>>(&mut self, storage: &mut S) -> Result<Option<T>>
     where
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
@@ -132,7 +141,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         Ok(Some(id))
     }
 
-    pub fn pop_back<S: Get<T> + GetMut<T>>(&mut self, storage: &mut S) -> Result<Option<T>, ()>
+    pub fn pop_back<S: Get<T> + GetMut<T>>(&mut self, storage: &mut S) -> Result<Option<T>>
     where
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
@@ -144,12 +153,13 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         Ok(Some(id))
     }
 
-    pub fn remove<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<(), ()>
+    /// Removes `id` from the list. Errors if `id` does not exist in `storage` or if the node corresponding to `id` is not linked.
+    pub fn remove<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
         let (prev, next, linked) = {
-            let node = storage.get(id).ok_or(())?;
+            let node = storage.get(id).ok_or(kerr!(NotFound))?;
             let links = node.links();
             let linked = self.head == Some(id)
                 || self.tail == Some(id)
@@ -159,24 +169,28 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         };
 
         if !linked {
-            return Err(());
+            return Err(kerr!(NotFound));
         }
 
         if let Some(prev_id) = prev {
-            let prev_node = storage.get_mut(prev_id).ok_or(())?;
+            let prev_node = storage.get_mut(prev_id).unwrap_or_else(|| {
+                bug!("node linked from list does not exist in storage.");
+            });
             prev_node.links_mut().next = next;
         } else {
             self.head = next;
         }
 
         if let Some(next_id) = next {
-            let next_node = storage.get_mut(next_id).ok_or(())?;
+            let next_node = storage.get_mut(next_id).unwrap_or_else(|| {
+                bug!("node linked from list does not exist in storage.");
+            });
             next_node.links_mut().prev = prev;
         } else {
             self.tail = prev;
         }
 
-        let node = storage.get_mut(id).ok_or(())?;
+        let node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
         node.links_mut().prev = None;
         node.links_mut().next = None;
 
@@ -184,12 +198,13 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         Ok(())
     }
 
-    fn detach_links<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<(), ()>
+    /// Detaches `id` from any list it is currently in. If `id` is not in any list but is linked, the links are cleared.
+    fn detach_links<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
         let linked = {
-            let node = storage.get(id).ok_or(())?;
+            let node = storage.get(id).ok_or(kerr!(NotFound))?;
             let links = node.links();
             self.head == Some(id)
                 || self.tail == Some(id)
@@ -200,7 +215,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         if linked {
             self.remove(id, storage)?;
         } else {
-            let node = storage.get_mut(id).ok_or(())?;
+            let node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
             node.links_mut().prev = None;
             node.links_mut().next = None;
         }

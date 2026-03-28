@@ -22,7 +22,7 @@ use crate::{
     types::{
         array::IndexMap,
         rbtree::RbTree,
-        traits::{Get, GetMut, Project},
+        traits::{Get, GetMut},
         view::ViewMut,
     },
 };
@@ -85,11 +85,15 @@ impl<const N: usize> Scheduler<N> {
             if let Some(task_id) = kill {
                 self.dequeue(current);
                 self.current = None;
-                self.kill_task(task_id);
+                if self.kill_task(task_id).is_err() {
+                    // Should not be possible. The thread exists, so the task must exist.
+                    bug!("failed to kill task {}", task_id);
+                }
             }
         }
     }
 
+    /// Triggers a reschedule at *latest* when we hit timepoint `next`.
     fn schedule_resched(now: u64, next: u64) {
         let old = NEXT_TICK.load(Ordering::Acquire);
 
@@ -107,7 +111,12 @@ impl<const N: usize> Scheduler<N> {
             let mut view = rt::ServerView::<N>::new(&mut self.threads);
             self.rt_scheduler.enqueue(uid, now, &mut view);
         } else {
-            self.rr_scheduler.enqueue(uid, &mut self.threads)?;
+            if self.rr_scheduler.enqueue(uid, &mut self.threads).is_err() {
+                // This should not be possible. 
+                // - Thread is in the thread list.
+                // - Thread is not linked into a different list.
+                bug!("failed to enqueue thread {} into RR scheduler.", uid);
+            }
         }
         reschedule();
         Ok(())
@@ -115,19 +124,27 @@ impl<const N: usize> Scheduler<N> {
 
     fn do_wakeups(&mut self, now: u64) {
         while let Some(uid) = self.wakeup.min() {
-            {
-                let mut view = WaiterView::<N>::new(&mut self.threads);
+            let mut done = false;
+            WaiterView::<N>::with(&mut self.threads, |view| {
                 let waiter = view.get(uid).expect("THIS IS A BUG!");
-
                 if waiter.until() > now {
                     Self::schedule_resched(now, waiter.until());
-                    break;
+                    done = true;
+                    return;
                 }
 
-                self.wakeup.remove(uid, &mut view);
+                if let Err(_) = self.wakeup.remove(uid, view) {
+                    bug!("failed to remove thread {} from wakeup tree.", uid);
+                }
+            });
+
+            if done {
+                break;
             }
 
-            self.enqueue(now, uid);
+            if self.enqueue(now, uid).is_err() {
+                bug!("failed to enqueue thread {} after wakeup.", uid);
+            }
         }
     }
 
@@ -136,28 +153,35 @@ impl<const N: usize> Scheduler<N> {
         self.last_tick = now;
 
         if let Some(old) = self.current {
-            let mut view = rt::ServerView::<N>::new(&mut self.threads);
-            self.rt_scheduler.put(old, dt, &mut view);
+            rt::ServerView::<N>::with(&mut self.threads, |view| {
+                self.rt_scheduler.put(old, dt, view);
+            });
             self.rr_scheduler.put(old, dt);
         }
 
         self.do_wakeups(now);
 
-        let mut view = rt::ServerView::<N>::new(&mut self.threads);
+        let pick =
+            rt::ServerView::<N>::with(&mut self.threads, |view| self.rt_scheduler.pick(now, view));
+        let pick = pick.or_else(|| self.rr_scheduler.pick(&mut self.threads));
+        let (new, budget) = pick.unwrap_or((thread::IDLE_THREAD, 1000));
 
-        let (new, budget) = self
-            .rt_scheduler
-            .pick(now, &mut view)
-            .or_else(|| self.rr_scheduler.pick(&mut self.threads))
-            .unwrap_or((thread::IDLE_THREAD, 1000));
+        // At this point, the task/thread must exist. Everything else is a bug.
+        let (ctx, task_id) = if let Some(thread) = self.threads.get(new) {
+            (thread.ctx(), thread.task_id())
+        } else {
+            bug!("failed to pick thread {}. Does not exist.", new);
+        };
 
-        let ctx = self.threads.get(new)?.ctx();
-        let task = self.tasks.get_mut(self.threads.get(new)?.task_id())?;
+        let task = if let Some(task) = self.tasks.get_mut(task_id) {
+            task
+        } else {
+            bug!("failed to get task {}. Does not exist.", task_id);
+        };
 
+        // We don't need to resched if the thread has budget.
         self.current = Some(new);
-        let next = now.saturating_add(budget);
-
-        Self::schedule_resched(now, next);
+        Self::schedule_resched(now, now.saturating_add(budget));
         Some((ctx, task))
     }
 
@@ -170,6 +194,7 @@ impl<const N: usize> Scheduler<N> {
         if let Some(thread) = self.threads.get_mut(uid) {
             thread.set_waiter(Some(Waiter::new(until, uid)));
         } else {
+            // This should not be possible. The thread must exist since it's the current thread.
             bug!(
                 "failed to put current thread {} to sleep. Does not exist.",
                 uid
@@ -181,10 +206,9 @@ impl<const N: usize> Scheduler<N> {
             .insert(uid, &mut WaiterView::<N>::new(&mut self.threads))
             .is_err()
         {
+            // This should not be possible. The thread exists.
             bug!("failed to insert thread {} into wakeup tree.", uid);
         }
-
-
 
         self.dequeue(uid);
         reschedule();
@@ -192,16 +216,23 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
-        let thread = self.threads.get_mut(uid).ok_or(kerr!(InvalidArgument))?;
-        if let Some(waiter) = Project::<Waiter>::project_mut(thread) {
-            waiter.set_until(0);
-        }
-        Ok(())
+        WaiterView::<N>::with(&mut self.threads, |view| {
+            self.wakeup.remove(uid, view)?;
+            let thread = view.get_mut(uid).unwrap_or_else(|| {
+                bug!("failed to get thread {} from wakeup tree.", uid);
+            });
+            thread.set_until(0);
+            self.wakeup.insert(uid, view).unwrap_or_else(|_| {
+                bug!("failed to re-insert thread {} into wakeup tree.", uid);
+            });
+            Ok(())
+        })
     }
 
     pub fn dequeue(&mut self, uid: thread::UId) {
-        let mut view = rt::ServerView::<N>::new(&mut self.threads);
-        self.rt_scheduler.dequeue(uid, &mut view);
+        rt::ServerView::<N>::with(&mut self.threads, |view| {
+            self.rt_scheduler.dequeue(uid, view);
+        });
         self.rr_scheduler.dequeue(uid, &mut self.threads);
     }
 

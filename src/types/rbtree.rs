@@ -1,5 +1,7 @@
 use core::{marker::PhantomData};
 
+use crate::error::Result;
+
 use super::traits::{Get, GetMut};
 
 #[allow(dead_code)]
@@ -59,10 +61,11 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         }
     }
 
-    pub fn insert<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<(), ()>
+    /// Inserts `id` into the tree. If `id` already exists in the tree, it is first removed and then re-inserted. Errors if `id` does not exist in `storage`.
+    pub fn insert<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,{
         let already_linked = {
-            let node = storage.get(id).ok_or(())?;
+            let node = storage.get(id).ok_or(kerr!(NotFound))?;
             let links = node.links();
             self.root == Some(id)
                 || links.parent.is_some()
@@ -77,12 +80,14 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         let mut last = None;
 
         {
-            let node = storage.get(id).ok_or(())?;
+            let node = storage.get(id).ok_or(kerr!(NotFound))?;
             let mut current = self.root;
 
             while let Some(current_id) = current {
                 last = current;
-                let current_node = storage.get(current_id).ok_or(())?;
+                let current_node = storage.get(current_id).unwrap_or_else(|| {
+                    bug!("node linked from tree does not exist in storage.");
+                });
                 let go_left = node.cmp(current_node) == core::cmp::Ordering::Less;
 
                 current = if go_left {
@@ -94,7 +99,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         }
 
         {
-            let node = storage.get_mut(id).ok_or(())?.links_mut();
+            let node = storage.get_mut(id).ok_or(kerr!(NotFound))?.links_mut();
             node.parent = last;
             node.left = None;
             node.right = None;
@@ -115,8 +120,10 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         }
 
         if let Some(min_id) = self.min {
-            let node = storage.get(id).ok_or(())?;
-            let min_node = storage.get(min_id).ok_or(())?;
+            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let min_node = storage.get(min_id).unwrap_or_else(|| {
+                bug!("node linked from tree does not exist in storage.");
+            });
             if node.cmp(min_node) == core::cmp::Ordering::Less {
                 self.min = Some(id);
             }
@@ -127,17 +134,26 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         self.insert_fixup(id, storage)
     }
 
-    pub fn remove<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<(), ()>
+    pub fn remove<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T> {
-        let (node_left, node_right, node_parent, node_is_red) = {
-            let node = storage.get(id).ok_or(())?;
+        let (node_left, node_right, node_parent, node_is_red, linked) = {
+            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let links = node.links();
             (
-                node.links().left,
-                node.links().right,
-                node.links().parent,
-                matches!(node.links().color, Color::Red),
+                links.left,
+                links.right,
+                links.parent,
+                matches!(links.color, Color::Red),
+                self.root == Some(id)
+                    || links.parent.is_some()
+                    || links.left.is_some()
+                    || links.right.is_some(),
             )
         };
+
+        if !linked {
+            return Err(kerr!(NotFound));
+        }
 
         let mut succ_was_red = node_is_red;
         let child: Option<T>;
@@ -154,7 +170,9 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 
             self.transplant(id, node_left, storage)?;
         } else {
-            let right_id = node_right.ok_or(())?;
+            let right_id = node_right.unwrap_or_else(|| {
+                bug!("node's right child is None, but it is not None according to previous get.");
+            });
             let succ = self.minimum(right_id, storage)?;
             let succ_right = storage.get(succ).and_then(|n| n.links().right);
             let succ_parent = storage.get(succ).and_then(|n| n.links().parent);
@@ -173,7 +191,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                     succ_node.links_mut().right = Some(right_id);
                     right_node.links_mut().parent = Some(succ);
                 } else {
-                    return Err(());
+                    bug!("node linked from tree does not exist in storage.");
                 }
 
                 child_parent = succ_parent;
@@ -181,13 +199,15 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 
             self.transplant(id, Some(succ), storage)?;
 
-            let left_id = node_left.ok_or(())?;
+            let left_id = node_left.unwrap_or_else(|| {
+                bug!("node's left child is None, but it is not None according to previous get.");
+            });
 
             if let (Some(succ_node), Some(left_node)) = storage.get2_mut(succ, left_id) {
                 succ_node.links_mut().left = Some(left_id);
                 left_node.links_mut().parent = Some(succ);
             } else {
-                return Err(());
+                bug!("node linked from tree does not exist in storage.");
             }
 
             if let Some(succ_node) = storage.get_mut(succ) {
@@ -197,12 +217,23 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                     Color::Black
                 };
             } else {
-                return Err(());
+                bug!("node linked from tree does not exist in storage.");
             }
         }
 
         if !succ_was_red {
             self.delete_fixup(child, child_parent, storage)?;
+        }
+
+        // Fully detach the removed node so stale links cannot be observed on reinsertion.
+        if let Some(node) = storage.get_mut(id) {
+            let links = node.links_mut();
+            links.parent = None;
+            links.left = None;
+            links.right = None;
+            links.color = Color::Red;
+        } else {
+            bug!("node linked from tree does not exist in storage.");
         }
 
         if self.min == Some(id) {
@@ -219,7 +250,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         self.min
     }
 
-    fn insert_fixup<S: Get<T> + GetMut<T>>(&mut self, mut id: T, storage: &mut S) -> Result<(), ()>
+    fn insert_fixup<S: Get<T> + GetMut<T>>(&mut self, mut id: T, storage: &mut S) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
         while let Some(parent) = storage.get(id).and_then(|n| n.links().parent)
             && storage
@@ -229,7 +260,9 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
             let grandparent = storage
                 .get(parent)
                 .and_then(|n| n.links().parent)
-                .ok_or(())?;
+                .unwrap_or_else(|| {
+                    bug!("node linked from tree does not have a parent.");
+                });
 
             // Is left child node
             if storage
@@ -264,11 +297,13 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                         id = old_parent;
                     }
 
-                    let parent = storage.get(id).and_then(|n| n.links().parent).ok_or(())?;
+                    let parent = storage.get(id).and_then(|n| n.links().parent).ok_or(kerr!(NotFound))?;
                     let grandparent = storage
                         .get(parent)
                         .and_then(|n| n.links().parent)
-                        .ok_or(())?;
+                        .unwrap_or_else(|| {
+                            bug!("node linked from tree does not have a parent.");
+                        });
 
                     if let (Some(parent_node), Some(grandparent_node)) =
                         storage.get2_mut(parent, grandparent)
@@ -308,11 +343,13 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                         id = old_parent;
                     }
 
-                    let parent = storage.get(id).and_then(|n| n.links().parent).ok_or(())?;
+                    let parent = storage.get(id).and_then(|n| n.links().parent).ok_or(kerr!(NotFound))?;
                     let grandparent = storage
                         .get(parent)
                         .and_then(|n| n.links().parent)
-                        .ok_or(())?;
+                        .unwrap_or_else(|| {
+                            bug!("node linked from tree does not have a parent.");
+                        });
 
                     if let (Some(parent_node), Some(grandparent_node)) =
                         storage.get2_mut(parent, grandparent)
@@ -340,7 +377,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         mut id: Option<T>,
         mut parent: Option<T>,
         storage: &mut S,
-    ) -> Result<(), ()>
+    ) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
         let is_red = |node_id: Option<T>, storage: &S| -> bool {
             node_id
@@ -351,7 +388,9 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         let is_black = |node_id: Option<T>, storage: &S| -> bool { !is_red(node_id, storage) };
         
         while id != self.root && is_black(id, storage) {
-            let parent_id = parent.ok_or(())?;
+            let parent_id = parent.unwrap_or_else(|| {
+                bug!("node linked from tree does not have a parent.");
+            });
 
             let is_left_child = storage
                 .get(parent_id)
@@ -361,20 +400,24 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                 let mut sibling_opt = storage.get(parent_id).and_then(|n| n.links().right);
 
                 if is_red(sibling_opt, storage) {
-                    let sibling_id = sibling_opt.ok_or(())?;
+                    let sibling_id = sibling_opt.unwrap_or_else(|| {
+                        bug!("node linked from tree does not exist in storage.");
+                    });
                     // Color sibling node black and parent node red, rotate
                     if let (Some(sib), Some(par)) = storage.get2_mut(sibling_id, parent_id) {
                         sib.links_mut().color = Color::Black;
                         par.links_mut().color = Color::Red;
                     } else {
-                        return Err(());
+                        return Err(kerr!(NotFound));
                     }
                     self.rotate_left(parent_id, sibling_id, storage)?;
                     sibling_opt = storage.get(parent_id).and_then(|n| n.links().right);
                 }
 
                 // Sibling node is black
-                let sibling_id = sibling_opt.ok_or(())?;
+                let sibling_id = sibling_opt.unwrap_or_else(|| {
+                    bug!("node linked from tree does not exist in storage.");
+                });
                 let sib_left = storage.get(sibling_id).and_then(|n| n.links().left);
                 let sib_right = storage.get(sibling_id).and_then(|n| n.links().right);
 
@@ -383,26 +426,30 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                     if let Some(sib) = storage.get_mut(sibling_id) {
                         sib.links_mut().color = Color::Red;
                     } else {
-                        return Err(());
+                        bug!("node linked from tree does not exist in storage.");
                     }
                     id = Some(parent_id);
                     parent = storage.get(parent_id).and_then(|n| n.links().parent);
                 } else {
                     // Sibling's left node is red
                     if is_black(sib_right, storage) {
-                        let sib_left_id = sib_left.ok_or(())?;
+                        let sib_left_id = sib_left.unwrap_or_else(|| {
+                            bug!("node linked from tree does not exist in storage.");
+                        });
                         if let (Some(sib), Some(left)) = storage.get2_mut(sibling_id, sib_left_id) {
                             sib.links_mut().color = Color::Red;
                             left.links_mut().color = Color::Black;
                         } else {
-                            return Err(());
+                            bug!("node linked from tree does not exist in storage.");
                         }
                         self.rotate_right(sibling_id, sib_left_id, storage)?;
                         sibling_opt = storage.get(parent_id).and_then(|n| n.links().right);
                     }
 
                     // Sibling's right child node is red
-                    let sibling_id = sibling_opt.ok_or(())?;
+                    let sibling_id = sibling_opt.unwrap_or_else(|| {
+                        bug!("node linked from tree does not exist in storage.");
+                    });
                     let parent_is_red = storage
                         .get(parent_id)
                         .map_or(false, |n| matches!(n.links().color, Color::Red));
@@ -433,19 +480,23 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                 let mut sibling_opt = storage.get(parent_id).and_then(|n| n.links().left);
 
                 if is_red(sibling_opt, storage) {
-                    let sibling_id = sibling_opt.ok_or(())?;
+                    let sibling_id = sibling_opt.unwrap_or_else(|| {
+                        bug!("node linked from tree does not exist in storage.");
+                    });
                     if let (Some(sib), Some(par)) = storage.get2_mut(sibling_id, parent_id) {
                         sib.links_mut().color = Color::Black;
                         par.links_mut().color = Color::Red;
                     } else {
-                        return Err(());
+                        bug!("node linked from tree does not exist in storage.");
                     }
                     self.rotate_right(parent_id, sibling_id, storage)?;
                     sibling_opt = storage.get(parent_id).and_then(|n| n.links().left);
                 }
 
                 // Sibling node is black
-                let sibling_id = sibling_opt.ok_or(())?;
+                let sibling_id = sibling_opt.unwrap_or_else(|| {
+                    bug!("node linked from tree does not exist in storage.");
+                });
                 let sib_left = storage.get(sibling_id).and_then(|n| n.links().left);
                 let sib_right = storage.get(sibling_id).and_then(|n| n.links().right);
 
@@ -453,27 +504,31 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                     if let Some(sib) = storage.get_mut(sibling_id) {
                         sib.links_mut().color = Color::Red;
                     } else {
-                        return Err(());
+                        bug!("node linked from tree does not exist in storage.");
                     }
                     id = Some(parent_id);
                     parent = storage.get(parent_id).and_then(|n| n.links().parent);
                 } else {
                     // Sibling's right node is red
                     if is_black(sib_left, storage) {
-                        let sib_right_id = sib_right.ok_or(())?;
+                        let sib_right_id = sib_right.unwrap_or_else(|| {
+                            bug!("node linked from tree does not exist in storage.");
+                        });
                         if let (Some(sib), Some(right)) = storage.get2_mut(sibling_id, sib_right_id)
                         {
                             sib.links_mut().color = Color::Red;
                             right.links_mut().color = Color::Black;
                         } else {
-                            return Err(());
+                            bug!("node linked from tree does not exist in storage.");
                         }
                         self.rotate_left(sibling_id, sib_right_id, storage)?;
                         sibling_opt = storage.get(parent_id).and_then(|n| n.links().left);
                     }
 
                     // Sibling's left child node is red
-                    let sibling_id = sibling_opt.ok_or(())?;
+                    let sibling_id = sibling_opt.unwrap_or_else(|| {
+                        bug!("node linked from tree does not exist in storage.");
+                    });
                     let parent_is_red = storage
                         .get(parent_id)
                         .map_or(false, |n| matches!(n.links().color, Color::Red));
@@ -513,10 +568,10 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         Ok(())
     }
 
-    fn minimum<S: Get<T>>(&self, mut id: T, storage: &S) -> Result<T, ()>
+    fn minimum<S: Get<T>>(&self, mut id: T, storage: &S) -> Result<T>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
         loop {
-            let left = storage.get(id).ok_or(())?.links().left;
+            let left = storage.get(id).ok_or(kerr!(NotFound))?.links().left;
             match left {
                 Some(left_id) => id = left_id,
                 None => return Ok(id),
@@ -524,7 +579,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         }
     }
 
-    fn transplant<S: Get<T> + GetMut<T>>(&mut self, u: T, v: Option<T>, storage: &mut S) -> Result<(), ()>
+    fn transplant<S: Get<T> + GetMut<T>>(&mut self, u: T, v: Option<T>, storage: &mut S) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
         let u_parent = storage.get(u).and_then(|n| n.links().parent);
 
@@ -538,7 +593,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                         parent_node.links_mut().right = v;
                     }
                 } else {
-                    return Err(());
+                    bug!("node linked from tree does not exist in storage.");
                 }
             }
         }
@@ -547,17 +602,17 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
             if let Some(v_node) = storage.get_mut(v_id) {
                 v_node.links_mut().parent = u_parent;
             } else {
-                return Err(());
+                bug!("node linked from tree does not exist in storage.");
             }
         }
 
         Ok(())
     }
 
-    fn rotate_right<S: Get<T> + GetMut<T>>(&mut self, pivot: T, left: T, storage: &mut S) -> Result<(), ()>
+    fn rotate_right<S: Get<T> + GetMut<T>>(&mut self, pivot: T, left: T, storage: &mut S) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
         if pivot == left {
-            return Err(());
+            return Err(kerr!(NotFound));
         }
 
         let (right, parent) =
@@ -580,7 +635,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 
                 (old_right, old_parent)
             } else {
-                return Err(());
+                bug!("node linked from tree does not exist in storage.");
             };
 
         if let Some(right_id) = right {
@@ -599,7 +654,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                         parent_node.links_mut().right = Some(left);
                     }
                 } else {
-                    return Err(());
+                    bug!("node linked from tree does not exist in storage.");
                 }
             }
         }
@@ -607,10 +662,10 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         Ok(())
     }
 
-    fn rotate_left<S: Get<T> + GetMut<T>>(&mut self, pivot: T, right: T, storage: &mut S) -> Result<(), ()>
+    fn rotate_left<S: Get<T> + GetMut<T>>(&mut self, pivot: T, right: T, storage: &mut S) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
         if pivot == right {
-            return Err(());
+            return Err(kerr!(NotFound));
         }
 
         let (left, parent) =
@@ -633,7 +688,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 
                 (old_left, old_parent)
             } else {
-                return Err(());
+                bug!("node linked from tree does not exist in storage.");
             };
 
         if let Some(left_id) = left {
@@ -652,7 +707,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                         parent_node.links_mut().right = Some(right);
                     }
                 } else {
-                    return Err(());
+                    bug!("node linked from tree does not exist in storage.");
                 }
             }
         }
