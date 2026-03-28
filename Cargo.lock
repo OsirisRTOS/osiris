@@ -1062,6 +1062,7 @@ dependencies = [
  "bindgen 0.69.5",
  "cbindgen",
  "cfg_aliases",
+ "dtgen",
  "envparse",
  "hal-select",
  "hal-testing",

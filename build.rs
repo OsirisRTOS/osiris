@@ -1,4 +1,5 @@
-use std::{collections::HashMap, fs::File, path::Path};
+use std::process::Command;
+use std::{collections::HashMap, fs::File, path::Path, path::PathBuf};
 
 extern crate rand;
 extern crate syn;
@@ -19,6 +20,8 @@ fn main() {
     generate_syscall_map("src/syscalls").expect("Failed to generate syscall map.");
     generate_syscalls_export("src/syscalls").expect("Failed to generate syscall exports.");
 
+    generate_device_tree().expect("Failed to generate device tree.");
+
     // Get linker script from environment variable
     if let Ok(linker_script) = std::env::var("DEP_HAL_LINKER_SCRIPT") {
         println!("cargo::rustc-link-arg=-T{linker_script}");
@@ -29,6 +32,72 @@ fn main() {
     cfg_aliases! {
         freestanding: { all(not(test), not(doctest), not(doc), not(kani), any(target_os = "none", target_os = "unknown")) },
     }
+}
+
+fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
+    let dts_path = std::env::var("OSIRIS_TUNING_DEVICETREE").expect("OSIRIS_DTS not set");
+    let dts = Path::new(&dts_path);
+
+    println!("cargo::rerun-if-changed={dts_path}");
+
+    // dependencies SoC/HAL/pins
+    let zephyr = Path::new("/tmp/zephyr");
+    let hal_stm32 = Path::new("/tmp/hal_stm32");
+    sparse_clone(
+        "https://github.com/zephyrproject-rtos/zephyr",
+        zephyr,
+        &["include", "dts", "boards"],
+    )?;
+    sparse_clone(
+        "https://github.com/zephyrproject-rtos/hal_stm32",
+        hal_stm32,
+        &["dts"],
+    )?;
+
+    let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("device_tree.rs");
+    let include_paths = [
+        zephyr.join("include"),
+        zephyr.join("dts/arm/st"),
+        zephyr.join("dts"),
+        zephyr.join("dts/arm"),
+        zephyr.join("dts/common"),
+        zephyr.join("boards/st"),
+        hal_stm32.join("dts"),
+    ];
+    let include_refs: Vec<&Path> = include_paths.iter().map(PathBuf::as_path).collect();
+
+    dtgen::run(dts, &include_refs, &out)?;
+    Ok(())
+}
+
+fn sparse_clone(url: &str, dest: &Path, paths: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+    if dest.exists() {
+        return Ok(());
+    }
+
+    Command::new("git")
+        .args(["clone", "--filter=blob:none", "--no-checkout", url])
+        .arg(dest)
+        .status()?;
+
+    Command::new("git")
+        .args(["sparse-checkout", "init", "--cone"])
+        .current_dir(dest)
+        .status()?;
+
+    Command::new("git")
+        .arg("sparse-checkout")
+        .arg("set")
+        .args(paths)
+        .current_dir(dest)
+        .status()?;
+
+    Command::new("git")
+        .args(["checkout"])
+        .current_dir(dest)
+        .status()?;
+
+    Ok(())
 }
 
 fn generate_syscalls_export<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
