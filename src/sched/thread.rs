@@ -60,6 +60,10 @@ impl UId {
         self.tid
     }
 
+    pub fn as_usize(&self) -> usize {
+        self.uid
+    }
+
     pub fn owner(&self) -> task::UId {
         self.tid.owner
     }

@@ -29,3 +29,22 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
     0
 }
 
+#[syscall_handler(num = 3)]
+fn spawn_thread(func_ptr: usize) -> c_int {
+    sched::with(|sched| {
+        let attrs = sched::thread::Attributes {
+            entry: unsafe { core::mem::transmute(func_ptr) },
+            fin: None,
+        };
+        match sched.create_thread(None, &attrs) {
+            Ok(uid) => {
+                if sched.enqueue(time::tick(), uid).is_err() {
+                    panic!("failed to enqueue thread.");
+                }
+                uid.as_usize() as c_int
+            }
+            Err(_) => -1,
+        }
+    })
+}
+

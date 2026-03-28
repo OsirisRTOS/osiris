@@ -9,7 +9,7 @@ extern "C" fn entry() {
 pub fn init() {
     let attrs = sched::thread::Attributes { entry, fin: None };
     sched::with(|sched| {
-        if let Err(e) = sched.create_thread(sched::task::KERNEL_TASK, &attrs) {
+        if let Err(e) = sched.create_thread(Some(sched::task::KERNEL_TASK), &attrs) {
             panic!("failed to create idle thread. Error: {}", e);
         }
     });

@@ -17,7 +17,7 @@ pub fn init_app() {
         fin: None,
     };
     sched::with(|sched| {
-        if let Ok(uid) = sched.create_thread(sched::task::KERNEL_TASK, &attrs) {
+        if let Ok(uid) = sched.create_thread(Some(sched::task::KERNEL_TASK), &attrs) {
             if sched.enqueue(time::tick(), uid).is_err() {
                 panic!("failed to enqueue init thread.");
             }
