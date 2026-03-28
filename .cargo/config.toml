@@ -3,7 +3,7 @@
 xtask = "--config xtasks/.cargo/config.toml run -p xtask --release --"
 
 [env]
-OSIRIS_TUNING_DEVICETREE = "boards/nucleo_l4r5zi/nucleo_l4r5zi.dts"
+OSIRIS_TUNING_BOARD = "nucleo_l4r5zi"
 OSIRIS_TUNING_APPMEMSIZE = "8192"
 OSIRIS_TUNING_ENABLEFPU = "false"
 OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
