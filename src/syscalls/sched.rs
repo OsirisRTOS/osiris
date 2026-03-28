@@ -10,7 +10,9 @@ use crate::{sched, time};
 fn sleep(until_hi: u32, until_lo: u32) -> c_int {
     let until = ((until_hi as u64) << 32) | (until_lo as u64);
     sched::with(|sched| {
-        sched.sleep_until(until, time::tick());
+        if sched.sleep_until(until, time::tick()).is_err() {
+            bug!("no current thread set.");
+        }
     });
     0
 }
@@ -21,7 +23,7 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
     sched::with(|sched| {
         let now = time::tick();
         if sched.sleep_until(now + duration, now).is_err() {
-            panic!("failed to sleep for duration: {duration}");
+            bug!("no current thread set.");
         }
     });
     0
