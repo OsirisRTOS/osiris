@@ -274,10 +274,15 @@ impl<const N: usize> Scheduler<N> {
 
     pub fn create_thread(
         &mut self,
-        task: task::UId,
+        task: Option<task::UId>,
         attrs: &thread::Attributes,
     ) -> Result<thread::UId> {
+        let task = match task {
+            Some(t) => t,
+            None => self.current.ok_or(kerr!(InvalidArgument))?.owner()
+        };
         let task = self.tasks.get_mut(task).ok_or(kerr!(InvalidArgument))?;
+        
         let thread = task.create_thread(self.id_gen, attrs)?;
         let uid = thread.uid();
 
