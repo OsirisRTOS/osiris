@@ -56,6 +56,7 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	libusb1-devel \
 	openssl-devel \
 	lcov \
+	dtc \ 
 	awk \
 	just \
 	python-pyelftools \
