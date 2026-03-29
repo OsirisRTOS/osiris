@@ -38,8 +38,8 @@ description = "Sets the size of the stack for the init application. This must be
 type = { type = "Integer", min = 0 }
 default = 2048
 
-[tuning.board]
-name = "Targeted Board"
-description = "Board name the device tree sources are searched for."
+[tuning.dts]
+name = "Device Tree Source"
+description = "Board DTS file targeted to build OS for. Relative to the toplevel boards/ directory."
 type = "String"
-default = "nucleo_l4r5zi"
+default = "nucleo_l4r5zi.dts"

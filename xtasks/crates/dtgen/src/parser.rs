@@ -43,14 +43,6 @@ pub fn dts_to_dtb(
         return Err("cpp preprocessing failed".to_string());
     }
 
-    // test
-    match std::process::Command::new("dtc").arg("--version").output() {
-        Ok(out) => println!(
-            "cargo:warning=dtc found, version: {}",
-            String::from_utf8_lossy(&out.stdout).trim()
-        ),
-        Err(e) => println!("cargo:warning=dtc not found: {}", e),
-    }
     // stage 2 - dts compilation
     let mut dtc_cmd = std::process::Command::new("dtc");
     dtc_cmd

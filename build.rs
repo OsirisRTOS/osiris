@@ -35,9 +35,11 @@ fn main() {
 }
 
 fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
-    let board =
-        std::env::var("OSIRIS_TUNING_BOARD").unwrap_or_else(|_| "nucleo_l4r5zi".to_string());
-    println!("cargo::rerun-if-changed={board}");
+    let dts =
+        std::env::var("OSIRIS_TUNING_DTS").unwrap_or_else(|_| "nucleo_l4r5zi.dts".to_string());
+    println!("cargo::rerun-if-changed={dts}");
+
+    let dts_path = std::path::Path::new("boards").join(dts);
 
     // dependencies SoC/HAL/pins
     let zephyr = Path::new("/tmp/zephyr");
@@ -55,7 +57,7 @@ fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
     sparse_clone(
         "https://github.com/zephyrproject-rtos/zephyr",
         zephyr,
-        &["include", "dts", "boards"],
+        &["include", "dts"],
     )?;
     sparse_clone(
         "https://github.com/zephyrproject-rtos/hal_stm32",
@@ -63,7 +65,6 @@ fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
         &["dts"],
     )?;
 
-    let dts = find_board_dts(zephyr, &board)?;
     let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("device_tree.rs");
     let include_paths = [
         zephyr.join("include"),
@@ -76,7 +77,7 @@ fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
     ];
     let include_refs: Vec<&Path> = include_paths.iter().map(PathBuf::as_path).collect();
 
-    dtgen::run(&dts, &include_refs, &out)?;
+    dtgen::run(&dts_path, &include_refs, &out)?;
     Ok(())
 }
 
@@ -104,21 +105,6 @@ fn sparse_clone(url: &str, dest: &Path, paths: &[&str]) -> Result<(), Box<dyn st
         .status()?;
 
     Ok(())
-}
-
-fn find_board_dts(zephyr: &Path, board: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let boards_dir = zephyr.join("boards");
-    for entry in walkdir::WalkDir::new(&boards_dir) {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("dts")
-            && path.file_stem().and_then(|s| s.to_str()) == Some(board)
-        {
-            return Ok(path.to_path_buf());
-        }
-    }
-
-    Err(format!("board '{board}' not found in {}", boards_dir.display()).into())
 }
 
 fn generate_syscalls_export<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
