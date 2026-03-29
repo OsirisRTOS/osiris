@@ -95,7 +95,12 @@ mod verification {
     use super::*;
     use crate::mem::alloc::MAX_ADDR;
 
+    fn mock_ptr_write<T>(dst: *mut T, src: T) {
+        // noop
+    }
+
     #[kani::proof]
+    #[kani::stub(core::ptr::write, mock_ptr_write)]
     fn proof_init_allocator_good() {
         const MAX_REGIONS: usize = 8;
         let regions: [(&str, usize, usize); MAX_REGIONS] =
