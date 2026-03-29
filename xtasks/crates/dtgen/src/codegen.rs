@@ -375,13 +375,11 @@ fn emit_query_api() -> TokenStream {
         #[doc = "e.g. `soc/i2c@40005400/lsm6dsl@6a` or `soc/i2c/lsm6dsl`"]
         #[doc = "at each level the first sibling whose name matches is taken"]
         pub fn peripheral_by_path(path: &str) -> Option<&'static Peripheral> {
-            let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
             let mut current = 0usize;
-
-            for segment in &segments {
+            for segment in path.trim_start_matches('/').split('/') {
                 let child = NODES[current].children.iter().find(|&&idx| {
                     let n = NODES[idx].name;
-                    n == *segment || n.split('@').next() == Some(*segment)
+                    n == segment || n.split('@').next() == Some(segment)
                 })?;
 
                 current = *child;
