@@ -120,10 +120,7 @@ mod verification {
         // non-overlapping regions
         let (_, base_i, size_i) = regions[i];
         let (_, base_j, size_j) = regions[j];
-        kani::assume(
-            base_i + size_i <= base_j || base_j + size_j <= base_i,
-            "memory regions should not overlap",
-        );
+        kani::assume(base_i + size_i <= base_j || base_j + size_j <= base_i);
 
         // verify memory init
         assert!(init_memory(&regions).is_ok());
