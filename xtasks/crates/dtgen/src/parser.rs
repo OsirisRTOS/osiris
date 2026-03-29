@@ -44,15 +44,13 @@ pub fn dts_to_dtb(
     }
 
     // test
-    let output = std::process::Command::new("which")
-        .arg("dtc")
-        .output()
-        .expect("failed to run 'which'");
-
-    println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-    println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-    println!("status: {}", output.status);
-
+    match std::process::Command::new("dtc").arg("--version").output() {
+        Ok(out) => println!(
+            "cargo:warning=dtc found, version: {}",
+            String::from_utf8_lossy(&out.stdout).trim()
+        ),
+        Err(e) => println!("cargo:warning=dtc not found: {}", e),
+    }
     // stage 2 - dts compilation
     let mut dtc_cmd = std::process::Command::new("dtc");
     dtc_cmd
