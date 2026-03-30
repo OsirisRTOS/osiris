@@ -5,7 +5,7 @@ use super::boxed::Box;
 use crate::utils::KernelError;
 
 /// A ring-buffer based queue, with N elements stored inline. TODO: Make this growable.
-#[derive(Debug)]
+#[proc_macros::fmt]
 pub struct Queue<T: Clone, const N: usize> {
     data: Vec<T, N>,
     len: usize,

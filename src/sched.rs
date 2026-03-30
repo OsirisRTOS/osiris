@@ -112,7 +112,7 @@ impl<const N: usize> Scheduler<N> {
             self.rt_scheduler.enqueue(uid, now, &mut view);
         } else {
             if self.rr_scheduler.enqueue(uid, &mut self.threads).is_err() {
-                // This should not be possible. 
+                // This should not be possible.
                 // - Thread is in the thread list.
                 // - Thread is not linked into a different list.
                 bug!("failed to enqueue thread {} into RR scheduler.", uid);
@@ -245,30 +245,22 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn kill_task(&mut self, uid: task::UId) -> Result<()> {
-        let task_id = self.tasks.get(uid).ok_or(kerr!(InvalidArgument))?.id;
-        self.tasks.remove(&uid).ok_or(kerr!(InvalidArgument))?;
+        let task = self.tasks.get_mut(uid).ok_or(kerr!(InvalidArgument))?;
 
-        let begin = match self.threads.next(None) {
-            Some(i) => i,
-            None => return Ok(()),
-        };
-        let mut i = begin;
+        while let Some(id) = task.threads().head() {
+            // Borrow checker...
+            rt::ServerView::<N>::with(&mut self.threads, |view| {
+                self.rt_scheduler.dequeue(id, view);
+            });
+            self.rr_scheduler.dequeue(id, &mut self.threads);
 
-        while i != begin {
-            i = (i + 1) % N;
-
-            let mut id = None;
-            if let Some(thread) = self.threads.at_cont(i) {
-                if thread.task_id() == task_id {
-                    id = Some(thread.uid());
-                }
-            }
-
-            if let Some(id) = id {
-                self.dequeue(id);
+            if task.threads_mut().remove(id, &mut self.threads).is_err() {
+                // This should not be possible. The thread ID is from the thread list of the task, so it must exist.
+                bug!("failed to remove thread {} from task {}.", id, uid);
             }
         }
 
+        self.tasks.remove(&uid).ok_or(kerr!(InvalidArgument))?;
         Ok(())
     }
 
@@ -279,17 +271,25 @@ impl<const N: usize> Scheduler<N> {
     ) -> Result<thread::UId> {
         let task = match task {
             Some(t) => t,
-            None => self.current.ok_or(kerr!(InvalidArgument))?.owner()
+            None => self.current.ok_or(kerr!(InvalidArgument))?.owner(),
         };
         let task = self.tasks.get_mut(task).ok_or(kerr!(InvalidArgument))?;
-        
-        let thread = task.create_thread(self.id_gen, attrs)?;
-        let uid = thread.uid();
-
-        self.threads.insert(&uid, thread)?;
+        let uid = task.create_thread(self.id_gen, attrs, &mut self.threads)?;
 
         self.id_gen += 1;
         Ok(uid)
+    }
+
+    pub fn kill_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
+        let uid = uid.unwrap_or(self.current.ok_or(kerr!(InvalidArgument))?);
+        self.dequeue(uid);
+        self.threads.remove(&uid).ok_or(kerr!(InvalidArgument))?;
+
+        if Some(uid) == self.current {
+            self.current = None;
+            reschedule();
+        }
+        Ok(())
     }
 }
 

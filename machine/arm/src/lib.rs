@@ -10,6 +10,7 @@ pub mod excep;
 pub mod panic;
 pub mod sched;
 
+mod crit;
 mod print;
 
 mod bindings {

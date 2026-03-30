@@ -1,19 +1,20 @@
 //! This module provides the basic task and thread structures for the scheduler.
+use core::borrow::Borrow;
 use core::fmt::Display;
 use core::num::NonZero;
-use core::borrow::Borrow;
 
 use envparse::parse_env;
-use hal::{Stack};
+use hal::Stack;
 
-use hal::stack::{Stacklike};
+use hal::stack::Stacklike;
 
 use crate::error::Result;
-use crate::sched::thread;
+use crate::sched::{GlobalScheduler, ThreadMap, thread};
+use crate::types::list;
 use crate::{mem, sched};
 
-use crate::mem::vmm::{AddressSpacelike};
-use crate::types::traits::ToIndex;
+use crate::mem::vmm::AddressSpacelike;
+use crate::types::traits::{Get, GetMut, ToIndex};
 
 pub struct Defaults {
     pub stack_pages: usize,
@@ -26,18 +27,15 @@ const DEFAULTS: Defaults = Defaults {
 pub const KERNEL_TASK: UId = UId { uid: 0 };
 
 /// Id of a task. This is unique across all tasks.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub struct UId {
     uid: usize,
 }
 
 impl UId {
     pub fn new(uid: usize) -> Option<Self> {
-        if uid == 0 {
-            None
-        } else {
-            Some(Self { uid })
-        }
+        if uid == 0 { None } else { Some(Self { uid }) }
     }
 
     pub fn is_kernel(&self) -> bool {
@@ -53,7 +51,7 @@ impl ToIndex for UId {
 
 impl Display for UId {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Task-{}", self.uid)
+        write!(f, "{}", self.uid)
     }
 }
 
@@ -69,6 +67,8 @@ pub struct Task {
     tid_cntr: usize,
     /// Sets up the memory for the task.
     address_space: mem::vmm::AddressSpace,
+    /// The threads belonging to this task.
+    threads: list::List<thread::ThreadList, thread::UId>,
 }
 
 impl Task {
@@ -84,6 +84,7 @@ impl Task {
             id,
             address_space,
             tid_cntr: 0,
+            threads: list::List::new(),
         })
     }
 
@@ -94,10 +95,7 @@ impl Task {
         sched::thread::Id::new(tid, self.id)
     }
 
-    fn allocate_stack(
-        &mut self,
-        attrs: &thread::Attributes,
-    ) -> Result<hal::stack::Descriptor> {
+    fn allocate_stack(&mut self, attrs: &thread::Attributes) -> Result<hal::stack::Descriptor> {
         let size = DEFAULTS.stack_pages * mem::pfa::PAGE_SIZE;
         let region = mem::vmm::Region::new(
             None,
@@ -115,20 +113,32 @@ impl Task {
         })
     }
 
-    pub fn create_thread(
+    pub fn create_thread<const N: usize>(
         &mut self,
         uid: usize,
         attrs: &thread::Attributes,
-    ) -> Result<sched::thread::Thread> {
+        storage: &mut ThreadMap<N>,
+    ) -> Result<thread::UId> {
         let stack = self.allocate_stack(attrs)?;
 
         let stack = unsafe { Stack::new(stack) }?;
         let tid = self.allocate_tid();
+        let new = sched::thread::Thread::new(tid.get_uid(uid), stack);
+        storage.insert(&tid.get_uid(uid), new);
+        self.threads.push_back(tid.get_uid(uid), storage);
 
-        Ok(sched::thread::Thread::new(tid.get_uid(uid), stack))
+        Ok(tid.get_uid(uid))
     }
 
     pub fn tid_cntr(&self) -> usize {
         self.tid_cntr
+    }
+
+    pub fn threads_mut(&mut self) -> &mut list::List<thread::ThreadList, thread::UId> {
+        &mut self.threads
+    }
+
+    pub fn threads(&self) -> &list::List<thread::ThreadList, thread::UId> {
+        &self.threads
     }
 }

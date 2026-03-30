@@ -39,12 +39,27 @@ fn spawn_thread(func_ptr: usize) -> c_int {
         match sched.create_thread(None, &attrs) {
             Ok(uid) => {
                 if sched.enqueue(time::tick(), uid).is_err() {
-                    panic!("failed to enqueue thread.");
+                    bug!("failed to enqueue thread.");
                 }
                 uid.as_usize() as c_int
             }
             Err(_) => -1,
         }
     })
+}
+
+#[syscall_handler(num = 4)]
+fn exit(code: usize) -> c_int {
+    sched::with(|sched| {
+        if sched.kill_thread(None).is_err() {
+            bug!("failed to terminate thread.");
+        }
+    });
+    0
+}
+
+#[syscall_handler(num = 5)]
+fn kick_thread(uid: usize) -> c_int {
+    0
 }
 

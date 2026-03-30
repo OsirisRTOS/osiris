@@ -11,6 +11,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 hal-api = { path = "../api" }
+critical-section = { version = "1.2", features = ["restore-state-usize"] }
 
 [build-dependencies]
 cbindgen = "0.28.0"

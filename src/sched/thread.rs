@@ -19,7 +19,8 @@ pub const IDLE_THREAD: UId = UId {
 };
 
 /// Id of a task. This is only unique within a Task.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Id {
     id: usize,
     owner: task::UId,
@@ -45,7 +46,8 @@ impl Id {
 }
 
 /// Unique identifier for a thread. Build from TaskId and ThreadId.
-#[derive(Clone, Copy, Debug)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub struct UId {
     /// A globally unique identifier for the thread.
@@ -65,7 +67,7 @@ impl UId {
     }
 
     pub fn owner(&self) -> task::UId {
-        self.tid.owner
+        self.tid.owner()
     }
 }
 
@@ -103,14 +105,15 @@ impl ToIndex for UId {
 
 impl Display for UId {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "T{}-{}", self.tid.owner(), self.tid.as_usize())
+        write!(f, "{}-{}", self.tid.owner(), self.tid.as_usize())
     }
 }
 
 // -------------------------------------------------------------------------
 
 /// The state of a thread.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum RunState {
     /// The thread is currently using the cpu.
@@ -121,13 +124,15 @@ pub enum RunState {
     Waits,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 pub struct State {
     run_state: RunState,
     stack: Stack,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 #[derive(TaggedLinks)]
 pub struct RtServer {
     budget: u64,
@@ -197,7 +202,8 @@ impl Compare<RtTree, UId> for RtServer {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 #[derive(TaggedLinks)]
 pub struct Waiter {
     /// The time when the Thread will be awakened.
@@ -237,13 +243,20 @@ impl Compare<WakupTree, UId> for Waiter {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 pub struct WakupTree;
-#[derive(Debug, Clone, Copy)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 pub struct RtTree;
 
-#[derive(Debug, Clone, Copy)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 pub struct RRList;
+
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
+pub struct ThreadList;
 
 pub struct Attributes {
     pub entry: EntryFn,
@@ -251,7 +264,8 @@ pub struct Attributes {
 }
 
 /// The struct representing a thread.
-#[derive(Debug, Clone, Copy)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy)]
 #[derive(TaggedLinks)]
 pub struct Thread {
     /// The current state of the thread.
@@ -265,6 +279,9 @@ pub struct Thread {
 
     #[list(tag = RRList, idx = UId)]
     rr_links: list::Links<RRList, UId>,
+
+    #[list(tag = ThreadList, idx = UId)]
+    thread_links: list::Links<ThreadList, UId>,
 }
 
 #[allow(dead_code)]
@@ -284,6 +301,7 @@ impl Thread {
             rt_server: None,
             waiter: None,
             rr_links: list::Links::new(),
+            thread_links: list::Links::new(),
         }
     }
 
@@ -318,7 +336,13 @@ impl Thread {
     }
 
     pub fn task_id(&self) -> task::UId {
-        self.uid.tid().owner
+        self.uid.tid().owner()
+    }
+}
+
+impl PartialEq for Thread {
+    fn eq(&self, other: &Self) -> bool {
+        self.uid == other.uid
     }
 }
 

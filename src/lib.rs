@@ -28,12 +28,9 @@ pub use proc_macros::app_main;
 
 /// The kernel initialization function.
 ///
-/// `boot_info` - The boot information.
-///
 /// # Safety
 ///
 /// This function must be called only once during the kernel startup.
-/// The `boot_info` pointer must be valid and point to a properly initialized `BootInfo` structure.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kernel_init() -> ! {
     // Initialize basic hardware and the logging system.
@@ -41,6 +38,8 @@ pub unsafe extern "C" fn kernel_init() -> ! {
     hal::Machine::bench_start();
 
     print::print_header();
+
+    error!("Hello World!");
 
     // Initialize the memory allocator.
     let kaddr_space = mem::init_memory();
