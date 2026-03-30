@@ -3,12 +3,6 @@
 xtask = "--config xtasks/.cargo/config.toml run -p xtask --release --"
 
 [env]
-OSIRIS_TUNING_DTS = "nucleo_l4r5zi.dts"
-OSIRIS_TUNING_APPMEMSIZE = "8192"
-OSIRIS_TUNING_ENABLEFPU = "false"
-OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
-OSIRIS_TUNING_APPSTACKSIZE = "2048"
-OSIRIS_DEBUG_UART = "LPUART1"
 
 [build]
 target = "host-tuple"
