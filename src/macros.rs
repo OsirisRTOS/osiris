@@ -1,27 +1,43 @@
 //! Macros for kernel development.
+use defmt_rtt as _;
 
-/// Creates a slice from the raw arguments.
+
 #[macro_export]
-macro_rules! args_from_raw {
-    ($argc:expr, $argv:expr) => {{
-        let argc = $argc;
-        let argv = $argv;
+macro_rules! debug {
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        #[cfg(feature = "defmt")]
+        defmt::debug!($fmt $(, $arg)*);
+    };
+}
 
-        if argc == 0 || argv.is_null() {
-            &[]
-        } else {
-            unsafe { core::slice::from_raw_parts(argv, argc) }
-        }
-    }};
+#[macro_export]
+macro_rules! trace {
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        #[cfg(feature = "defmt")]
+        defmt::trace!($fmt $(, $arg)*);
+    };
+}
+
+#[macro_export]
+macro_rules! info {
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        #[cfg(feature = "defmt")]
+        defmt::info!($fmt $(, $arg)*);
+    };
+}
+
+#[macro_export]
+macro_rules! error {
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        #[cfg(feature = "defmt")]
+        defmt::error!($fmt $(, $arg)*);
+    };
 }
 
 #[macro_export]
 macro_rules! kprint {
     ($($arg:tt)*) => ({
-        use core::fmt::Write;
-        use $crate::print::Printer;
-        let mut printer = Printer;
-        printer.write_fmt(format_args!($($arg)*)).unwrap();
+    
     });
 }
 

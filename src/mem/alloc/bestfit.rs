@@ -16,7 +16,7 @@ struct BestFitMeta {
 /// That does mean, when we allocate a block, we try to find the smallest block that fits the requested size.
 /// Blocks are stored in a singly linked list. The important part is that the linked list is stored in-line with the memory blocks.
 /// This means that every block has a header that contains the size of the block and a pointer to the next block.
-#[derive(Debug)]
+#[proc_macros::fmt]
 pub struct BestFitAllocator {
     /// Head of the free block list.
     head: Option<NonNull<u8>>,

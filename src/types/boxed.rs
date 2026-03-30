@@ -9,7 +9,7 @@ use core::{
 };
 
 /// A heap-allocated memory block.
-#[derive(Debug)]
+#[proc_macros::fmt]
 pub struct Box<T: ?Sized> {
     /// Pointer to the heap-allocated memory.
     /// This is uniquely owned, so no covariance issues.

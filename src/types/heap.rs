@@ -5,7 +5,7 @@ use crate::error::Result;
 use super::array::Vec;
 
 /// An array-based binary heap, with N elements stored inline.
-#[derive(Debug)]
+#[proc_macros::fmt]
 pub struct BinaryHeap<T, const N: usize> {
     vec: Vec<T, N>,
 }

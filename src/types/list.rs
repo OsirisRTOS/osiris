@@ -19,7 +19,8 @@ pub trait Linkable<Tag, T> {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Links<Tag, T> {
     prev: Option<T>,
     next: Option<T>,
@@ -231,7 +232,8 @@ mod tests {
     use super::{Linkable, Links, List};
     use crate::types::{array::IndexMap, traits::{Get, ToIndex}};
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    #[proc_macros::fmt]
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     struct Id(usize);
 
     impl ToIndex for Id {

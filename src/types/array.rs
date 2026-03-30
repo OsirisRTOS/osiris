@@ -13,7 +13,7 @@ use core::{
 };
 
 /// This is a fixed-size map that can store up to N consecutive elements.
-#[derive(Debug)]
+#[proc_macros::fmt]
 pub struct IndexMap<K: ?Sized + ToIndex, V, const N: usize>
 {
     data: [Option<V>; N],
@@ -113,9 +113,17 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
         None
     }
 
-    pub fn at_cont(&self, idx: usize) -> Option<&V> {
+    pub fn raw_at(&self, idx: usize) -> Option<&V> {
         if idx < N {
             self.data[idx].as_ref()
+        } else {
+            None
+        }
+    }
+
+    pub fn raw_at_mut(&mut self, idx: usize) -> Option<&mut V> {
+        if idx < N {
+            self.data[idx].as_mut()
         } else {
             None
         }
@@ -137,14 +145,14 @@ impl<K: Copy + ToIndex, V, const N: usize> Index<K> for IndexMap<K, V, N>
     type Output = V;
 
     fn index(&self, index: K) -> &Self::Output {
-        self.get(&index).unwrap()
+        self.get::<K>(index).unwrap()
     }
 }
 
 impl<K: Copy + ToIndex, V, const N: usize> IndexMut<K> for IndexMap<K, V, N>
 {
     fn index_mut(&mut self, index: K) -> &mut Self::Output {
-        self.get_mut(&index).unwrap()
+        self.get_mut::<K>(index).unwrap()
     }
 }
 
@@ -173,23 +181,23 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
     }
 
     fn get2_mut<Q: Borrow<K>>(&mut self, index1: Q, index2: Q) -> (Option<&mut Self::Output>, Option<&mut Self::Output>) {
-        let index1 = K::to_index(Some(index1.borrow()));
-        let index2 = K::to_index(Some(index2.borrow()));
+        let idx1 = K::to_index(Some(index1.borrow()));
+        let idx2 = K::to_index(Some(index2.borrow()));
 
-        if index1 == index2 {
+        if idx1 == idx2 {
             debug_assert!(false, "get2_mut called with identical indices");
             return (None, None);
         }
 
-        let (left, right) = self.data.split_at_mut(index1.max(index2));
+        let (left, right) = self.data.split_at_mut(idx1.max(idx2));
 
-        if index1 < index2 {
-            let elem1 = left[index1].as_mut();
+        if idx1 < idx2 {
+            let elem1 = left[idx1].as_mut();
             let elem2 = right[0].as_mut();
             (elem1, elem2)
         } else {
             let elem1 = right[0].as_mut();
-            let elem2 = left[index2].as_mut();
+            let elem2 = left[idx2].as_mut();
             (elem1, elem2)
         }
     }
@@ -200,18 +208,18 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
         index2: Q,
         index3: Q,
     ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>, Option<&mut Self::Output>) {
-        let index1 = K::to_index(Some(index1.borrow()));
-        let index2 = K::to_index(Some(index2.borrow()));
-        let index3 = K::to_index(Some(index3.borrow()));
+        let idx1 = K::to_index(Some(index1.borrow()));
+        let idx2 = K::to_index(Some(index2.borrow()));
+        let idx3 = K::to_index(Some(index3.borrow()));
 
-        if index1 == index2 || index1 == index3 || index2 == index3 {
+        if idx1 == idx2 || idx1 == idx3 || idx2 == idx3 {
             debug_assert!(false, "get3_mut called with identical indices");
             return (None, None, None);
         }
 
-        let ptr1 = &mut self.data[index1] as *mut Option<V>;
-        let ptr2 = &mut self.data[index2] as *mut Option<V>;
-        let ptr3 = &mut self.data[index3] as *mut Option<V>;
+        let ptr1 = &mut self.data[idx1] as *mut Option<V>;
+        let ptr2 = &mut self.data[idx2] as *mut Option<V>;
+        let ptr3 = &mut self.data[idx3] as *mut Option<V>;
 
         // Safety: the elements at index1, index2 and index3 are nowhere else borrowed mutably by function contract.
         // And they are disjoint because of the check above.
@@ -220,7 +228,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
 }
 
 /// This is a vector that can store up to N elements inline and will allocate on the heap if more are needed.
-#[derive(Debug)]
+#[proc_macros::fmt]
 pub struct Vec<T, const N: usize> {
     len: usize,
     data: [MaybeUninit<T>; N],

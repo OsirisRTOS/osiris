@@ -90,7 +90,8 @@ macro_rules! kerr {
     };
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[proc_macros::fmt]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Kind {
     InvalidAlign,
     OutOfMemory,

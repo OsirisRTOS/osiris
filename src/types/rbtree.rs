@@ -22,7 +22,8 @@ pub trait Compare<Tag, T> {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Links<Tag, T> {
     parent: Option<T>,
     left: Option<T>,
@@ -44,7 +45,8 @@ impl<Tag, T> Links<Tag, T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[proc_macros::fmt]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Color {
     Red,
     Black,
@@ -62,7 +64,8 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
     }
 
     /// Inserts `id` into the tree. If `id` already exists in the tree, it is first removed and then re-inserted. Errors if `id` does not exist in `storage`.
-    pub fn insert<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
+    pub fn insert<
+    S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,{
         let already_linked = {
             let node = storage.get(id).ok_or(kerr!(NotFound))?;

@@ -18,6 +18,12 @@ pub trait ToIndex {
     fn to_index<Q: Borrow<Self>>(index: Option<Q>) -> usize;
 }
 
+impl ToIndex for usize {
+    fn to_index<Q: Borrow<Self>>(index: Option<Q>) -> usize {
+        index.map_or(0, |i| *i.borrow())
+    }
+}
+
 pub trait Project<P> {
     fn project(&self) -> Option<&P>;
     fn project_mut(&mut self) -> Option<&mut P>;

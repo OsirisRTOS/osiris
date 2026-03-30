@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-osiris = { workspace = true }
+osiris = { workspace = true, features = ["defmt"] }
 
 [build-dependencies]
 cfg_aliases = "0.2.1"
