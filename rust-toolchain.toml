@@ -1,0 +1,4 @@
+[toolchain]
+channel = "1.94.0"
+components = ["rust-src", "llvm-tools-preview"]
+targets = ["thumbv7em-none-eabihf", "thumbv7em-none-eabi"]

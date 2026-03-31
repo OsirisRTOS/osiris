@@ -56,7 +56,7 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	libusb1-devel \
 	openssl-devel \
 	lcov \
-	dtc \ 
+	dtc \
 	awk \
 	just \
 	python-pyelftools \
@@ -86,12 +86,15 @@ ENV CARGO_HOME=/usr/local/cargo
 ENV KANI_HOME=/usr/local/kani
 ENV PATH="/usr/local/cargo/bin:${PATH}"
 
-ARG RUST_VERSION=1.93.1
+WORKDIR /tmp
+
+COPY rust-toolchain.toml /tmp/rust-toolchain.toml
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-	| sh -s -- -y --no-modify-path --default-toolchain ${RUST_VERSION} && \
-	rustup component add rust-src llvm-tools-preview && \
-	rustup target add thumbv7em-none-eabihf thumbv7em-none-eabi
+	| sh -s -- -y --no-modify-path --default-toolchain none
+
+RUN rustup show
 
 # Note: kani installs an additional toolchain...
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
