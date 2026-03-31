@@ -6,8 +6,8 @@ pub struct Scheduler<const N: usize> {
     queue: List<thread::RRList, thread::UId>,
 
     current: Option<thread::UId>,
-    current_left: u64,
-    quantum: u64,
+    current_left: u32,
+    quantum: u32,
 }
 
 impl<const N: usize> Scheduler<N> {
@@ -20,7 +20,7 @@ impl<const N: usize> Scheduler<N> {
         self.queue.push_back(uid, storage).map_err(|_| kerr!(InvalidArgument))
     }
 
-    pub fn put(&mut self, uid: thread::UId, dt: u64) {
+    pub fn put(&mut self, uid: thread::UId, dt: u32) {
         if let Some(current) = self.current {
             if current == uid {
                 self.current_left = self.current_left.saturating_sub(dt);
@@ -28,7 +28,7 @@ impl<const N: usize> Scheduler<N> {
         }
     }
 
-    pub fn pick(&mut self, storage: &mut super::ThreadMap<N>) -> Option<(thread::UId, u64)> {
+    pub fn pick(&mut self, storage: &mut super::ThreadMap<N>) -> Option<(thread::UId, u32)> {
         match self.current {
             Some(current) if self.current_left > 0 => return Some((current, self.current_left)),
             Some(current) => {

@@ -9,12 +9,12 @@ use hal::Stack;
 use hal::stack::Stacklike;
 
 use crate::error::Result;
-use crate::sched::{GlobalScheduler, ThreadMap, thread};
+use crate::sched::{ThreadMap, thread};
 use crate::types::list;
 use crate::{mem, sched};
 
 use crate::mem::vmm::AddressSpacelike;
-use crate::types::traits::{Get, GetMut, ToIndex};
+use crate::types::traits::ToIndex;
 
 pub struct Defaults {
     pub stack_pages: usize,
@@ -123,9 +123,9 @@ impl Task {
 
         let stack = unsafe { Stack::new(stack) }?;
         let tid = self.allocate_tid();
-        let new = sched::thread::Thread::new(tid.get_uid(uid), stack);
-        storage.insert(&tid.get_uid(uid), new);
-        self.threads.push_back(tid.get_uid(uid), storage);
+        let new = sched::thread::Thread::new(tid.get_uid(uid), stack, attrs.attrs);
+        storage.insert(&tid.get_uid(uid), new)?;
+        self.threads.push_back(tid.get_uid(uid), storage)?;
 
         Ok(tid.get_uid(uid))
     }

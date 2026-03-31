@@ -94,7 +94,7 @@ impl<const N: usize> Scheduler<N> {
     }
 
     /// Triggers a reschedule at *latest* when we hit timepoint `next`.
-    fn schedule_resched(now: u64, next: u64) {
+    fn next_resched(now: u64, next: u64) {
         let old = NEXT_TICK.load(Ordering::Acquire);
 
         if old > now && old <= next {
@@ -126,15 +126,18 @@ impl<const N: usize> Scheduler<N> {
         while let Some(uid) = self.wakeup.min() {
             let mut done = false;
             WaiterView::<N>::with(&mut self.threads, |view| {
-                let waiter = view.get(uid).expect("THIS IS A BUG!");
-                if waiter.until() > now {
-                    Self::schedule_resched(now, waiter.until());
-                    done = true;
-                    return;
-                }
+                if let Some(waiter) = view.get(uid) {
+                    if waiter.until() > now {
+                        Self::next_resched(now, waiter.until());
+                        done = true;
+                        return;
+                    }
 
-                if let Err(_) = self.wakeup.remove(uid, view) {
-                    bug!("failed to remove thread {} from wakeup tree.", uid);
+                    if let Err(_) = self.wakeup.remove(uid, view) {
+                        bug!("failed to remove thread {} from wakeup tree.", uid);
+                    }
+                } else {
+                    bug!("failed to get thread {} from wakeup tree.", uid);
                 }
             });
 
@@ -148,40 +151,57 @@ impl<const N: usize> Scheduler<N> {
         }
     }
 
-    pub fn do_sched(&mut self, now: u64) -> Option<(*mut c_void, &mut task::Task)> {
+    /// Syncs the new state after the last do_sched call to the scheduler, and returns whether we need to immediately reschedule.
+    fn sync_to_sched(&mut self, now: u64) -> bool {
         let dt = now - self.last_tick;
         self.last_tick = now;
 
         if let Some(old) = self.current {
-            rt::ServerView::<N>::with(&mut self.threads, |view| {
-                self.rt_scheduler.put(old, dt, view);
+            let throttle = rt::ServerView::<N>::with(&mut self.threads, |view| {
+                self.rt_scheduler.put(old, dt, view)
             });
-            self.rr_scheduler.put(old, dt);
+
+            if let Some(throttle) = throttle {
+                self.sleep_until(throttle, now);
+                return true;
+            }
+
+            self.rr_scheduler.put(old, dt as u32);
         }
 
         self.do_wakeups(now);
+        false
+    }
 
-        let pick =
-            rt::ServerView::<N>::with(&mut self.threads, |view| self.rt_scheduler.pick(now, view));
-        let pick = pick.or_else(|| self.rr_scheduler.pick(&mut self.threads));
-        let (new, budget) = pick.unwrap_or((thread::IDLE_THREAD, 1000));
+    fn select_next(&mut self) -> (thread::UId, u32) {
+        rt::ServerView::<N>::with(&mut self.threads, |view| self.rt_scheduler.pick(view))
+            .or_else(|| self.rr_scheduler.pick(&mut self.threads))
+            .unwrap_or((thread::IDLE_THREAD, 1000))
+    }
+
+    pub fn do_sched(&mut self, now: u64) -> Option<(*mut c_void, &mut task::Task)> {
+        // Sync the new state to the scheduler.
+        if self.sync_to_sched(now) {
+            // Trigger reschedule after interrupts are enabled.
+            return None;
+        }
+
+        // Pick the next thread to run.
+        let (new, budget) = self.select_next();
 
         // At this point, the task/thread must exist. Everything else is a bug.
-        let (ctx, task_id) = if let Some(thread) = self.threads.get(new) {
-            (thread.ctx(), thread.task_id())
-        } else {
+        let Some(thread) = self.threads.get(new) else {
             bug!("failed to pick thread {}. Does not exist.", new);
         };
+        let (ctx, task_id) = (thread.ctx(), thread.task_id());
 
-        let task = if let Some(task) = self.tasks.get_mut(task_id) {
-            task
-        } else {
+        let Some(task) = self.tasks.get_mut(task_id) else {
             bug!("failed to get task {}. Does not exist.", task_id);
         };
 
         // We don't need to resched if the thread has budget.
         self.current = Some(new);
-        Self::schedule_resched(now, now.saturating_add(budget));
+        Self::next_resched(now, now.saturating_add(budget as u64));
         Some((ctx, task))
     }
 
@@ -253,10 +273,22 @@ impl<const N: usize> Scheduler<N> {
                 self.rt_scheduler.dequeue(id, view);
             });
             self.rr_scheduler.dequeue(id, &mut self.threads);
+            self.wakeup
+                .remove(id, &mut WaiterView::<N>::new(&mut self.threads));
 
             if task.threads_mut().remove(id, &mut self.threads).is_err() {
                 // This should not be possible. The thread ID is from the thread list of the task, so it must exist.
                 bug!("failed to remove thread {} from task {}.", id, uid);
+            }
+
+            if self.threads.remove(&id).is_none() {
+                // This should not be possible. The thread ID is from the thread list of the task, so it must exist.
+                bug!("failed to remove thread {} from thread list.", id);
+            }
+
+            if Some(id) == self.current {
+                self.current = None;
+                reschedule();
             }
         }
 
@@ -283,6 +315,15 @@ impl<const N: usize> Scheduler<N> {
     pub fn kill_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
         let uid = uid.unwrap_or(self.current.ok_or(kerr!(InvalidArgument))?);
         self.dequeue(uid);
+        self.wakeup
+            .remove(uid, &mut WaiterView::<N>::new(&mut self.threads));
+
+        self.tasks
+            .get_mut(uid.tid().owner())
+            .ok_or(kerr!(InvalidArgument))?
+            .threads_mut()
+            .remove(uid, &mut self.threads)?;
+
         self.threads.remove(&uid).ok_or(kerr!(InvalidArgument))?;
 
         if Some(uid) == self.current {
@@ -353,8 +394,6 @@ pub extern "C" fn sched_enter(mut ctx: *mut c_void) -> *mut c_void {
                 dispch::prepare(task);
             }
             ctx = new;
-        } else {
-            bug!("failed to schedule a thread. No threads available.");
         }
 
         ctx

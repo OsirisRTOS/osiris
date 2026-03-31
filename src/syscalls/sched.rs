@@ -4,7 +4,7 @@ use core::ffi::c_int;
 
 use proc_macros::syscall_handler;
 
-use crate::{sched, time};
+use crate::{sched, time, uapi::sched::RtAttrs};
 
 #[syscall_handler(num = 1)]
 fn sleep(until_hi: u32, until_lo: u32) -> c_int {
@@ -30,11 +30,18 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
 }
 
 #[syscall_handler(num = 3)]
-fn spawn_thread(func_ptr: usize) -> c_int {
+fn spawn_thread(func_ptr: usize, attrs: *const RtAttrs) -> c_int {
     sched::with(|sched| {
+        let attrs = if attrs.is_null() {
+            None
+        } else {
+            Some(unsafe { *attrs })
+        };
+
         let attrs = sched::thread::Attributes {
             entry: unsafe { core::mem::transmute(func_ptr) },
             fin: None,
+            attrs,
         };
         match sched.create_thread(None, &attrs) {
             Ok(uid) => {

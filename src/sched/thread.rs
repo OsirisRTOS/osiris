@@ -3,19 +3,25 @@
 use core::fmt::Display;
 use core::{borrow::Borrow, ffi::c_void};
 
-use hal::{Stack, stack::EntryFn};
 use hal::stack::{FinFn, Stacklike};
+use hal::{Stack, stack::EntryFn};
 use proc_macros::TaggedLinks;
 
 use crate::error::Result;
 use crate::sched::task::{self, KERNEL_TASK};
-use crate::time::tick;
 use crate::types::list;
-use crate::{types::{rbtree::{self, Compare}, traits::{Project, ToIndex}}};
+use crate::types::{
+    rbtree::{self, Compare},
+    traits::{Project, ToIndex},
+};
+use crate::uapi;
 
 pub const IDLE_THREAD: UId = UId {
     uid: 1,
-    tid: Id { id: 0, owner: KERNEL_TASK },
+    tid: Id {
+        id: 0,
+        owner: KERNEL_TASK,
+    },
 };
 
 /// Id of a task. This is only unique within a Task.
@@ -132,12 +138,11 @@ pub struct State {
 }
 
 #[proc_macros::fmt]
-#[derive(Clone, Copy)]
-#[derive(TaggedLinks)]
+#[derive(Clone, Copy, TaggedLinks)]
 pub struct RtServer {
-    budget: u64,
-    budget_left: u64,
-    period: u64,
+    budget: u32,
+    budget_left: u32,
+    period: u32,
     deadline: u64,
 
     // Back-reference to the thread uid.
@@ -149,36 +154,50 @@ pub struct RtServer {
 }
 
 impl RtServer {
-    pub fn new(budget: u64, period: u64, uid: UId) -> Self {
+    pub fn new(budget: u32, period: u32, deadline: u64, uid: UId) -> Self {
         Self {
             budget,
             budget_left: budget,
             period,
-            deadline: tick() + period,
+            deadline,
             uid,
             _rt_links: rbtree::Links::new(),
         }
     }
 
-    pub fn budget_left(&self) -> u64 {
+    pub fn budget_left(&self) -> u32 {
         self.budget_left
     }
 
-    pub fn budget(&self) -> u64 {
+    pub fn budget(&self) -> u32 {
         self.budget
     }
 
-    pub fn replenish(&mut self, now: u64) {
-        self.deadline += self.period;
-        self.budget_left = self.budget;
+    fn violates_sched(&self, now: u64) -> bool {
+        self.budget_left as u64 * self.period as u64
+            > self.budget as u64 * (self.deadline.saturating_sub(now))
     }
 
-    pub fn consume(&mut self, dt: u64) {
-        if self.budget_left >= dt {
-            self.budget_left -= dt;
-        } else {
-            self.budget_left = 0;
+    pub fn on_wakeup(&mut self, now: u64) {
+        if self.deadline <= now || self.violates_sched(now) {
+            self.deadline = now + self.period as u64;
+            self.budget_left = self.budget;
         }
+    }
+
+    pub fn replenish(&mut self) {
+        self.deadline = self.deadline + self.period as u64;
+        self.budget_left += self.budget;
+    }
+
+    pub fn consume(&mut self, dt: u64) -> Option<u64> {
+        self.budget_left = self.budget_left.saturating_sub(dt as u32);
+
+        if self.budget_left == 0 {
+            return Some(self.deadline);
+        }
+
+        None
     }
 
     pub fn deadline(&self) -> u64 {
@@ -203,8 +222,7 @@ impl Compare<RtTree, UId> for RtServer {
 }
 
 #[proc_macros::fmt]
-#[derive(Clone, Copy)]
-#[derive(TaggedLinks)]
+#[derive(Clone, Copy, TaggedLinks)]
 pub struct Waiter {
     /// The time when the Thread will be awakened.
     until: u64,
@@ -261,12 +279,12 @@ pub struct ThreadList;
 pub struct Attributes {
     pub entry: EntryFn,
     pub fin: Option<FinFn>,
+    pub attrs: Option<uapi::sched::RtAttrs>,
 }
 
 /// The struct representing a thread.
 #[proc_macros::fmt]
-#[derive(Clone, Copy)]
-#[derive(TaggedLinks)]
+#[derive(Clone, Copy, TaggedLinks)]
 pub struct Thread {
     /// The current state of the thread.
     state: State,
@@ -291,14 +309,16 @@ impl Thread {
     /// `stack` - The stack of the thread.
     ///
     /// Returns a new thread.
-    pub fn new(uid: UId, stack: Stack) -> Self {
+    pub fn new(uid: UId, stack: Stack, rtattrs: Option<uapi::sched::RtAttrs>) -> Self {
+        let server =
+            rtattrs.map(|attrs| RtServer::new(attrs.budget, attrs.period, attrs.deadline, uid));
         Self {
             state: State {
                 run_state: RunState::Ready,
                 stack,
             },
             uid,
-            rt_server: None,
+            rt_server: server,
             waiter: None,
             rr_links: list::Links::new(),
             thread_links: list::Links::new(),
@@ -348,7 +368,7 @@ impl PartialEq for Thread {
 
 impl Project<RtServer> for Thread {
     fn project(&self) -> Option<&RtServer> {
-         self.rt_server.as_ref()
+        self.rt_server.as_ref()
     }
 
     fn project_mut(&mut self) -> Option<&mut RtServer> {
@@ -358,7 +378,7 @@ impl Project<RtServer> for Thread {
 
 impl Project<Waiter> for Thread {
     fn project(&self) -> Option<&Waiter> {
-         self.waiter.as_ref()
+        self.waiter.as_ref()
     }
 
     fn project_mut(&mut self) -> Option<&mut Waiter> {
