@@ -13,7 +13,7 @@ type = "Boolean"
 [debug.uart]
 name = "Debug UART"
 description = "Select the UART peripheral to use for debug output."
-type = { type = "String", allowed_values = ["LPUART1", "UART5"] }
+type = { type = "String", allowed_values = ["USART1", "USART2", "USART3", "UART4", "UART5", "LPUART1"] }
 default = "LPUART1"
 
 [tuning]
