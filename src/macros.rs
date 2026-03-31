@@ -1,6 +1,4 @@
 //! Macros for kernel development.
-use defmt_rtt as _;
-
 
 #[macro_export]
 macro_rules! debug {

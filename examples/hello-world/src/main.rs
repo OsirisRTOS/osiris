@@ -4,26 +4,13 @@
 use osiris::app_main;
 
 extern "C" fn second_thread() {
-    osiris::uprintln!("Hello from the second thread!");
-
-    let mut tick = 0;
-    for i in 0..5 {
-        osiris::uprintln!("Second thread tick: {}", tick);
-        tick += 1;
-        osiris::uapi::sched::sleep_for(1500);
-    }
-
-    osiris::uapi::sched::exit(0);
-    osiris::uprintln!("This will never be printed.");
-}
-
-extern "C" fn generator_thread() {
-
+    let mut time = osiris::uapi::time::tick();
     let mut cnt = 0;
     loop {
-        osiris::uapi::sched::yield_thread();
+        time += 100;
         osiris::uprintln!("Number: {}", cnt);
         cnt += 1;
+        osiris::uapi::sched::sleep(time);
     }
 }
 
@@ -31,8 +18,9 @@ extern "C" fn generator_thread() {
 fn main() {
     osiris::uprintln!("Hello World!");
     let mut tick = 0;
-    osiris::uapi::sched::spawn_thread(second_thread);
-    osiris::uapi::sched::spawn_thread(generator_thread);
+    let attrs = osiris::uapi::sched::RtAttrs { deadline: 100, period: 100, budget: 100 };
+
+    osiris::uapi::sched::spawn_thread(second_thread, Some(attrs));
     loop {
         osiris::uprintln!("Tick: {}", tick);
         tick += 1;

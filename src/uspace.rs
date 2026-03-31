@@ -15,7 +15,9 @@ pub fn init_app() {
     let attrs = sched::thread::Attributes {
         entry: app_main_entry,
         fin: None,
+        attrs: None,
     };
+
     sched::with(|sched| {
         if let Ok(uid) = sched.create_thread(Some(sched::task::KERNEL_TASK), &attrs) {
             if sched.enqueue(time::tick(), uid).is_err() {
