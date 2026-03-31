@@ -94,6 +94,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 	| sh -s -- -y --no-modify-path --default-toolchain none
 
+# rustup show forces install of versions from the toolchain file
 RUN rustup show
 
 # Note: kani installs an additional toolchain...
