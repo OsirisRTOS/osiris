@@ -53,7 +53,7 @@ void tim2_hndlr(void)
     }
 }
 
-void SystemClock_Config(void)
+void init_clock_cfg(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};

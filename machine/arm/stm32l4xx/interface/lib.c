@@ -31,7 +31,7 @@ void init_hal(void) {
 
   enable_faults();
 
-  SystemClock_Config();
+  init_clock_cfg();
   init_systick();
 }
 
