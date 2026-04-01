@@ -35,19 +35,16 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
 
 /// Initialize the memory allocator.
 ///
-/// `boot_info` - The boot information. This contains the memory map.
+/// `regions` - The memory node module of device tree codegen file.
 ///
 /// Returns an error if the memory allocator could not be initialized.
-pub fn init_memory(boot_info: &BootInfo) -> Result<(), utils::KernelError> {
+pub fn init_memory(regions: &[(&str, usize, usize)]) -> Result<(), utils::KernelError> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-    for entry in boot_info.mmap.iter().take(boot_info.mmap_len as usize) {
-        // We only add available memory to the allocator.
-        if entry.ty == MemoryTypes::Available as u32 {
-            let range = entry.addr as usize..(entry.addr + entry.length) as usize;
-            unsafe {
-                allocator.add_range(range)?;
-            }
+    for &(_, base, size) in regions {
+        let range = base..base + size;
+        unsafe {
+            allocator.add_range(range)?;
         }
     }
 
@@ -92,74 +89,53 @@ pub fn align_up(size: usize) -> usize {
     (size + align - 1) & !(align - 1)
 }
 
-// VERIFICATION -------------------------------------------------------------------------------------------------------
+// VERIFICATION -----------------------------------------------------------------------------------
 #[cfg(kani)]
 mod verification {
+    use super::*;
     use crate::mem::alloc::MAX_ADDR;
 
-    use super::*;
-    use interface::{Args, InitDescriptor, MemMapEntry};
-
     fn mock_ptr_write<T>(dst: *mut T, src: T) {
-        // Just a noop
+        // noop
     }
 
     #[kani::proof]
     #[kani::stub(core::ptr::write, mock_ptr_write)]
     fn proof_init_allocator_good() {
-        let mmap: [MemMapEntry; _] = kani::any();
+        const MAX_REGIONS: usize = 8;
+        let regions: [(&str, usize, usize); MAX_REGIONS] =
+            core::array::from_fn(|i| ("dummy", kani::any(), kani::any()));
 
-        kani::assume(mmap.len() > 0 && mmap.len() <= 8);
-        // Apply constraints to all
-        for entry in mmap.iter() {
-            // Ensure aligned.
-            kani::assume(entry.addr % align_of::<u128>() as u64 == 0);
-            // Ensure valid range.
-            kani::assume(entry.addr > 0);
-            kani::assume(entry.length > 0);
-
-            kani::assume(
-                entry.length < alloc::MAX_ADDR as u64
-                    && entry.length > alloc::BestFitAllocator::MIN_RANGE_SIZE as u64,
-            );
-            kani::assume(entry.addr < alloc::MAX_ADDR as u64 - entry.length && entry.addr > 0);
+        // contrain all regions
+        for &(_, base, size) in regions.iter() {
+            kani::assume(base % align_of::<u128>() == 0);
+            kani::assume(base > 0);
+            kani::assume(size > 0);
+            kani::assume(size < alloc::MAX_ADDR && size > alloc::BestFitAllocator::MIN_RANGE_SIZE);
+            kani::assume(base < alloc::MAX_ADDR - size);
         }
 
-        for entry in mmap.iter() {
-            // Ensure non overlapping entries
-            for other in mmap.iter() {
-                if entry.addr != other.addr {
-                    kani::assume(
-                        entry.addr + entry.length <= other.addr
-                            || other.addr + other.length <= entry.addr,
-                    );
-                }
-            }
-        }
+        // for any i, j, i != j as indices into the memory regions the following should hold
+        let i: usize = kani::any();
+        let j: usize = kani::any();
+        kani::assume(i < MAX_REGIONS);
+        kani::assume(j < MAX_REGIONS);
+        kani::assume(i != j);
 
-        let mmap_len = mmap.len() as u64;
+        // non-overlapping regions
+        let (_, base_i, size_i) = regions[i];
+        let (_, base_j, size_j) = regions[j];
+        kani::assume(base_i + size_i <= base_j || base_j + size_j <= base_i);
 
-        let boot_info = BootInfo {
-            magic: interface::BOOT_INFO_MAGIC,
-            version: kani::any(),
-            mmap,
-            mmap_len,
-            args: Args {
-                init: InitDescriptor {
-                    begin: kani::any(),
-                    len: kani::any(),
-                    entry_offset: kani::any(),
-                },
-            },
-        };
-
-        assert!(init_memory(&boot_info).is_ok());
+        // verify memory init
+        assert!(init_memory(&regions).is_ok());
     }
 
     #[kani::proof]
     fn check_align_up() {
         let size = kani::any();
         kani::assume(size > 0);
+
         let align = align_up(size);
         assert_ne!(align, 0);
 
