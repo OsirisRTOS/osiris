@@ -1,7 +1,5 @@
-
 # Osiris
-An RTOS designed and verified to enable reliable software updates and operation for embedded systems.
-
+An RTOS for embedded systems. This is still a very early work in progress.
 
 ## Project Structure
 
