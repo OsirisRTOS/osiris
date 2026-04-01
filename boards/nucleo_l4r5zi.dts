@@ -17,7 +17,6 @@
 	compatible = "st,stm32l4r5zi-nucleo";
 
 	chosen {
-        /delete-property/ zephyr,crc;
         /delete-property/ zephyr,entropy;
         /delete-property/ zephyr,flash-controller;
 
@@ -25,7 +24,6 @@
 		osiris,shell-uart = &lpuart1;
 		osiris,sram = &sram0;
 		osiris,flash = &flash0;
-        osiris,crc = &crc;
         osiris,entropy = &rng;
 	};
 

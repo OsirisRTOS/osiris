@@ -1,5 +1,5 @@
 use std::process::Command;
-use std::{collections::HashMap, fs::File, path::Path, path::PathBuf};
+use std::{collections::HashMap, fs, fs::File, path::Path, path::PathBuf};
 
 extern crate rand;
 extern crate syn;
@@ -34,6 +34,8 @@ fn main() {
     }
 }
 
+// Device Tree Codegen ----------------------------------------------------------------------------
+
 fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
     let dts =
         std::env::var("OSIRIS_TUNING_DTS").unwrap_or_else(|_| "nucleo_l4r5zi.dts".to_string());
@@ -42,46 +44,97 @@ fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
     let dts_path = std::path::Path::new("boards").join(dts);
 
     // dependencies SoC/HAL/pins
-    let zephyr = Path::new("/tmp/zephyr");
-    let hal_stm32 = Path::new("/tmp/hal_stm32");
+    let zephyr = Path::new(&std::env::var("OUT_DIR").unwrap()).join("zephyr");
+    let hal_stm32 = Path::new(&std::env::var("OUT_DIR").unwrap()).join("hal_stm32");
 
     // clean state
     if zephyr.exists() {
-        std::fs::remove_dir_all(zephyr)?;
+        std::fs::remove_dir_all(&zephyr)?;
     }
 
     if hal_stm32.exists() {
-        std::fs::remove_dir_all(hal_stm32)?;
+        std::fs::remove_dir_all(&hal_stm32)?;
     }
 
     sparse_clone(
         "https://github.com/zephyrproject-rtos/zephyr",
-        zephyr,
-        &["include", "dts"],
+        &zephyr,
+        // the west.yaml file is a manifest to manage/pin subprojects used for a specific zephyr
+        // release
+        &["include", "dts", "boards", "west.yaml"],
+        Some("v4.3.0"),
     )?;
+
+    // retrieve from manifest
+    let hal_rev = get_hal_revision(&zephyr)?;
+    println!("cargo:warning=Detected hal_stm32 revision: {hal_rev}");
+
     sparse_clone(
         "https://github.com/zephyrproject-rtos/hal_stm32",
-        hal_stm32,
+        &hal_stm32,
         &["dts"],
+        Some(&hal_rev),
     )?;
 
     let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("device_tree.rs");
     let include_paths = [
         zephyr.join("include"),
         zephyr.join("dts/arm/st"),
+        zephyr.join("dts/arm/st/l4"),
         zephyr.join("dts"),
         zephyr.join("dts/arm"),
         zephyr.join("dts/common"),
         zephyr.join("boards/st"),
         hal_stm32.join("dts"),
+        hal_stm32.join("dts/st"),
     ];
     let include_refs: Vec<&Path> = include_paths.iter().map(PathBuf::as_path).collect();
+
+    for path in &include_paths {
+        if !path.exists() {
+            println!("cargo:warning=MISSING INCLUDE PATH: {:?}", path);
+        }
+    }
 
     dtgen::run(&dts_path, &include_refs, &out)?;
     Ok(())
 }
 
-fn sparse_clone(url: &str, dest: &Path, paths: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+fn get_hal_revision(zephyr_path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let west_yml = fs::read_to_string(zephyr_path.join("west.yml"))?;
+    let mut in_hal_stm32_block = false;
+
+    for line in west_yml.lines() {
+        let trimmed = line.trim();
+
+        // Check if we've entered the hal_stm32 section
+        if trimmed == "- name: hal_stm32" || trimmed == "name: hal_stm32" {
+            in_hal_stm32_block = true;
+            continue;
+        }
+
+        // If we are in the block, look for the revision
+        if in_hal_stm32_block {
+            if trimmed.starts_with("revision:") {
+                return Ok(trimmed.replace("revision:", "").trim().to_string());
+            }
+
+            // If we hit a new project name before finding a revision, something is wrong
+            if trimmed.starts_with("- name:") || trimmed.starts_with("name:") {
+                in_hal_stm32_block = false;
+            }
+        }
+    }
+
+    Err("Could not find hal_stm32 revision in west.yml".into())
+}
+
+fn sparse_clone(
+    url: &str,
+    dest: &Path,
+    paths: &[&str],
+    revision: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
     Command::new("git")
         .args(["clone", "--filter=blob:none", "--no-checkout", url])
         .arg(dest)
@@ -99,13 +152,18 @@ fn sparse_clone(url: &str, dest: &Path, paths: &[&str]) -> Result<(), Box<dyn st
         .current_dir(dest)
         .status()?;
 
-    Command::new("git")
-        .args(["checkout"])
-        .current_dir(dest)
-        .status()?;
+    let mut checkout = Command::new("git");
+    checkout.current_dir(dest).arg("checkout");
 
+    if let Some(rev) = revision {
+        checkout.arg(rev);
+    }
+
+    checkout.status()?;
     Ok(())
 }
+
+// Syscalls ---------------------------------------------------------------------------------------
 
 fn generate_syscalls_export<P: AsRef<Path>>(root: P) -> Result<(), std::io::Error> {
     let syscalls = collect_syscalls_export(root);
