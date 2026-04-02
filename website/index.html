@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Osiris RTOS</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+			background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+			min-height: 100vh;
+			color: white;
+		}
+
+		.container {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			padding: 20px;
+		}
+
+		.header {
+			text-align: center;
+			margin-bottom: 2rem;
+		}
+
+		.header h1 {
+			font-size: 3rem;
+			margin-bottom: 2rem;
+			text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+		}
+
+		.header p {
+			font-size: 1.2rem;
+			opacity: 0.9;
+		}
+
+		.logo-container {
+			margin: 2rem 0;
+			max-width: 500px;
+			width: 100%;
+		}
+
+		.logo {
+			width: 100%;
+			height: auto;
+			border-radius: 10px;
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+		}
+
+		.nav-links {
+			display: flex;
+			gap: 2rem;
+			margin-top: 2rem;
+			flex-wrap: wrap;
+			justify-content: center;
+		}
+
+		.nav-link {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.5rem;
+			padding: 12px 24px;
+			background: rgba(255, 255, 255, 0.1);
+			backdrop-filter: blur(10px);
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			border-radius: 50px;
+			text-decoration: none;
+			color: white;
+			font-weight: 500;
+			transition: all 0.3s ease;
+		}
+
+		.nav-link:hover {
+			background: rgba(255, 255, 255, 0.2);
+			transform: translateY(-2px);
+			box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+		}
+
+		.icon {
+			font-size: 20px;
+			display: inline-block;
+		}
+
+		footer {
+			margin-top: 5rem;
+			text-align: center;
+			opacity: 0.7;
+			font-size: 0.9rem;
+		}
+
+		@media (max-width: 768px) {
+			.header h1 {
+				font-size: 2rem;
+			}
+
+			.header p {
+				font-size: 1rem;
+			}
+
+			.nav-links {
+				flex-direction: column;
+				align-items: center;
+			}
+
+			.nav-link {
+				width: 200px;
+				justify-content: center;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<div class="container">
+		<header class="header">
+			<h1>Osiris RTOS</h1>
+			<p>A real-time Operating System designed and verified to enable reliable software updates and operation for embedded sytems.</p>
+		</header>
+
+		<div class="logo-container">
+			<img src="images/osiris.png" alt="OsirisRTOS Logo" class="logo">
+		</div>
+
+		<nav class="nav-links">
+			<a href="https://github.com/OsirisRTOS/osiris/" class="nav-link" target="_blank" rel="noopener">
+				<span class="icon">💻</span>
+				Source Code
+			</a>
+
+			<a href="https://osiris.rs/docs/kernel/index.html" class="nav-link" target="_blank" rel="noopener">
+				<span class="icon">📚</span>
+				Documentation
+			</a>
+		</nav>
+
+		<footer>
+			<p>&copy; 2026 Osiris Authors</p>
+		</footer>
+	</div>
+</body>
+
+</html>

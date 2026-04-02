@@ -133,3 +133,41 @@ jobs:
 
       - name: Build
         run: just build
+
+  docs:
+    name: Deploy the documentation online
+    runs-on: ubuntu-latest
+    needs: [container]
+    container:
+      image: ${{ needs.container.outputs.container_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set stm32l4r5zi config
+        run: just config load stm32l4r5zi_def --no-confirm
+
+      - name: Generate docs
+        run: cargo doc --no-deps --workspace
+
+
+      - name: Move docs
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: osiris/target/doc website/docs
+
+      - name: Setup Pages
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'website'
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        id: deployment
+        uses: actions/deploy-pages@v4
