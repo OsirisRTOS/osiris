@@ -1,7 +1,7 @@
 on:
   push:
-    branches-ignore:
-      - "gh-readonly-queue/**"
+    branches:
+      - 'main'
   pull_request:
   merge_group:
   workflow_dispatch:
@@ -134,16 +134,12 @@ jobs:
       - name: Build
         run: just build
 
-  docs:
-    name: Deploy the documentation online
+  build-docs:
+    name: Build the documentation
     runs-on: ubuntu-latest
     needs: [container]
     container:
       image: ${{ needs.container.outputs.container_name }}
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -156,22 +152,44 @@ jobs:
       - name: Generate docs
         run: cargo doc --no-deps --workspace
 
-      - name: Move docs
-        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        run: mv target/doc website/docs
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs
+          path: target/doc
 
+  deploy-docs:
+    name: Deploy the documentation online
+    runs-on: ubuntu-latest
+    needs: [build-docs]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: website
+
+      - name: Download docs
+        uses: actions/download-artifact@v4
+        with:
+          name: docs
+          path: website/docs
 
       - name: Setup Pages
-        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
-        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'website'
 
       - name: Deploy to GitHub Pages
-        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         id: deployment
         uses: actions/deploy-pages@v4
