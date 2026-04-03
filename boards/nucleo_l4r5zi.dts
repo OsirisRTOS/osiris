@@ -12,6 +12,8 @@
 #include <st/l4/stm32l4r5z(g-i)tx-pinctrl.dtsi>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 
+/delete-node/ &sram1;
+
 / {
 	model = "STMicroelectronics STM32L4R5ZI-NUCLEO board";
 	compatible = "st,stm32l4r5zi-nucleo";
@@ -25,6 +27,11 @@
 		osiris,sram = &sram0;
 		osiris,flash = &flash0;
         osiris,entropy = &rng;
+	};
+
+	sram1: memory@20030000 {
+		device_type = "memory";
+		reg = <0x20030000 0x00010000>;
 	};
 
 	leds: leds {

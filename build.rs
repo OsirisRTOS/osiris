@@ -1,3 +1,4 @@
+use core::panic;
 use std::process::Command;
 use std::{collections::HashMap, fs, fs::File, path::Path, path::PathBuf};
 
@@ -22,7 +23,13 @@ fn main() {
         panic!("Failed to generate syscall match statement.");
     }
 
-    generate_device_tree().expect("Failed to generate device tree.");
+    let dt = build_device_tree(Path::new(&out_dir)).unwrap_or_else(|e| {
+        panic!("Failed to build device tree from DTS files: {e}");
+    });
+
+    if let Err(e) = generate_device_tree(&dt, Path::new(&out_dir)) {
+        panic!("Failed to generate device tree scripts: {e}");
+    }
 
     cfg_aliases! {
         freestanding: { all(not(test), not(doctest), not(doc), not(kani), any(target_os = "none", target_os = "unknown")) },
@@ -31,15 +38,25 @@ fn main() {
 
 // Device Tree Codegen ----------------------------------------------------------------------------
 
-fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
+fn generate_device_tree(dt: &dtgen::ir::DeviceTree, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let rust_content = dtgen::generate_rust(dt);
+    std::fs::write(out.join("device_tree.rs"), rust_content)?;
+
+    let ld_content = dtgen::generate_ld(dt).map_err(|e| format!("linker script generation failed: {e}"))?;
+    std::fs::write(out.join("prelude.ld"), ld_content)?;
+    println!("cargo::rustc-link-search=native={}", out.display());
+    Ok(())
+}
+
+fn build_device_tree(out: &Path) -> Result<dtgen::ir::DeviceTree, Box<dyn std::error::Error>> {
     let dts =
         std::env::var("OSIRIS_TUNING_DTS").unwrap_or_else(|_| "nucleo_l4r5zi.dts".to_string());
     let dts_path = std::path::Path::new("boards").join(dts);
     println!("cargo::rerun-if-changed={}", dts_path.display());
 
     // dependencies SoC/HAL/pins
-    let zephyr = Path::new(&std::env::var("OUT_DIR").unwrap()).join("zephyr");
-    let hal_stm32 = Path::new(&std::env::var("OUT_DIR").unwrap()).join("hal_stm32");
+    let zephyr = Path::new(out).join("zephyr");
+    let hal_stm32 = Path::new(out).join("hal_stm32");
 
     // clean state
     if zephyr.exists() {
@@ -70,7 +87,7 @@ fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
         Some(&hal_rev),
     )?;
 
-    let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("device_tree.rs");
+    //let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("device_tree.rs");
     let include_paths = [
         zephyr.join("include"),
         zephyr.join("dts/arm/st"),
@@ -90,8 +107,7 @@ fn generate_device_tree() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    dtgen::run(&dts_path, &include_refs, &out)?;
-    Ok(())
+    Ok(dtgen::parse_dts(&dts_path, &include_refs)?)
 }
 
 fn get_hal_revision(zephyr_path: &Path) -> Result<String, Box<dyn std::error::Error>> {

@@ -1,11 +1,6 @@
-#ifndef MCU_HEADER
-#error "MCU_HEADER is not defined."
-#endif
-
-#include MCU_HEADER
-
 __ram_start = ORIGIN(RAM);
 __ram_end = ORIGIN(RAM) + LENGTH(RAM);
+__stack_size = 0x8000;
 
 #if OSIRIS_DEBUG_RUNTIMESYMBOLS
 /* at least 250kb for the symbol table */

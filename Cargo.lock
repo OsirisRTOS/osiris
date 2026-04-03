@@ -583,6 +583,9 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "fdt",
+ "indoc",
+ "log",
+ "logging",
  "prettyplease",
  "proc-macro2",
  "quote",

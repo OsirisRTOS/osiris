@@ -2,15 +2,23 @@
 #![cfg(not(target_os = "none"))]
 
 mod codegen;
-mod ir;
+pub mod ir;
 mod parser;
+mod ldgen;
 
 use std::path::Path;
 
-pub fn run(dts_path: &Path, include_dirs: &[&Path], out_path: &Path) -> Result<(), String> {
+use crate::ir::DeviceTree;
+
+pub fn parse_dts(dts_path: &Path, include_dirs: &[&Path]) -> Result<DeviceTree, String> {
     let dtb = parser::dts_to_dtb(dts_path, include_dirs)?;
-    let dt = parser::dtb_to_devicetree(&dtb)?;
-    let src = codegen::generate_rust(&dt);
-    std::fs::write(out_path, src)
-        .map_err(|e| format!("dtgen: failed to write {}: {e}", out_path.display()))
+    parser::dtb_to_devicetree(&dtb)
+}
+
+pub fn generate_rust(dt: &DeviceTree) -> String {
+    codegen::generate_rust(dt)
+}
+
+pub fn generate_ld(dt: &DeviceTree) -> Result<String, String> {
+    ldgen::generate_ld(dt)
 }
