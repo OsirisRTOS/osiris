@@ -679,5 +679,13 @@ mod tests {
         // FIXME: Gives OOM error
         vec.reserve(2).unwrap();
     }
+
+    #[test]
+    fn drop_underflow() {
+        let mut vec = Vec::<usize, 8>::new();
+        for i in 0..7usize { vec.push(i).unwrap(); }
+        // Drop used to panic here
+        drop(vec);
+    }
 }
 
