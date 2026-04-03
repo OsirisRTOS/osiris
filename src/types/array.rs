@@ -262,7 +262,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
 
         // If we don't have enough space, we need to grow the extra storage.
-        let grow = additional - N + len_extra;
+        let grow = self.len + additional - N;
         let mut new_extra = Box::new_slice_uninit(grow)?;
 
         // Check that the new extra storage has the requested length.
@@ -664,6 +664,20 @@ mod tests {
 
         // If the length check is wrong, at(0) would panic due to an underflow
         assert_eq!(vec.at(0), None);
+    }
+
+    #[test]
+    fn reserve_underflow() {
+        // N=8, fill 7 elements so len=7 and extra.len()=0.
+        // reserve(2): 7+2=9 > 8+0=8, needs grow. grow = 2 - 8 + 0 = underflow.
+        let mut vec = Vec::<usize, 8>::new();
+        for i in 0..7usize {
+            vec.push(i).unwrap();
+        }
+        assert_eq!(vec.len(), 7);
+
+        // FIXME: Gives OOM error
+        vec.reserve(2).unwrap();
     }
 }
 
