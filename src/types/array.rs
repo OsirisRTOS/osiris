@@ -449,7 +449,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// Returns `Some(&T)` if the index is in-bounds, otherwise `None`.
     pub fn at(&self, index: usize) -> Option<&T> {
         // Check if the index is in-bounds.
-        if index > self.len - 1 {
+        if index >= self.len {
             return None;
         }
 
@@ -597,8 +597,9 @@ impl<T, const N: usize> Drop for Vec<T, N> {
         }
 
         // Drop all elements in the extra storage.
-        for elem in &mut (*self.extra)[0..self.len - N] {
-            // Safety: the elements until self.len - N are initialized.
+        let extra_init = self.len.saturating_sub(N).min(self.extra.len());
+        for elem in &mut (*self.extra)[0..extra_init] {
+            // Safety: the elements until extra_init are initialized.
             unsafe {
                 elem.assume_init_drop();
             }
@@ -650,3 +651,19 @@ impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
         self.at3_mut(*index1.borrow(), *index2.borrow(), *index3.borrow())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::Vec;
+
+    #[test]
+    fn no_length_underflow() {
+        let vec = Vec::<usize, 8>::new();
+        assert!(vec.len() == 0);
+
+        // If the length check is wrong, at(0) would panic due to an underflow
+        assert_eq!(vec.at(0), None);
+    }
+}
+
