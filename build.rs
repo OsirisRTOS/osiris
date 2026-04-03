@@ -289,9 +289,13 @@ fn collect_syscalls<P: AsRef<Path>>(root: P) -> HashMap<String, SyscallDataExpor
         .filter(|e| e.file_type().is_file());
 
     for entry in entries {
+        let path = entry.path();
+        println!("Processing file: {}", path.display());
+
         let Ok(contents) = std::fs::read_to_string(entry.path()) else {
             continue;
         };
+
         let Ok(file) = syn::parse_file(&contents) else {
             continue;
         };
