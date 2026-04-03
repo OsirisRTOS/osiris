@@ -655,7 +655,7 @@ impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
 
 #[cfg(test)]
 mod tests {
-    use super::Vec;
+    use super::{Vec, IndexMap};
 
     #[test]
     fn no_length_underflow() {
@@ -687,5 +687,71 @@ mod tests {
         // Drop used to panic here
         drop(vec);
     }
+
+    #[test]
+    fn index_map_iter_cycle_max() {
+        let m: IndexMap<usize, u32, 8> = IndexMap::new();
+        let _ = m.iter_from_cycle(Some(&usize::MAX)).next();
+    }
 }
 
+
+
+#[cfg(kani)]
+mod verification {
+    use super::IndexMap;
+    use crate::types::traits::Get;
+
+    /// Verify that insert followed by get returns the inserted value.
+    #[kani::proof]
+    fn verify_insert_get_roundtrip() {
+        let mut m: IndexMap<usize, u32, 8> = IndexMap::new();
+        let idx: usize = kani::any();
+        kani::assume(idx < 8);
+        let val: u32 = kani::any();
+
+        m.insert(&idx, val).unwrap();
+        assert_eq!(m.get(&idx), Some(&val));
+    }
+
+    /// Verify that removing an inserted value leaves the slot empty.
+    #[kani::proof]
+    fn verify_remove_clears_slot() {
+        let mut m: IndexMap<usize, u32, 8> = IndexMap::new();
+        let idx: usize = kani::any();
+        kani::assume(idx < 8);
+        let val: u32 = kani::any();
+
+        m.insert(&idx, val).unwrap();
+        let removed = m.remove(&idx);
+        assert_eq!(removed, Some(val));
+        assert_eq!(m.get(&idx), None);
+    }
+
+    /// Verify iter_from_cycle does not overflow when idx is a valid in-bounds index.
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn verify_iter_from_cycle_no_overflow_valid_idx() {
+        let m: IndexMap<usize, u32, 8> = IndexMap::new();
+        let idx: usize = kani::any();
+        kani::assume(idx < 8); // only valid indices
+
+        // iter_from_cycle computes to_index(Some(idx)) + 1 = idx + 1 (≤ 8, no overflow)
+        let _ = m.iter_from_cycle(Some(&idx)).next();
+    }
+
+    /// Verify next() does not overflow when idx is a valid in-bounds index.
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn verify_next_no_overflow_valid_idx() {
+        let mut m: IndexMap<usize, u32, 8> = IndexMap::new();
+        // Fill all slots so next() iterates the maximum i times.
+        for i in 0usize..8 {
+            m.insert(&i, i as u32).unwrap();
+        }
+        let idx: usize = kani::any();
+        kani::assume(idx < 8);
+        let result = m.next(Some(&idx));
+        assert!(result.is_some()); // map is full, must find something
+    }
+}
