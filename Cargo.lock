@@ -1068,6 +1068,8 @@ dependencies = [
  "hal-testing",
  "interface",
  "macros",
+ "prettyplease",
+ "proc-macro2",
  "quote",
  "rand",
  "syn",
