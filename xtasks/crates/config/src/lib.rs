@@ -1,3 +1,6 @@
+#![cfg_attr(target_os = "none", no_std)]
+#![cfg(not(target_os = "none"))]
+
 use std::{path::Path, process::exit};
 
 use crate::{

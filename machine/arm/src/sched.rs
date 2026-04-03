@@ -72,7 +72,7 @@ impl ArmStack {
     }
 
     fn is_call_aligned(sp: StackPtr) -> bool {
-        (sp.offset % 2) == 0
+        sp.offset.is_multiple_of(2)
     }
 
     fn in_bounds(&self, sp: *mut u32) -> Option<usize> {

@@ -11,7 +11,7 @@ path = "src/lib.rs"
 name = "dtgen"
 path = "src/main.rs"
 
-[dependencies]
+[target.'cfg(not(target_os = "none"))'.dependencies]
 fdt = "0.1.5"
 clap = { version = "4", features = ["derive"] }
 quote = "1"

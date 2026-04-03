@@ -1,3 +1,7 @@
+#![cfg_attr(target_os = "none", no_std)]
+#![cfg_attr(target_os = "none", no_main)]
+#![cfg(not(target_os = "none"))]
+
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
 use object::{Object, ObjectSection};
