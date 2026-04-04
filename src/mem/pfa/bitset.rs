@@ -118,35 +118,40 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
             if len >= page_count {
                 // Mark the allocated pages as used.
                 let mut idx = start / Self::BITS_PER_WORD;
+                let mut count = page_count;
 
                 // Mark all bits in the first word as used.
                 {
                     let skip = start % Self::BITS_PER_WORD;
-                    let rem = len.min(Self::BITS_PER_WORD) - skip;
+                    let rem = (Self::BITS_PER_WORD - skip).min(count);
 
                     self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - rem) as u32) >> skip);
 
-                    if len <= rem {
+                    if count <= rem {
                         return Some(self.begin + (start * super::PAGE_SIZE));
                     }
 
-                    len -= rem;
+                    count -= rem;
                     idx += 1;
                 }
 
                 // Mark all bits in the middle words as used.
                 {
-                    let mid_cnt = len / Self::BITS_PER_WORD;
+                    let mid_cnt = count / Self::BITS_PER_WORD;
 
                     for i in 0..mid_cnt {
                         self.l1[idx + i] = 0;
                     }
 
                     idx += mid_cnt;
+                    count -= mid_cnt * Self::BITS_PER_WORD;
                 }
 
                 // Mark the remaining bits in the last word as used.
-                self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
+                if count > 0 {
+                    debug_assert!(idx < N, "bit index out of bounds in last-word marking");
+                    self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - count) as u32));
+                }
                 return Some(self.begin + (start * super::PAGE_SIZE));
             }
         }

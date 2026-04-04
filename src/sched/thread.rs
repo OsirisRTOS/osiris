@@ -187,7 +187,7 @@ impl RtServer {
 
     pub fn replenish(&mut self) {
         self.deadline = self.deadline + self.period as u64;
-        self.budget_left += self.budget;
+        self.budget_left = self.budget_left.saturating_add(self.budget);
     }
 
     pub fn consume(&mut self, dt: u64) -> Option<u64> {

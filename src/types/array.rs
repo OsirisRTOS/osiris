@@ -94,7 +94,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
     ///
     /// Returns an iterator over the elements in the map.
     pub fn iter_from_cycle(&self, idx: Option<&K>) -> impl Iterator<Item = &Option<V>> {
-        self.data.iter().cycle().skip(K::to_index(idx) + 1)
+        self.data.iter().cycle().skip(K::to_index(idx).wrapping_add(1) % N)
     }
 
     /// Get the next index that contains a value (this will cycle).
@@ -106,7 +106,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
         for (i, elem) in self.iter_from_cycle(idx).enumerate() {
             if elem.is_some() {
                 let idx = K::to_index(idx);
-                return Some((idx + i + 1) % N);
+                return Some((idx.wrapping_add(i).wrapping_add(1)) % N);
             }
         }
 
@@ -669,14 +669,14 @@ mod tests {
     #[test]
     fn reserve_underflow() {
         // N=8, fill 7 elements so len=7 and extra.len()=0.
-        // reserve(2): 7+2=9 > 8+0=8, needs grow. grow = 2 - 8 + 0 = underflow.
+        // reserve(2): 7+2=9 > 8+0=8, needs grow. grow = self.len + additional - N = 7+2-8 = 1.
+        crate::mem::init_test_heap();
         let mut vec = Vec::<usize, 8>::new();
         for i in 0..7usize {
             vec.push(i).unwrap();
         }
         assert_eq!(vec.len(), 7);
 
-        // FIXME: Gives OOM error
         vec.reserve(2).unwrap();
     }
 

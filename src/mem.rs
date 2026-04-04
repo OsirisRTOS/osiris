@@ -92,3 +92,24 @@ pub fn align_up(size: usize) -> usize {
     let align = align_of::<u128>();
     (size + align - 1) & !(align - 1)
 }
+
+/// Initialize the global allocator with a small heap backed by host memory.
+/// Safe to call multiple times; initialization only runs once.
+#[cfg(test)]
+pub(crate) fn init_test_heap() {
+    use hal::mem::PhysAddr;
+
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let len = 65536usize;
+        let layout =
+            std::alloc::Layout::from_size_align(len, core::mem::align_of::<u128>()).unwrap();
+        let ptr = unsafe { std::alloc::alloc(layout) };
+        assert!(!ptr.is_null(), "Failed to allocate test heap memory");
+        let start = ptr as usize;
+        let end = start.checked_add(len).expect("test heap address overflows");
+        let range = PhysAddr::new(start)..PhysAddr::new(end);
+        let mut allocator = GLOBAL_ALLOCATOR.lock();
+        unsafe { allocator.add_range(&range).unwrap() };
+    });
+}
