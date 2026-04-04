@@ -8,11 +8,11 @@ mod macros;
 #[macro_use]
 mod error;
 mod faults;
-mod mem;
-mod types;
 mod idle;
-mod uspace;
+mod mem;
 mod print;
+mod types;
+mod uspace;
 
 mod sched;
 mod sync;
@@ -22,7 +22,6 @@ mod time;
 pub mod uapi;
 
 use hal::Machinelike;
-include!(concat!(env!("OUT_DIR"), "/device_tree.rs"));
 
 pub use hal;
 pub use proc_macros::app_main;
@@ -53,13 +52,11 @@ pub unsafe extern "C" fn kernel_init() -> ! {
     kprintln!("Idle thread initialized.");
 
     let (cyc, ns) = hal::Machine::bench_end();
-    kprintln!(
-        "Kernel init took {} cycles.", cyc
-    );
+    kprintln!("Kernel init took {} cycles.", cyc);
 
     // Start the init application.
     uspace::init_app();
-    
+
     sched::enable();
 
     loop {}

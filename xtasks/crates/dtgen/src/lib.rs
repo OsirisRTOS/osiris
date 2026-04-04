@@ -3,8 +3,8 @@
 
 mod codegen;
 pub mod ir;
-mod parser;
 mod ldgen;
+mod parser;
 
 use std::path::Path;
 

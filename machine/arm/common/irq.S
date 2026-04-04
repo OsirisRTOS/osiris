@@ -65,12 +65,6 @@ pendsv_hndlr:
     .align 2
 
 .thumb_func
-.global irq_enter_no_switch_fp
-irq_enter_no_switch_fp:
-    @ Do nothing, just return.
-    bx lr
-
-.thumb_func
 .global svc_hndlr
 svc_hndlr:
     @ Check which stack we need to use.
@@ -81,7 +75,6 @@ svc_hndlr:
 
     @ We don't need to save the other general purpose registers, because the syscall obeys the AAPCS calling convention.
     b _syscall_hndlr
-
 
 .thumb_func
 .global hard_fault_hndlr

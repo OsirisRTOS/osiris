@@ -23,9 +23,9 @@ static PFA: SpinLocked<Option<Pin<Box<AllocatorType>>>> = SpinLocked::new(None);
 trait Allocator<const N: usize> {
     /// Returns an initializer function that can be used to create an instance of the allocator.
     /// The initializer function takes a physical address and the amount of pages needed.
-    /// 
+    ///
     /// Safety:
-    /// 
+    ///
     /// - The returned function must only be called with a useable and valid physical address.
     fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>>;
 

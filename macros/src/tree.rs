@@ -1,7 +1,5 @@
 use quote::quote;
-use syn::{
-    spanned::Spanned, Data, DeriveInput, Error, Fields, Path,
-};
+use syn::{Data, DeriveInput, Error, Fields, Path, spanned::Spanned};
 
 pub fn derive_tagged_links(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let fields = match &input.data {
@@ -11,14 +9,14 @@ pub fn derive_tagged_links(input: &DeriveInput) -> syn::Result<proc_macro2::Toke
                 return Err(Error::new(
                     ds.fields.span(),
                     "TaggedLinks only supports structs with named fields",
-                ))
+                ));
             }
         },
         _ => {
             return Err(Error::new(
                 input.span(),
                 "TaggedLinks can only be derived for structs",
-            ))
+            ));
         }
     };
 
@@ -31,14 +29,19 @@ pub fn derive_tagged_links(input: &DeriveInput) -> syn::Result<proc_macro2::Toke
     })
 }
 
-fn impl_rbtree(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>) -> syn::Result<proc_macro2::TokenStream> {
+fn impl_rbtree(
+    input: &DeriveInput,
+    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+) -> syn::Result<proc_macro2::TokenStream> {
     let struct_ident = &input.ident;
     let generics = &input.generics;
 
     let mut impls = Vec::new();
 
     for field in fields {
-        let Some(field_ident) = field.ident.clone() else { continue };
+        let Some(field_ident) = field.ident.clone() else {
+            continue;
+        };
 
         if let (Some(tag_path), Some(idx_path)) = find_tagged(&field.attrs, "rbtree")? {
             let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -63,14 +66,19 @@ fn impl_rbtree(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Fi
     Ok(quote! { #(#impls)* })
 }
 
-fn impl_list(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>) -> syn::Result<proc_macro2::TokenStream> {
+fn impl_list(
+    input: &DeriveInput,
+    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+) -> syn::Result<proc_macro2::TokenStream> {
     let struct_ident = &input.ident;
     let generics = &input.generics;
 
     let mut impls = Vec::new();
 
     for field in fields {
-        let Some(field_ident) = field.ident.clone() else { continue };
+        let Some(field_ident) = field.ident.clone() else {
+            continue;
+        };
 
         if let (Some(tag_path), Some(idx_path)) = find_tagged(&field.attrs, "list")? {
             let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -95,7 +103,10 @@ fn impl_list(input: &DeriveInput, fields: &syn::punctuated::Punctuated<syn::Fiel
     Ok(quote! { #(#impls)* })
 }
 
-fn find_tagged(attrs: &[syn::Attribute], attr_name: &str) -> syn::Result<(Option<Path>, Option<Path>)> {
+fn find_tagged(
+    attrs: &[syn::Attribute],
+    attr_name: &str,
+) -> syn::Result<(Option<Path>, Option<Path>)> {
     for attr in attrs {
         if !attr.path().is_ident(attr_name) {
             continue;

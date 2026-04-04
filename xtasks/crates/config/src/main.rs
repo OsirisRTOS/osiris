@@ -62,9 +62,7 @@ pub fn main() {
 }
 
 fn ask_confirmation(prompt: &str) -> bool {
-    print!("{}\n\n(y/N): ",
-        prompt
-    );
+    print!("{}\n\n(y/N): ", prompt);
 
     if let Err(_) = std::io::Write::flush(&mut std::io::stdout()) {
         return false;
@@ -91,7 +89,8 @@ fn run_load_preset(preset_name: &str, no_confirm: bool, current_dir: &Path) -> R
 
     // Ask for confirmation
     if !no_confirm
-        && !ask_confirmation(&format!("\nApply preset '{preset_name}' to '{}'?\nThis overwrites all existing configuration options.",
+        && !ask_confirmation(&format!(
+            "\nApply preset '{preset_name}' to '{}'?\nThis overwrites all existing configuration options.",
             config_path.display()
         ))
     {

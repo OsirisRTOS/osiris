@@ -1,5 +1,7 @@
 use crate::{
-    error::Result, sched::thread::{self}, types::list::List
+    error::Result,
+    sched::thread::{self},
+    types::list::List,
 };
 
 pub struct Scheduler<const N: usize> {
@@ -13,11 +15,18 @@ pub struct Scheduler<const N: usize> {
 impl<const N: usize> Scheduler<N> {
     pub const fn new() -> Self {
         // TODO: Make quantum configurable.
-        Self { queue: List::new(), current: None, current_left: 0, quantum: 1000 }
+        Self {
+            queue: List::new(),
+            current: None,
+            current_left: 0,
+            quantum: 1000,
+        }
     }
 
     pub fn enqueue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N>) -> Result<()> {
-        self.queue.push_back(uid, storage).map_err(|_| kerr!(InvalidArgument))
+        self.queue
+            .push_back(uid, storage)
+            .map_err(|_| kerr!(InvalidArgument))
     }
 
     pub fn put(&mut self, uid: thread::UId, dt: u32) {

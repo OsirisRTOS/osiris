@@ -37,5 +37,6 @@ vector_table:
 .text
 .align
 
+hndl_weak_endl default_handler
 hndl_weak_endl nmi_hndlr
 hndl_weak_endl debug_mon_hndlr

@@ -25,8 +25,9 @@ mod bindings {
 #[link(name = "device_native")]
 #[link(name = "hal_native")]
 #[link(name = "interface_native")]
-#[link(name = "variant_native")]
 unsafe extern "C" {}
+
+include!(concat!(env!("OUT_DIR"), "/vector_table.rs"));
 
 pub struct ArmMachine;
 

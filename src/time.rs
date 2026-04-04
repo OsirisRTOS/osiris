@@ -10,7 +10,7 @@ pub fn tick() -> u64 {
 
 pub fn mono_now() -> u64 {
     // TODO: This will break on SMP systems without native u64 atomic store.
-    sync::atomic::irq_free(|| hal::Machine::monotonic_now() )
+    sync::atomic::irq_free(|| hal::Machine::monotonic_now())
 }
 
 pub fn mono_freq() -> u64 {

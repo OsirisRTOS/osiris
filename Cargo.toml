@@ -4,6 +4,7 @@ default-members = ["."]
 
 [workspace.dependencies]
 logging = { path = "xtasks/logging" }
+dtgen = { path = "xtasks/crates/dtgen" }
 osiris = { path = "." }
 
 [package]
@@ -49,7 +50,6 @@ syn = "2.0.100"
 quote = "1.0.40"
 rand = "0.8.5"
 cfg_aliases = "0.2.1"
-dtgen = { path = "xtasks/crates/dtgen" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

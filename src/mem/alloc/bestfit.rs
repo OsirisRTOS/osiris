@@ -49,7 +49,7 @@ impl BestFitAllocator {
 
         // Check if the pointer is 128bit aligned.
         if !ptr.is_multiple_of(align_of::<u128>()) {
-                return Err(kerr!(InvalidArgument));
+            return Err(kerr!(InvalidArgument));
         }
 
         if range.end.diff(range.start) < Self::MIN_RANGE_SIZE {
@@ -169,7 +169,11 @@ impl BestFitAllocator {
     }
 
     unsafe fn contains(meta: &BestFitMeta, target: PhysAddr, size: usize) -> bool {
-        let begin = unsafe { Self::user_ptr(NonNull::new_unchecked(meta as *const BestFitMeta as *mut u8)) };
+        let begin = unsafe {
+            Self::user_ptr(NonNull::new_unchecked(
+                meta as *const BestFitMeta as *mut u8,
+            ))
+        };
         debug_assert!(size > 0);
 
         if target >= begin.into() {
@@ -194,7 +198,12 @@ impl super::Allocator for BestFitAllocator {
     /// `align` - The alignment of the block.
     ///
     /// Returns the user pointer to the block if successful, otherwise an error.
-    fn malloc<T>(&mut self, size: usize, align: usize, request: Option<PhysAddr>) -> Result<NonNull<T>> {
+    fn malloc<T>(
+        &mut self,
+        size: usize,
+        align: usize,
+        request: Option<PhysAddr>,
+    ) -> Result<NonNull<T>> {
         // Check if the alignment is valid.
         if align == 0 || align > align_of::<u128>() {
             return Err(kerr!(InvalidAlign));
@@ -204,7 +213,7 @@ impl super::Allocator for BestFitAllocator {
             if !request.is_multiple_of(align) {
                 return Err(kerr!(InvalidAlign));
             }
-        }   
+        }
 
         // Check if the size is valid.
         if size == 0 {
@@ -309,7 +318,9 @@ impl super::Allocator for BestFitAllocator {
         }
 
         if let Some(request) = request {
-            debug_assert!(unsafe { Self::contains(block.cast::<BestFitMeta>().as_ref(), request, size) });
+            debug_assert!(unsafe {
+                Self::contains(block.cast::<BestFitMeta>().as_ref(), request, size)
+            });
         }
 
         // Return the user pointer.
@@ -328,7 +339,10 @@ impl super::Allocator for BestFitAllocator {
         meta.next = self.head;
 
         // Check if the size of the block is correct.
-        bug_on!(meta.size != super::super::align_up(size), "Invalid size in free()");
+        bug_on!(
+            meta.size != super::super::align_up(size),
+            "Invalid size in free()"
+        );
 
         // Set the size of the block.
         meta.size = size;
@@ -344,8 +358,8 @@ impl super::Allocator for BestFitAllocator {
 mod tests {
     use crate::error::Kind;
 
-    use super::*;
     use super::super::*;
+    use super::*;
 
     fn verify_block(user_ptr: NonNull<u8>, size: usize, next: Option<NonNull<u8>>) {
         let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
@@ -411,7 +425,11 @@ mod tests {
         let ptr = allocator.malloc::<u8>(128, 1, Some(request)).unwrap();
 
         // Check that the returned pointer contains the requested address.
-        let meta = unsafe { BestFitAllocator::control_ptr(ptr).cast::<BestFitMeta>().as_ref() };
+        let meta = unsafe {
+            BestFitAllocator::control_ptr(ptr)
+                .cast::<BestFitMeta>()
+                .as_ref()
+        };
         assert!(unsafe { BestFitAllocator::contains(meta, request, 128) });
     }
 

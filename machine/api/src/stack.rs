@@ -1,5 +1,5 @@
-use core::{ffi::c_void, num::NonZero};
 use crate::{Result, mem::PhysAddr};
+use core::{ffi::c_void, num::NonZero};
 
 pub type EntryFn = extern "C" fn();
 pub type FinFn = extern "C" fn() -> !;

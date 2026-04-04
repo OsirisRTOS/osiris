@@ -1,4 +1,14 @@
-use crate::{types::{rbtree::RbTree, traits::{Get, GetMut}, view::ViewMut}, sched::{ThreadMap, thread::{self}}};
+use crate::{
+    sched::{
+        ThreadMap,
+        thread::{self},
+    },
+    types::{
+        rbtree::RbTree,
+        traits::{Get, GetMut},
+        view::ViewMut,
+    },
+};
 
 pub struct Scheduler<const N: usize> {
     edf: RbTree<thread::RtTree, thread::UId>,
@@ -8,9 +18,7 @@ pub type ServerView<'a, const N: usize> = ViewMut<'a, thread::UId, thread::RtSer
 
 impl<const N: usize> Scheduler<N> {
     pub const fn new() -> Self {
-        Self {
-            edf: RbTree::new(),
-        }
+        Self { edf: RbTree::new() }
     }
 
     pub fn enqueue(&mut self, uid: thread::UId, now: u64, storage: &mut ServerView<N>) {
@@ -36,7 +44,9 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn pick(&mut self, storage: &mut ServerView<N>) -> Option<(thread::UId, u32)> {
-        self.edf.min().and_then(|id| storage.get(id).map(|s| (id, s.budget())))
+        self.edf
+            .min()
+            .and_then(|id| storage.get(id).map(|s| (id, s.budget())))
     }
 
     pub fn dequeue(&mut self, uid: thread::UId, storage: &mut ServerView<N>) {

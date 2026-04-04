@@ -4,17 +4,17 @@ use crate::mem::pfa::PAGE_SIZE;
 use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 use crate::sync::spinlock::SpinLocked;
 use alloc::Allocator;
-use hal::mem::{PhysAddr};
 use core::ptr::NonNull;
+use hal::mem::PhysAddr;
 
 pub mod alloc;
-pub mod vmm;
 pub mod pfa;
+pub mod vmm;
 
 pub const BITS_PER_PTR: usize = core::mem::size_of::<usize>() * 8;
 
 unsafe extern "C" {
-   unsafe static __stack_top: u8;
+    unsafe static __stack_top: u8;
 }
 
 /// The global memory allocator.
@@ -28,7 +28,8 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
 /// Returns an error if the memory allocator could not be initialized.
 pub fn init_memory() -> vmm::AddressSpace {
     let stack_top = &raw const __stack_top as usize;
-    if let Err(e) = pfa::init_pfa(PhysAddr::new(stack_top)) { // TODO: Get this from the DeviceTree.
+    if let Err(e) = pfa::init_pfa(PhysAddr::new(stack_top)) {
+        // TODO: Get this from the DeviceTree.
         panic!("failed to initialize PFA. Error: {e}");
     }
 
@@ -36,12 +37,19 @@ pub fn init_memory() -> vmm::AddressSpace {
     let pgs = 10;
 
     let mut kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
-        panic!("failed to create kernel address space. Error: {e}");  
+        panic!("failed to create kernel address space. Error: {e}");
     });
 
-    let begin = kaddr_space.map(Region::new(None, 2 * PAGE_SIZE, Backing::Zeroed, Perms::all())).unwrap_or_else(|e| {
-        panic!("failed to map kernel address space. Error: {e}");
-    });
+    let begin = kaddr_space
+        .map(Region::new(
+            None,
+            2 * PAGE_SIZE,
+            Backing::Zeroed,
+            Perms::all(),
+        ))
+        .unwrap_or_else(|e| {
+            panic!("failed to map kernel address space. Error: {e}");
+        });
 
     {
         let mut allocator = GLOBAL_ALLOCATOR.lock();

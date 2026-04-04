@@ -1,5 +1,5 @@
-use quote::{ToTokens, format_ident};
 use proc_macro2::TokenStream;
+use quote::{ToTokens, format_ident};
 
 pub const MAX_ARGS: usize = 4;
 
@@ -75,9 +75,7 @@ pub fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     if num_args > MAX_ARGS {
         return syn::Error::new(
             item.sig.ident.span(),
-            format!(
-                "syscall_handler: function {name} has too many arguments (max is {MAX_ARGS})",
-            ),
+            format!("syscall_handler: function {name} has too many arguments (max is {MAX_ARGS})",),
         )
         .to_compile_error();
     }

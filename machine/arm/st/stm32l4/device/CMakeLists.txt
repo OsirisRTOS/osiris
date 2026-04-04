@@ -10,7 +10,7 @@ add_library(device_native STATIC ${SRC_FILES})
 
 # Set the include directories so the cmake src root machine/arm/cmsis machine/arm/device/stm32l4xx
 target_include_directories(device_native PUBLIC
-    ../../cmsis
+    ../../../cmsis
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

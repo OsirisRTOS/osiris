@@ -121,7 +121,7 @@ pub fn disable_irq_save() -> usize {
 
     let old: usize;
 
-    unsafe { 
+    unsafe {
         asm!(
             "mrs {old}, primask",
             "cpsid i",
@@ -161,8 +161,8 @@ pub fn are_interrupts_enabled() -> bool {
 #[inline(always)]
 pub fn enable_irq_restr(state: usize) {
     use core::arch::asm;
-    
-    unsafe { 
+
+    unsafe {
         asm!(
             "dsb",
             "msr primask, {state}",

@@ -11,7 +11,7 @@ where
     _k: PhantomData<K>,
     _proj: PhantomData<P>,
 }
-   
+
 impl<'a, K: ?Sized + ToIndex, P, S: GetMut<K>> ViewMut<'a, K, P, S>
 where
     S::Output: Project<P>,
@@ -57,7 +57,12 @@ where
         )
     }
 
-    fn get3_mut<Q: Borrow<K>>(&mut self, idx1: Q, idx2: Q, idx3: Q) -> (Option<&mut P>, Option<&mut P>, Option<&mut P>) {
+    fn get3_mut<Q: Borrow<K>>(
+        &mut self,
+        idx1: Q,
+        idx2: Q,
+        idx3: Q,
+    ) -> (Option<&mut P>, Option<&mut P>, Option<&mut P>) {
         let (a, b, c) = self.data.get3_mut(idx1, idx2, idx3);
         (
             a.and_then(Project::project_mut),

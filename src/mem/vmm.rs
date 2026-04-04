@@ -32,12 +32,12 @@ pub struct Region {
 
 impl Region {
     /// Creates a new region.
-    /// 
+    ///
     /// - `start` is the starting virtual address of the region. If `None`, the system will choose a suitable address.
     /// - `len` is the length of the region in bytes.
     /// - `backing` is the backing type of the region, which determines how the region is initialized and where its contents come from.
     /// - `perms` is the permissions of the region, which determines how the region can be accessed.
-    /// 
+    ///
     pub fn new(start: Option<VirtAddr>, len: usize, backing: Backing, perms: Perms) -> Self {
         Self {
             start,
@@ -62,7 +62,9 @@ impl Region {
 
 pub trait AddressSpacelike {
     // Size is the amount of pages in the address space. On nommu systems this will be reserved.
-    fn new(pages: usize) -> Result<Self> where Self: Sized;
+    fn new(pages: usize) -> Result<Self>
+    where
+        Self: Sized;
     fn map(&mut self, region: Region) -> Result<PhysAddr>;
     fn unmap(&mut self, region: &Region) -> Result<()>;
     fn protect(&mut self, region: &Region, perms: Perms) -> Result<()>;

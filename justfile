@@ -5,9 +5,6 @@ build *args:
 config *args:
     cargo xtask config --root {{justfile_directory()}} {{args}}
 
-pack *args:
-    cargo xtask pack {{args}}
-
 example name *args: (build args)
     cargo build -p {{name}} {{args}}
 

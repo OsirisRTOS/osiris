@@ -4,7 +4,8 @@ use core::ptr::NonNull;
 use hal::mem::PhysAddr;
 
 use crate::{
-    error::Result, types::boxed::{self, Box}
+    error::Result,
+    types::boxed::{self, Box},
 };
 
 pub struct Allocator<const N: usize> {
@@ -51,7 +52,12 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                 PhysAddr::new((begin.as_usize() + super::PAGE_SIZE - 1) & !(super::PAGE_SIZE - 1))
             };
             // TODO: Subtract the needed pages from the available
-            unsafe { core::ptr::write(ptr.as_ptr(), Self::new(begin).ok_or(kerr!(InvalidArgument))?) };
+            unsafe {
+                core::ptr::write(
+                    ptr.as_ptr(),
+                    Self::new(begin).ok_or(kerr!(InvalidArgument))?,
+                )
+            };
 
             // Safety: Ptr is properly aligned and non-null. The validity of the memory at that address is valid by the call contract.
             Ok(Pin::new(unsafe { boxed::Box::from_raw(ptr) }))
@@ -124,7 +130,8 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                     let skip = start % Self::BITS_PER_WORD;
                     let rem = len.min(Self::BITS_PER_WORD) - skip;
 
-                    self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - rem) as u32) >> skip);
+                    self.l1[idx] &=
+                        !((!0usize).unbounded_shl((Self::BITS_PER_WORD - rem) as u32) >> skip);
 
                     if len <= rem {
                         return Some(self.begin + (start * super::PAGE_SIZE));
@@ -137,16 +144,17 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                 // Mark all bits in the middle words as used.
                 {
                     let mid_cnt = len / Self::BITS_PER_WORD;
-                
+
                     for i in 0..mid_cnt {
                         self.l1[idx + i] = 0;
                     }
 
                     idx += mid_cnt;
                 }
-                
+
                 // Mark the remaining bits in the last word as used.
-                self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
+                self.l1[idx] &= !((!0usize)
+                    .unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
                 return Some(self.begin + (start * super::PAGE_SIZE));
             }
         }
@@ -159,8 +167,10 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
             panic!("Address must be page aligned");
         }
 
-        let mut idx = (addr.as_usize() - self.begin.as_usize()) / super::PAGE_SIZE / Self::BITS_PER_WORD;
-        let mut bit_idx = ((addr.as_usize() - self.begin.as_usize()) / super::PAGE_SIZE) % Self::BITS_PER_WORD;
+        let mut idx =
+            (addr.as_usize() - self.begin.as_usize()) / super::PAGE_SIZE / Self::BITS_PER_WORD;
+        let mut bit_idx =
+            ((addr.as_usize() - self.begin.as_usize()) / super::PAGE_SIZE) % Self::BITS_PER_WORD;
 
         // TODO: slow
         for _ in 0..page_count {

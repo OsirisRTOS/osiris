@@ -1,4 +1,8 @@
-use core::{fmt::{Display, LowerHex, UpperHex}, ops::{Add, Div, Rem, Sub}, ptr::NonNull};
+use core::{
+    fmt::{Display, LowerHex, UpperHex},
+    ops::{Add, Div, Rem, Sub},
+    ptr::NonNull,
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
@@ -30,7 +34,7 @@ impl PhysAddr {
     }
 
     pub fn is_multiple_of(&self, align: usize) -> bool {
-       self.0.is_multiple_of(align)
+        self.0.is_multiple_of(align)
     }
 
     pub fn diff(&self, other: Self) -> usize {
@@ -114,7 +118,7 @@ impl UpperHex for PhysAddr {
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-pub struct VirtAddr(usize); 
+pub struct VirtAddr(usize);
 
 impl VirtAddr {
     #[inline]

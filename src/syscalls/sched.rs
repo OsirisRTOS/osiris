@@ -69,4 +69,3 @@ fn exit(code: usize) -> c_int {
 fn kick_thread(uid: usize) -> c_int {
     0
 }
-

@@ -1,4 +1,4 @@
-use core::{marker::PhantomData};
+use core::marker::PhantomData;
 
 use crate::error::Result;
 
@@ -53,8 +53,7 @@ enum Color {
 }
 
 #[allow(dead_code)]
-impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
-{
+impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
     pub const fn new() -> Self {
         Self {
             root: None,
@@ -64,9 +63,10 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
     }
 
     /// Inserts `id` into the tree. If `id` already exists in the tree, it is first removed and then re-inserted. Errors if `id` does not exist in `storage`.
-    pub fn insert<
-    S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,{
+    pub fn insert<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         let already_linked = {
             let node = storage.get(id).ok_or(kerr!(NotFound))?;
             let links = node.links();
@@ -116,7 +116,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                     if node.cmp(last) == core::cmp::Ordering::Less {
                         last.links_mut().left = Some(id);
                     } else {
-                        last.links_mut().right = Some(id);  
+                        last.links_mut().right = Some(id);
                     }
                 }
             }
@@ -138,7 +138,9 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
     }
 
     pub fn remove<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T> {
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         let (node_left, node_right, node_parent, node_is_red, linked) = {
             let node = storage.get(id).ok_or(kerr!(NotFound))?;
             let links = node.links();
@@ -254,7 +256,9 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
     }
 
     fn insert_fixup<S: Get<T> + GetMut<T>>(&mut self, mut id: T, storage: &mut S) -> Result<()>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         while let Some(parent) = storage.get(id).and_then(|n| n.links().parent)
             && storage
                 .get(parent)
@@ -300,7 +304,10 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                         id = old_parent;
                     }
 
-                    let parent = storage.get(id).and_then(|n| n.links().parent).ok_or(kerr!(NotFound))?;
+                    let parent = storage
+                        .get(id)
+                        .and_then(|n| n.links().parent)
+                        .ok_or(kerr!(NotFound))?;
                     let grandparent = storage
                         .get(parent)
                         .and_then(|n| n.links().parent)
@@ -346,7 +353,10 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                         id = old_parent;
                     }
 
-                    let parent = storage.get(id).and_then(|n| n.links().parent).ok_or(kerr!(NotFound))?;
+                    let parent = storage
+                        .get(id)
+                        .and_then(|n| n.links().parent)
+                        .ok_or(kerr!(NotFound))?;
                     let grandparent = storage
                         .get(parent)
                         .and_then(|n| n.links().parent)
@@ -381,7 +391,9 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         mut parent: Option<T>,
         storage: &mut S,
     ) -> Result<()>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         let is_red = |node_id: Option<T>, storage: &S| -> bool {
             node_id
                 .and_then(|id| storage.get(id))
@@ -389,7 +401,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         };
 
         let is_black = |node_id: Option<T>, storage: &S| -> bool { !is_red(node_id, storage) };
-        
+
         while id != self.root && is_black(id, storage) {
             let parent_id = parent.unwrap_or_else(|| {
                 bug!("node linked from tree does not have a parent.");
@@ -572,7 +584,9 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
     }
 
     fn minimum<S: Get<T>>(&self, mut id: T, storage: &S) -> Result<T>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         loop {
             let left = storage.get(id).ok_or(kerr!(NotFound))?.links().left;
             match left {
@@ -582,8 +596,15 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         }
     }
 
-    fn transplant<S: Get<T> + GetMut<T>>(&mut self, u: T, v: Option<T>, storage: &mut S) -> Result<()>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
+    fn transplant<S: Get<T> + GetMut<T>>(
+        &mut self,
+        u: T,
+        v: Option<T>,
+        storage: &mut S,
+    ) -> Result<()>
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         let u_parent = storage.get(u).and_then(|n| n.links().parent);
 
         match u_parent {
@@ -612,8 +633,15 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         Ok(())
     }
 
-    fn rotate_right<S: Get<T> + GetMut<T>>(&mut self, pivot: T, left: T, storage: &mut S) -> Result<()>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
+    fn rotate_right<S: Get<T> + GetMut<T>>(
+        &mut self,
+        pivot: T,
+        left: T,
+        storage: &mut S,
+    ) -> Result<()>
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         if pivot == left {
             return Err(kerr!(NotFound));
         }
@@ -665,8 +693,15 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         Ok(())
     }
 
-    fn rotate_left<S: Get<T> + GetMut<T>>(&mut self, pivot: T, right: T, storage: &mut S) -> Result<()>
-    where <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>, {
+    fn rotate_left<S: Get<T> + GetMut<T>>(
+        &mut self,
+        pivot: T,
+        right: T,
+        storage: &mut S,
+    ) -> Result<()>
+    where
+        <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
+    {
         if pivot == right {
             return Err(kerr!(NotFound));
         }

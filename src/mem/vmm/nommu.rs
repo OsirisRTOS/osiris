@@ -3,10 +3,11 @@ use core::ptr::copy_nonoverlapping;
 use hal::mem::{PhysAddr, VirtAddr};
 
 use crate::{
-    error::Result, mem::{
+    error::Result,
+    mem::{
         alloc::{Allocator, bestfit},
         pfa, vmm,
-    }
+    },
 };
 
 pub struct AddressSpace {

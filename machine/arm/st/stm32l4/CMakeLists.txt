@@ -1,7 +1,7 @@
 
 cmake_minimum_required(VERSION 3.28)
 
-set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchain.cmake)
+set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/toolchain.cmake)
 
 project(HAL C ASM)
 
@@ -29,9 +29,6 @@ foreach(var ${_cache_vars})
     endif()
   endif()
 endforeach()
-
-# this will compile our variant_stm32l4xx library
-add_subdirectory(${OSIRIS_ARM_STM32L4XX_VARIANT})
 
 # HAL
 add_subdirectory(hal)
@@ -64,6 +61,6 @@ target_link_libraries(hal_native PUBLIC device_native)
 
 # Interface
 add_subdirectory(interface)
-target_link_libraries(interface_native PUBLIC hal_native variant_native)
+target_link_libraries(interface_native PUBLIC hal_native)
 
-install(TARGETS interface_native hal_native device_native variant_native DESTINATION .)
+install(TARGETS interface_native hal_native device_native DESTINATION .)

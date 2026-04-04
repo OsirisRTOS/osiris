@@ -203,7 +203,8 @@ impl hal_api::stack::Stacklike for ArmStack {
         } = desc;
 
         // We expect a PhysAddr, which can be converted to a ptr on nommu.
-        let top = NonNull::new(top.as_mut_ptr::<u32>()).ok_or(hal_api::Error::InvalidAddress(top.as_usize()))?;
+        let top = NonNull::new(top.as_mut_ptr::<u32>())
+            .ok_or(hal_api::Error::InvalidAddress(top.as_usize()))?;
 
         let mut stack = Self {
             top,

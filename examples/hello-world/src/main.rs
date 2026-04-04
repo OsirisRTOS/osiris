@@ -18,7 +18,11 @@ extern "C" fn second_thread() {
 fn main() {
     osiris::uprintln!("Hello World!");
     let mut tick = 0;
-    let attrs = osiris::uapi::sched::RtAttrs { deadline: 100, period: 100, budget: 100 };
+    let attrs = osiris::uapi::sched::RtAttrs {
+        deadline: 100,
+        period: 100,
+        budget: 100,
+    };
 
     osiris::uapi::sched::spawn_thread(second_thread, Some(attrs));
     loop {

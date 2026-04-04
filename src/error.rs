@@ -1,9 +1,9 @@
 //! Utility functions and definitions for the kernel.
 #![cfg_attr(feature = "nightly", feature(likely_unlikely))]
 
+use core::fmt::Debug;
 use core::fmt::Display;
 use hal::mem::PhysAddr;
-use core::fmt::Debug;
 
 /// These two definitions are copied from https://github.com/rust-lang/hashbrown
 #[cfg(not(feature = "nightly"))]

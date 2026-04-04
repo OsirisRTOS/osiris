@@ -771,8 +771,11 @@ dependencies = [
  "cbindgen",
  "cmake",
  "critical-section",
+ "dtgen",
  "hal-api",
+ "quote",
  "serde_json",
+ "syn",
 ]
 
 [[package]]
@@ -1144,7 +1147,6 @@ dependencies = [
  "cfg_aliases",
  "defmt",
  "defmt-rtt",
- "dtgen",
  "envparse",
  "hal-select",
  "hal-testing",

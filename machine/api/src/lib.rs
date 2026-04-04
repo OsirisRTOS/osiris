@@ -32,7 +32,7 @@ impl Display for Error {
                     "Pointer {:p} out of bounds (expected in {:p}..{:p})",
                     *ptr as *const u8, range.start as *const u8, range.end as *const u8
                 )
-            },
+            }
             Error::InvalidAddress(addr) => write!(f, "Invalid address {:p}", *addr as *const u8),
         }
     }

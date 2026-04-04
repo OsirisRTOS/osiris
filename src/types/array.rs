@@ -3,26 +3,22 @@
 use crate::error::Result;
 
 use super::{
-    traits::{Get, GetMut, ToIndex},
     boxed::Box,
+    traits::{Get, GetMut, ToIndex},
 };
 
+use core::ops::{Index, IndexMut};
 use core::{borrow::Borrow, mem::MaybeUninit};
-use core::{
-    ops::{Index, IndexMut},
-};
 
 /// This is a fixed-size map that can store up to N consecutive elements.
 #[proc_macros::fmt]
-pub struct IndexMap<K: ?Sized + ToIndex, V, const N: usize>
-{
+pub struct IndexMap<K: ?Sized + ToIndex, V, const N: usize> {
     data: [Option<V>; N],
     phantom: core::marker::PhantomData<K>,
 }
 
 #[allow(dead_code)]
-impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
-{
+impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
     /// Create a new IndexMap.
     ///
     /// Returns a new IndexMap.
@@ -74,11 +70,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
     pub fn remove(&mut self, idx: &K) -> Option<V> {
         let idx = K::to_index(Some(idx));
 
-        if idx < N {
-            self.data[idx].take()
-        } else {
-            None
-        }
+        if idx < N { self.data[idx].take() } else { None }
     }
 
     /// Get an iterator over the elements in the map.
@@ -140,8 +132,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N>
     }
 }
 
-impl<K: Copy + ToIndex, V, const N: usize> Index<K> for IndexMap<K, V, N>
-{
+impl<K: Copy + ToIndex, V, const N: usize> Index<K> for IndexMap<K, V, N> {
     type Output = V;
 
     fn index(&self, index: K) -> &Self::Output {
@@ -149,15 +140,13 @@ impl<K: Copy + ToIndex, V, const N: usize> Index<K> for IndexMap<K, V, N>
     }
 }
 
-impl<K: Copy + ToIndex, V, const N: usize> IndexMut<K> for IndexMap<K, V, N>
-{
+impl<K: Copy + ToIndex, V, const N: usize> IndexMut<K> for IndexMap<K, V, N> {
     fn index_mut(&mut self, index: K) -> &mut Self::Output {
         self.get_mut::<K>(index).unwrap()
     }
 }
 
-impl<K: ?Sized + ToIndex, V, const N: usize> Get<K> for IndexMap<K, V, N>
-{
+impl<K: ?Sized + ToIndex, V, const N: usize> Get<K> for IndexMap<K, V, N> {
     type Output = V;
 
     fn get<Q: Borrow<K>>(&self, index: Q) -> Option<&Self::Output> {
@@ -180,7 +169,11 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
         }
     }
 
-    fn get2_mut<Q: Borrow<K>>(&mut self, index1: Q, index2: Q) -> (Option<&mut Self::Output>, Option<&mut Self::Output>) {
+    fn get2_mut<Q: Borrow<K>>(
+        &mut self,
+        index1: Q,
+        index2: Q,
+    ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>) {
         let idx1 = K::to_index(Some(index1.borrow()));
         let idx2 = K::to_index(Some(index2.borrow()));
 
@@ -207,7 +200,11 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
         index1: Q,
         index2: Q,
         index3: Q,
-    ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>, Option<&mut Self::Output>) {
+    ) -> (
+        Option<&mut Self::Output>,
+        Option<&mut Self::Output>,
+        Option<&mut Self::Output>,
+    ) {
         let idx1 = K::to_index(Some(index1.borrow()));
         let idx2 = K::to_index(Some(index2.borrow()));
         let idx3 = K::to_index(Some(index3.borrow()));
@@ -646,7 +643,11 @@ impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
         index1: Q,
         index2: Q,
         index3: Q,
-    ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>, Option<&mut Self::Output>) {
+    ) -> (
+        Option<&mut Self::Output>,
+        Option<&mut Self::Output>,
+        Option<&mut Self::Output>,
+    ) {
         self.at3_mut(*index1.borrow(), *index2.borrow(), *index3.borrow())
     }
 }

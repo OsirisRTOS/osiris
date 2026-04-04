@@ -74,9 +74,12 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         match self.head {
             Some(old_head) => {
                 let (new_node, old_head_node) = storage.get2_mut(id, old_head);
-                let (new_node, old_head_node) = (new_node.ok_or(kerr!(NotFound))?, old_head_node.unwrap_or_else(|| {
-                    bug!("node linked from list does not exist in storage.");
-                }));
+                let (new_node, old_head_node) = (
+                    new_node.ok_or(kerr!(NotFound))?,
+                    old_head_node.unwrap_or_else(|| {
+                        bug!("node linked from list does not exist in storage.");
+                    }),
+                );
 
                 new_node.links_mut().prev = None;
                 new_node.links_mut().next = Some(old_head);
@@ -97,7 +100,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
     }
 
     /// Pushes `id` to the back of the list. If `id` is already in the list, it is moved to the back.
-    /// 
+    ///
     /// Errors if `id` does not exist in `storage` or if the node corresponding to `id` is linked but not in the list.
     pub fn push_back<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where
@@ -108,9 +111,12 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         match self.tail {
             Some(old_tail) => {
                 let (new_node, old_tail_node) = storage.get2_mut(id, old_tail);
-                let (new_node, old_tail_node) = (new_node.ok_or(kerr!(NotFound))?, old_tail_node.unwrap_or_else(|| {
-                    bug!("node linked from list does not exist in storage.");
-                }));
+                let (new_node, old_tail_node) = (
+                    new_node.ok_or(kerr!(NotFound))?,
+                    old_tail_node.unwrap_or_else(|| {
+                        bug!("node linked from list does not exist in storage.");
+                    }),
+                );
 
                 new_node.links_mut().next = None;
                 new_node.links_mut().prev = Some(old_tail);
@@ -230,7 +236,10 @@ mod tests {
     use core::borrow::Borrow;
 
     use super::{Linkable, Links, List};
-    use crate::types::{array::IndexMap, traits::{Get, ToIndex}};
+    use crate::types::{
+        array::IndexMap,
+        traits::{Get, ToIndex},
+    };
 
     #[proc_macros::fmt]
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

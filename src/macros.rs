@@ -34,9 +34,7 @@ macro_rules! error {
 
 #[macro_export]
 macro_rules! kprint {
-    ($($arg:tt)*) => ({
-    
-    });
+    ($($arg:tt)*) => {{}};
 }
 
 #[macro_export]

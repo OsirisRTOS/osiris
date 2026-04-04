@@ -17,7 +17,7 @@ add_library(hal_native STATIC ${SRC_FILES})
 
 # Set the include directories so the cmake src root machine/arm/cmsis machine/arm/device/stm32l4xx
 target_include_directories(hal_native PUBLIC
-    ../../cmsis
+    ../../../cmsis
     ../device
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

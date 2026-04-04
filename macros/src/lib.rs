@@ -1,8 +1,8 @@
 use syn::parse_macro_input;
 
-mod tree;
-mod syscall;
 mod logging;
+mod syscall;
+mod tree;
 
 #[proc_macro_derive(TaggedLinks, attributes(rbtree, list))]
 pub fn derive_tagged_links(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -11,21 +11,29 @@ pub fn derive_tagged_links(input: proc_macro::TokenStream) -> proc_macro::TokenS
     match tree::derive_tagged_links(&input) {
         Ok(tokens) => tokens,
         Err(e) => e.to_compile_error(),
-    }.into()
+    }
+    .into()
 }
 
 #[proc_macro_attribute]
-pub fn fmt(args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn fmt(
+    args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
     match logging::derive_fmt(&input) {
         Ok(tokens) => tokens,
         Err(e) => e.to_compile_error(),
-    }.into()
+    }
+    .into()
 }
 
 #[proc_macro_attribute]
-pub fn app_main(input: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn app_main(
+    input: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     let item = syn::parse_macro_input!(item as syn::ItemFn);
     let block = &item.block;
 
@@ -72,5 +80,3 @@ pub fn syscall_handler(
     let item = syn::parse_macro_input!(item as syn::ItemFn);
     syscall::syscall_handler_fn(&item).into()
 }
-
-
