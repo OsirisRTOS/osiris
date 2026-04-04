@@ -56,6 +56,7 @@ macro_rules! bug_on {
     }};
 }
 
+#[allow(unused_macros)]
 macro_rules! warn_on {
     ($cond:expr) => {{
         let cond = $cond;
@@ -91,6 +92,7 @@ macro_rules! kerr {
 }
 
 #[proc_macros::fmt]
+#[allow(dead_code)]
 #[derive(Clone, PartialEq, Eq)]
 pub enum Kind {
     InvalidAlign,

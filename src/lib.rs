@@ -51,7 +51,7 @@ pub unsafe extern "C" fn kernel_init() -> ! {
     idle::init();
     kprintln!("Idle thread initialized.");
 
-    let (cyc, ns) = hal::Machine::bench_end();
+    let (cyc, _ns) = hal::Machine::bench_end();
     kprintln!("Kernel init took {} cycles.", cyc);
 
     // Start the init application.

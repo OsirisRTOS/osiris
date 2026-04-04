@@ -314,7 +314,7 @@ mod tests {
         let mut list = List::<TestTag, Id>::new();
 
         list.push_back(Id(1), &mut s).unwrap();
-        list.remove(Id(1), &mut s);
+        let _ = list.remove(Id(1), &mut s);
 
         assert_eq!(list.head(), None);
         assert_eq!(list.tail(), None);

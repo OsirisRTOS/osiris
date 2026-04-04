@@ -6,10 +6,12 @@ use super::array::Vec;
 
 /// An array-based binary heap, with N elements stored inline.
 #[proc_macros::fmt]
+#[allow(dead_code)]
 pub struct BinaryHeap<T, const N: usize> {
     vec: Vec<T, N>,
 }
 
+#[allow(dead_code)]
 impl<T: Clone + Copy + Ord, const N: usize> BinaryHeap<T, N> {
     /// Create a new empty binary heap.
     pub const fn new() -> Self {

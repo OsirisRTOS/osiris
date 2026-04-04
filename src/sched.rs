@@ -162,7 +162,7 @@ impl<const N: usize> Scheduler<N> {
             });
 
             if let Some(throttle) = throttle {
-                self.sleep_until(throttle, now);
+                let _ = self.sleep_until(throttle, now);
                 return true;
             }
 
@@ -235,6 +235,7 @@ impl<const N: usize> Scheduler<N> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
         WaiterView::<N>::with(&mut self.threads, |view| {
             self.wakeup.remove(uid, view)?;
@@ -256,6 +257,7 @@ impl<const N: usize> Scheduler<N> {
         self.rr_scheduler.dequeue(uid, &mut self.threads);
     }
 
+    #[allow(dead_code)]
     pub fn create_task(&mut self, task: &task::Attributes) -> Result<task::UId> {
         let uid = task::UId::new(self.id_gen).ok_or(kerr!(InvalidArgument))?;
         self.id_gen += 1;
@@ -273,7 +275,8 @@ impl<const N: usize> Scheduler<N> {
                 self.rt_scheduler.dequeue(id, view);
             });
             self.rr_scheduler.dequeue(id, &mut self.threads);
-            self.wakeup
+            let _ = self
+                .wakeup
                 .remove(id, &mut WaiterView::<N>::new(&mut self.threads));
 
             if task.threads_mut().remove(id, &mut self.threads).is_err() {
@@ -315,7 +318,8 @@ impl<const N: usize> Scheduler<N> {
     pub fn kill_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
         let uid = uid.unwrap_or(self.current.ok_or(kerr!(InvalidArgument))?);
         self.dequeue(uid);
-        self.wakeup
+        let _ = self
+            .wakeup
             .remove(uid, &mut WaiterView::<N>::new(&mut self.threads));
 
         self.tasks
@@ -363,6 +367,7 @@ pub fn needs_reschedule(now: u64) -> bool {
 }
 
 #[inline]
+#[allow(dead_code)]
 pub fn disable() {
     DISABLED.store(true, Ordering::Release);
 }

@@ -25,7 +25,7 @@ impl<const N: usize> Scheduler<N> {
         if let Some(server) = storage.get_mut(uid) {
             // Threads are only enqueued when they are runnable.
             server.on_wakeup(now);
-            self.edf.insert(uid, storage);
+            let _ = self.edf.insert(uid, storage);
         }
     }
 
@@ -50,6 +50,6 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn dequeue(&mut self, uid: thread::UId, storage: &mut ServerView<N>) {
-        self.edf.remove(uid, storage);
+        let _ = self.edf.remove(uid, storage);
     }
 }

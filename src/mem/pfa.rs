@@ -30,6 +30,7 @@ trait Allocator<const N: usize> {
     fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>>;
 
     fn alloc(&mut self, page_count: usize) -> Option<PhysAddr>;
+    #[allow(dead_code)]
     fn free(&mut self, addr: PhysAddr, page_count: usize);
 }
 
@@ -50,6 +51,7 @@ pub fn alloc_page(page_count: usize) -> Option<PhysAddr> {
     pfa.as_mut()?.alloc(page_count)
 }
 
+#[allow(dead_code)]
 pub fn free_page(addr: PhysAddr, page_count: usize) {
     let mut pfa = PFA.lock();
     if let Some(pfa) = pfa.as_mut() {

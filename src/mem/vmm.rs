@@ -16,6 +16,7 @@ bitflags::bitflags! {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub enum Backing {
     Zeroed,
     Uninit,
@@ -23,6 +24,7 @@ pub enum Backing {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct Region {
     start: Option<VirtAddr>,
     len: usize,
@@ -47,6 +49,7 @@ impl Region {
         }
     }
 
+    #[allow(dead_code)]
     pub fn start(&self) -> VirtAddr {
         self.start.unwrap_or_else(|| VirtAddr::new(0))
     }
@@ -55,11 +58,13 @@ impl Region {
         self.len
     }
 
+    #[allow(dead_code)]
     pub fn contains(&self, addr: VirtAddr) -> bool {
         self.start().saturating_add(self.len()) > addr && addr >= self.start()
     }
 }
 
+#[allow(dead_code)]
 pub trait AddressSpacelike {
     // Size is the amount of pages in the address space. On nommu systems this will be reserved.
     fn new(pages: usize) -> Result<Self>

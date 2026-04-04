@@ -1,4 +1,4 @@
-use syn::{DeriveInput, ItemFn};
+use syn::DeriveInput;
 
 pub fn derive_fmt(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     // Check if the env variable "OSIRIS_DEBUG_DEFMT" is set. If it is, generate a defmt::Format implementation. Otherwise, generate a Debug implementation.

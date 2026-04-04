@@ -12,6 +12,7 @@ use crate::{
 
 pub struct AddressSpace {
     begin: PhysAddr,
+    #[allow(dead_code)]
     end: PhysAddr,
     allocator: bestfit::BestFitAllocator,
 }

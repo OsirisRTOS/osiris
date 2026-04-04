@@ -40,6 +40,7 @@ default = []
 nightly = []
 no-atomic-cas = []
 multi-core = []
+error-msg = []
 defmt = ["dep:defmt", "dep:defmt-rtt"]
 
 [build-dependencies]

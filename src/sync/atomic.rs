@@ -56,6 +56,7 @@ impl AtomicU8 {
     }
 
     /// Compares the value and exchanges it.
+    #[allow(dead_code)]
     pub fn compare_exchange(
         &self,
         current: u8,
@@ -131,6 +132,7 @@ pub struct AtomicU64 {
 unsafe impl Sync for AtomicU64 {}
 
 #[cfg(not(target_has_atomic = "64"))]
+#[allow(dead_code)]
 impl AtomicU64 {
     /// Creates a new atomic u64.
     pub const fn new(value: u64) -> Self {
@@ -193,6 +195,7 @@ impl AtomicU64 {
     }
 
     /// Fetches a value, applies the function and writes it back atomically.
+    #[allow(dead_code)]
     pub fn fetch_update<F>(&self, _: Ordering, _: Ordering, mut f: F) -> Result<u64, u64>
     where
         F: FnMut(u64) -> Option<u64>,

@@ -56,7 +56,7 @@ fn spawn_thread(func_ptr: usize, attrs: *const RtAttrs) -> c_int {
 }
 
 #[syscall_handler(num = 4)]
-fn exit(code: usize) -> c_int {
+fn exit(_code: usize) -> c_int {
     sched::with(|sched| {
         if sched.kill_thread(None).is_err() {
             bug!("failed to terminate thread.");
@@ -66,6 +66,6 @@ fn exit(code: usize) -> c_int {
 }
 
 #[syscall_handler(num = 5)]
-fn kick_thread(uid: usize) -> c_int {
+fn kick_thread(_uid: usize) -> c_int {
     0
 }

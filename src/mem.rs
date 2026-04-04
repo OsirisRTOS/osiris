@@ -11,6 +11,7 @@ pub mod alloc;
 pub mod pfa;
 pub mod vmm;
 
+#[allow(dead_code)]
 pub const BITS_PER_PTR: usize = core::mem::size_of::<usize>() * 8;
 
 unsafe extern "C" {

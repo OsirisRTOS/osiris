@@ -165,6 +165,7 @@ impl RtServer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn budget_left(&self) -> u32 {
         self.budget_left
     }
@@ -185,6 +186,7 @@ impl RtServer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn replenish(&mut self) {
         self.deadline = self.deadline + self.period as u64;
         self.budget_left += self.budget;
@@ -200,10 +202,12 @@ impl RtServer {
         None
     }
 
+    #[allow(dead_code)]
     pub fn deadline(&self) -> u64 {
         self.deadline
     }
 
+    #[allow(dead_code)]
     pub fn uid(&self) -> UId {
         self.uid
     }
@@ -247,6 +251,7 @@ impl Waiter {
         self.until
     }
 
+    #[allow(dead_code)]
     pub fn set_until(&mut self, until: u64) {
         self.until = until;
     }

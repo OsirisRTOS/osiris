@@ -34,6 +34,7 @@ pub struct UId {
 }
 
 impl UId {
+    #[allow(dead_code)]
     pub fn new(uid: usize) -> Option<Self> {
         if uid == 0 { None } else { Some(Self { uid }) }
     }
@@ -55,6 +56,7 @@ impl Display for UId {
     }
 }
 
+#[allow(dead_code)]
 pub struct Attributes {
     pub resrv_pgs: Option<NonZero<usize>>,
 }
@@ -72,6 +74,7 @@ pub struct Task {
 }
 
 impl Task {
+    #[allow(dead_code)]
     pub fn new(id: UId, attrs: &Attributes) -> Result<Self> {
         // TODO: On MMU systems, the resrv_pgs attribute will be ignored, as memory will not be reserved.
         let resrv_pgs = attrs.resrv_pgs.ok_or(kerr!(InvalidArgument))?;
@@ -130,6 +133,7 @@ impl Task {
         Ok(tid.get_uid(uid))
     }
 
+    #[allow(dead_code)]
     pub fn tid_cntr(&self) -> usize {
         self.tid_cntr
     }

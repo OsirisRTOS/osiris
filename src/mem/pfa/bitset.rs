@@ -194,7 +194,7 @@ mod tests {
     fn test_random_pattern() {
         const ITARATIONS: usize = 1000;
 
-        for i in 0..ITARATIONS {
+        for _ in 0..ITARATIONS {
             const N: usize = 1024;
             const BITS: usize = Allocator::<N>::BITS_PER_WORD;
             const ALLOC_SIZE: usize = 100;

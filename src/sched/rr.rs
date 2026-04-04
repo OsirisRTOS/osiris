@@ -41,8 +41,8 @@ impl<const N: usize> Scheduler<N> {
         match self.current {
             Some(current) if self.current_left > 0 => return Some((current, self.current_left)),
             Some(current) => {
-                self.queue.pop_front(storage);
-                self.queue.push_back(current, storage);
+                let _ = self.queue.pop_front(storage);
+                let _ = self.queue.push_back(current, storage);
 
                 self.current = self.queue.head();
                 self.current_left = self.quantum;
@@ -57,7 +57,7 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn dequeue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N>) {
-        self.queue.remove(uid, storage);
+        let _ = self.queue.remove(uid, storage);
 
         if self.current == Some(uid) {
             self.current = None;

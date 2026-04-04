@@ -17,7 +17,7 @@ pub fn derive_tagged_links(input: proc_macro::TokenStream) -> proc_macro::TokenS
 
 #[proc_macro_attribute]
 pub fn fmt(
-    args: proc_macro::TokenStream,
+    _args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -31,7 +31,7 @@ pub fn fmt(
 
 #[proc_macro_attribute]
 pub fn app_main(
-    input: proc_macro::TokenStream,
+    _attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let item = syn::parse_macro_input!(item as syn::ItemFn);
