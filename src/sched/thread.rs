@@ -385,3 +385,26 @@ impl Project<Waiter> for Thread {
         self.waiter.as_mut()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::RtServer;
+
+    fn make_server(budget: u32, period: u32, deadline: u64) -> RtServer {
+        let tid = super::Id::new(1, super::task::KERNEL_TASK);
+        let uid = tid.get_uid(1);
+        RtServer::new(budget, period, deadline, uid)
+    }
+
+    #[test]
+    fn replenish_budget_overflow() {
+        // 2 * budget = 4_294_967_296 > u32::MAX → overflows.
+        // In release: wraps to 0, which is less than budget.
+        let budget: u32 = u32::MAX / 2 + 1;
+
+        let mut server = make_server(budget, 1, 0);
+
+        server.replenish();
+        server.budget_left();
+    }
+}
