@@ -44,13 +44,12 @@ set(LINKER_SCRIPT_OUT ${OUT_DIR}/link.ld)
 
 # We track environment variables that start with OSIRIS_ as dependencies as they can change the output of the compilation
 set(DEPS_FILE ${OUT_DIR}/deps.txt)
-file(WRITE ${DEPS_FILE} "${CONFIG_DEFINES}")
+file(GENERATE OUTPUT ${DEPS_FILE} CONTENT "${CONFIG_DEFINES}")
 
 add_custom_command(
   OUTPUT  ${LINKER_SCRIPT_OUT}
   COMMAND ${CMAKE_C_COMPILER} -E -P -x c
           ${CONFIG_DEFINES}
-          -DMCU_HEADER=\"${OSIRIS_ARM_STM32L4XX_VARIANT}/link.ld\"
           ${LINKER_SCRIPT_IN}
           -o ${LINKER_SCRIPT_OUT}
   DEPENDS ${LINKER_SCRIPT_IN} ${DEPS_FILE}

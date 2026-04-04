@@ -1,7 +1,5 @@
-
 # Osiris
-An RTOS designed and verified to enable reliable software updates and operation for embedded systems.
-
+An RTOS for embedded systems. This is still a very early work in progress.
 
 ## Project Structure
 
@@ -9,6 +7,7 @@ An RTOS designed and verified to enable reliable software updates and operation 
 |-----------|-------------|
 | [src/](src/) | This is the actual kernel code of osiris. It is a hardware independent layer providing scheduling, memory management, etc. |
 | [machine/](machine/) | This contains all the HALs and hardware specific code in general. It exports a hardware independent interface to the kernel. |
+| [boards/](boards/) | This contains Device Tree Source (.dts) files for targeted boards. |
 
 ## Build
 
@@ -19,6 +18,10 @@ An RTOS designed and verified to enable reliable software updates and operation 
 *   **CMake**: Version 3.28 or newer.
 *   **Clang**: Used as the C/C++ compiler.
 *   **Kani**: A recent version of the Kani Rust Verifier.
+
+Furthermore the following repositories are automatically fetched to invoke a subproject of the build process:
+* **[Zephyr](https://github.com/zephyrproject-rtos/zephyr)**: Pinned to release v4.3.0
+* **[HAL_STM32](https://github.com/zephyrproject-rtos/hal_stm32)**: The utilized commit is bound to the Zephyr release and can be infered through the Zephyr manifest [west.yaml](https://github.com/zephyrproject-rtos/zephyr/blob/main/west.yml)
 
 ### Development & Debugging Tools
 These tools are used for flashing, debugging, and other development tasks.

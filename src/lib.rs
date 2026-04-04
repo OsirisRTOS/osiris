@@ -22,6 +22,7 @@ mod time;
 pub mod uapi;
 
 use hal::Machinelike;
+include!(concat!(env!("OUT_DIR"), "/device_tree.rs"));
 
 pub use hal;
 pub use proc_macros::app_main;

@@ -5,8 +5,7 @@
 		"dockerfile": "Dockerfile",
 		"context": "..",
 		"cacheFrom": [
-			"ghcr.io/osirisrtos/osiris/devcontainer:main",
-			"ghcr.io/osirisrtos/osiris/devcontainer:main-cache"
+			"ghcr.io/osirisrtos/osiris/devcontainer",
 		]
 	},
 	"privileged": false,
@@ -37,7 +36,9 @@
 	"runArgs": [
 		// Mount USB devices under Linux
 		"--device",
-		"/dev/bus/usb:/dev/bus/usb"
+		"/dev/bus/usb:/dev/bus/usb",
+		"--group-add",
+		"keep-groups"
 	],
 	"mounts": [
 		// Make ssh keys available

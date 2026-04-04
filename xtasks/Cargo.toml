@@ -3,7 +3,7 @@ name = "xtask"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[target.'cfg(not(target_os = "none"))'.dependencies]
 logging = { path = "logging" }
 clap = "4.5.53"
 walkdir = "2.5.0"

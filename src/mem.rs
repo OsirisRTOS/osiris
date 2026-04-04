@@ -23,7 +23,7 @@ static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
 
 /// Initialize the memory allocator.
 ///
-/// `boot_info` - The boot information. This contains the memory map.
+/// `regions` - The memory node module of device tree codegen file.
 ///
 /// Returns an error if the memory allocator could not be initialized.
 pub fn init_memory() -> vmm::AddressSpace {

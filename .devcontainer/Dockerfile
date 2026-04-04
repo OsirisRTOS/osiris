@@ -56,6 +56,7 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	libusb1-devel \
 	openssl-devel \
 	lcov \
+	dtc \ 
 	awk \
 	just \
 	python-pyelftools \
@@ -85,7 +86,7 @@ ENV CARGO_HOME=/usr/local/cargo
 ENV KANI_HOME=/usr/local/kani
 ENV PATH="/usr/local/cargo/bin:${PATH}"
 
-ARG RUST_VERSION=1.90.0
+ARG RUST_VERSION=1.94.1
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 	| sh -s -- -y --no-modify-path --default-toolchain ${RUST_VERSION} && \
