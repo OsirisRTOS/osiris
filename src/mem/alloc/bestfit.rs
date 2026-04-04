@@ -49,7 +49,7 @@ impl BestFitAllocator {
 
         // Check if the pointer is 128bit aligned.
         if !ptr.is_multiple_of(align_of::<u128>()) {
-                return Err(kerr!(InvalidArgument));
+            return Err(kerr!(InvalidArgument));
         }
 
         if range.end.diff(range.start) < Self::MIN_RANGE_SIZE {
@@ -169,7 +169,11 @@ impl BestFitAllocator {
     }
 
     unsafe fn contains(meta: &BestFitMeta, target: PhysAddr, size: usize) -> bool {
-        let begin = unsafe { Self::user_ptr(NonNull::new_unchecked(meta as *const BestFitMeta as *mut u8)) };
+        let begin = unsafe {
+            Self::user_ptr(NonNull::new_unchecked(
+                meta as *const BestFitMeta as *mut u8,
+            ))
+        };
         debug_assert!(size > 0);
 
         if target >= begin.into() {
@@ -194,7 +198,12 @@ impl super::Allocator for BestFitAllocator {
     /// `align` - The alignment of the block.
     ///
     /// Returns the user pointer to the block if successful, otherwise an error.
-    fn malloc<T>(&mut self, size: usize, align: usize, request: Option<PhysAddr>) -> Result<NonNull<T>> {
+    fn malloc<T>(
+        &mut self,
+        size: usize,
+        align: usize,
+        request: Option<PhysAddr>,
+    ) -> Result<NonNull<T>> {
         // Check if the alignment is valid.
         if align == 0 || align > align_of::<u128>() {
             return Err(kerr!(InvalidAlign));
@@ -204,7 +213,7 @@ impl super::Allocator for BestFitAllocator {
             if !request.is_multiple_of(align) {
                 return Err(kerr!(InvalidAlign));
             }
-        }   
+        }
 
         // Check if the size is valid.
         if size == 0 {
@@ -309,7 +318,9 @@ impl super::Allocator for BestFitAllocator {
         }
 
         if let Some(request) = request {
-            debug_assert!(unsafe { Self::contains(block.cast::<BestFitMeta>().as_ref(), request, size) });
+            debug_assert!(unsafe {
+                Self::contains(block.cast::<BestFitMeta>().as_ref(), request, size)
+            });
         }
 
         // Return the user pointer.
@@ -328,10 +339,13 @@ impl super::Allocator for BestFitAllocator {
         meta.next = self.head;
 
         // Check if the size of the block is correct.
-        bug_on!(meta.size != super::super::align_up(size), "Invalid size in free()");
+        bug_on!(
+            meta.size != super::super::align_up(size),
+            "Invalid size in free()"
+        );
 
-        // Set the size of the block.
-        meta.size = size;
+        // Set the size of the block (must stay aligned, matching what malloc stored).
+        meta.size = super::super::align_up(size);
 
         // Set the block as the new head.
         self.head = Some(block);
@@ -343,9 +357,10 @@ impl super::Allocator for BestFitAllocator {
 #[cfg(test)]
 mod tests {
     use crate::error::Kind;
+    use crate::mem::align_up;
 
-    use super::*;
     use super::super::*;
+    use super::*;
 
     fn verify_block(user_ptr: NonNull<u8>, size: usize, next: Option<NonNull<u8>>) {
         let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
@@ -411,7 +426,11 @@ mod tests {
         let ptr = allocator.malloc::<u8>(128, 1, Some(request)).unwrap();
 
         // Check that the returned pointer contains the requested address.
-        let meta = unsafe { BestFitAllocator::control_ptr(ptr).cast::<BestFitMeta>().as_ref() };
+        let meta = unsafe {
+            BestFitAllocator::control_ptr(ptr)
+                .cast::<BestFitMeta>()
+                .as_ref()
+        };
         assert!(unsafe { BestFitAllocator::contains(meta, request, 128) });
     }
 
@@ -627,6 +646,40 @@ mod tests {
     }
 
     #[test]
+    fn free_corrupts_metadata() {
+        let mut allocator = BestFitAllocator::new();
+        // Use a size NOT 16-byte aligned so align_up(size) > size.
+        const SIZE: usize = 17;
+        const ALIGNED: usize = 32; // align_up(17) on 64-bit: (17+15)&!15 = 32
+        assert!(align_up(SIZE) == ALIGNED);
+
+        // Allocate just enough space for one block.
+        let range = alloc_range(ALIGNED + size_of::<BestFitMeta>() + BestFitAllocator::align_up());
+        unsafe {
+            allocator.add_range(&range).unwrap();
+        }
+
+        // First alloc: meta.size = align_up(17) = 32.
+        let ptr1: core::ptr::NonNull<u8> = allocator.malloc(SIZE, 1, None).unwrap();
+
+        // First free: meta.size set to 17 (BUG: should stay 32).
+        unsafe {
+            allocator.free(ptr1, SIZE);
+        }
+
+        // Second alloc: select_block(32) fails (meta.size=17 < 32), fallback select_block(17)
+        // succeeds and returns the block with meta.size still = 17.
+        let ptr2: core::ptr::NonNull<u8> = allocator
+            .malloc(SIZE, 1, None)
+            .expect("second malloc should succeed via fallback path");
+
+        // Second free: bug_on!(meta.size(17) != align_up(17)(32)) → panics.
+        unsafe {
+            allocator.free(ptr2, SIZE);
+        }
+    }
+
+    #[test]
     fn multi_range_oom() {
         // This function allocates multiple ranges and then frees one of them randomly. And only then there is no oom.
         let mut allocator = BestFitAllocator::new();
@@ -663,8 +716,8 @@ mod tests {
 // VERIFICATION -------------------------------------------------------------------------------------------------------
 #[cfg(kani)]
 mod verification {
+    use super::super::*;
     use super::*;
-    use core::{alloc::Layout, ptr};
 
     fn verify_block(user_ptr: NonNull<u8>, size: usize, next: Option<NonNull<u8>>) {
         let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
@@ -674,14 +727,14 @@ mod verification {
         assert_eq!(meta.next, next);
     }
 
-    fn alloc_range(length: usize) -> Option<Range<usize>> {
+    fn alloc_range(length: usize) -> Option<Range<PhysAddr>> {
         let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
         let ptr = unsafe { std::alloc::alloc(alloc_range) };
 
         if ptr.is_null() || ((ptr as usize) >= isize::MAX as usize - length) {
             None
         } else {
-            Some(ptr as usize..ptr as usize + length)
+            Some(PhysAddr::new(ptr as usize)..PhysAddr::new(ptr as usize + length))
         }
     }
 
@@ -699,7 +752,7 @@ mod verification {
 
         if let Some(range) = alloc_range(larger_size) {
             unsafe {
-                assert_eq!(allocator.add_range(range), Ok(()));
+                assert!(matches!(allocator.add_range(&range), Ok(())));
             }
 
             let ptr = allocator.malloc(size, 1, None).unwrap();
