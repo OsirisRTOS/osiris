@@ -12,7 +12,8 @@ fmt *args:
     cargo fmt {{args}}
 
 verify *args:
-    cargo kani -Z concrete-playback --concrete-playback=print -Z stubbing {{args}}
+    # This is giga hacky. But we need it until kani updates to the next version of cargo.
+    OSIRIS_STACKPAGES=1 cargo kani -Z concrete-playback --concrete-playback=print -Z stubbing {{args}}
 
 test *args:
     cargo test {{args}}

@@ -1,5 +1,5 @@
 include = [
-    "../config.toml"
+    { path = "../config.toml", optional = true }
 ]
 
 [alias]

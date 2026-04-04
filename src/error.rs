@@ -179,3 +179,9 @@ impl From<hal::Error> for Error {
         Self::new(Kind::Hal(e))
     }
 }
+
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}

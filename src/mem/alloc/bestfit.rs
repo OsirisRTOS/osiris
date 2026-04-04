@@ -682,7 +682,8 @@ mod tests {
 #[cfg(kani)]
 mod verification {
     use super::*;
-    use core::{alloc::Layout, ptr};
+    use crate::mem::alloc::MAX_ADDR;
+    use crate::mem::alloc::Allocator;
 
     fn verify_block(user_ptr: NonNull<u8>, size: usize, next: Option<NonNull<u8>>) {
         let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
@@ -692,14 +693,14 @@ mod verification {
         assert_eq!(meta.next, next);
     }
 
-    fn alloc_range(length: usize) -> Option<Range<usize>> {
+    fn alloc_range(length: usize) -> Option<Range<PhysAddr>> {
         let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
         let ptr = unsafe { std::alloc::alloc(alloc_range) };
 
         if ptr.is_null() || ((ptr as usize) >= isize::MAX as usize - length) {
             None
         } else {
-            Some(ptr as usize..ptr as usize + length)
+            Some(PhysAddr::new(ptr as usize)..PhysAddr::new(ptr as usize + length))
         }
     }
 
@@ -717,7 +718,7 @@ mod verification {
 
         if let Some(range) = alloc_range(larger_size) {
             unsafe {
-                assert_eq!(allocator.add_range(range), Ok(()));
+                assert_eq!(allocator.add_range(&range), Ok(()));
             }
 
             let ptr = allocator.malloc(size, 1, None).unwrap();
