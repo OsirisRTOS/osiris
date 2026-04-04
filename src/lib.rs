@@ -7,8 +7,10 @@
 mod macros;
 #[macro_use]
 mod utils;
+pub mod error;
 mod faults;
 mod mem;
+pub mod modules;
 pub mod print;
 pub mod sched;
 pub mod sync;
@@ -34,7 +36,7 @@ pub unsafe extern "C" fn kernel_init(boot_info: *const BootInfo) -> ! {
     // Initialize basic hardware and the logging system.
     hal::Machine::init();
     hal::Machine::bench_start();
-
+    modules::init_modules();
     if boot_info.is_null() || !boot_info.is_aligned() {
         panic!("[Kernel] Error: boot_info pointer is null or unaligned.");
     }

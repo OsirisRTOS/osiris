@@ -20,45 +20,93 @@ pub use crate::__macro_nop as nop;
 #[macro_export]
 macro_rules! __macro_syscall {
     ($num:expr) => {
-        use core::arch::asm;
+    {
+        let result: isize;
         unsafe {
-            asm!("svc {0}", const $num);
+            core::arch::asm!(
+                "svc #{0}",  // const $num is operand 0
+                const $num,
+                lateout("r0") result,
+                clobber_abi("C"),
+            );
         }
+        result
+    }
     };
     ($num:expr, $arg0:expr) => {
-        use core::arch::asm;
+    {
+        let result: isize;
         unsafe {
-            asm!("mov r0, {0}", "svc {1}", in(reg)$arg0, const $num);
+            core::arch::asm!(
+                "svc #{0}",  // const $num is operand 1 (after r0)
+                const $num,
+                inout("r0") $arg0 => result,
+                clobber_abi("C"),
+            );
         }
+        result
+    }
     };
     ($num:expr, $arg0:expr, $arg1:expr) => {
-        use core::arch::asm;
+    {
+        let result: isize;
         unsafe {
-            asm!("mov r0, {0}", "mov r1, {1}", "svc {2}", in(reg)$arg0, in(reg)$arg1, const $num);
+            core::arch::asm!(
+                "svc #{0}",  // const $num is operand 2 (after r0, r1)
+                const $num,
+                inout("r0") $arg0 => result,
+                in("r1") $arg1,
+                clobber_abi("C"),
+            );
         }
+        result
+    }
     };
     ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {
-        use core::arch::asm;
+    {
+        let result: isize;
         unsafe {
-            asm!("mov r0, {0}", "mov r1, {1}", "mov r2, {2}", "svc {3}", in(reg)$arg0, in(reg)$arg1, in(reg)$arg2, const $num);
+            core::arch::asm!(
+                "svc #{0}",  // const $num is operand 3
+                const $num,
+                inout("r0") $arg0 => result,
+                in("r1") $arg1,
+                in("r2") $arg2,
+                clobber_abi("C"),
+            );
         }
+        result
+    }
     };
     ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {
-        use core::arch::asm;
+    {
+        let result: isize;
         unsafe {
-            asm!("mov r0, {0}", "mov r1, {1}", "mov r2, {2}", "mov r3, {3}", "svc {4}", in(reg)$arg0, in(reg)$arg1, in(reg)$arg2, in(reg)$arg3, const $num);
+            core::arch::asm!(
+                "svc #{0}",  // const $num is operand 4
+                const $num,
+                inout("r0") $arg0 => result,
+                in("r1") $arg1,
+                in("r2") $arg2,
+                in("r3") $arg3,
+                clobber_abi("C"),
+            );
         }
+        result
+    }
     };
 }
 
 #[cfg(feature = "host")]
 #[macro_export]
 macro_rules! __macro_syscall {
-    ($num:expr) => {{}};
-    ($num:expr, $arg0:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{}};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{}};
+    ($num:expr) => {
+        0isize
+    };
+    ($num:expr, $arg0:expr) => {{ 0isize }};
+    ($num:expr, $arg0:expr, $arg1:expr) => {{ 0isize }};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{ 0isize }};
+    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{ 0isize }};
 }
 
 pub use crate::__macro_syscall as syscall;

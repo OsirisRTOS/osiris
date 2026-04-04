@@ -1,14 +1,19 @@
 use quote::{ToTokens, format_ident};
-use syn::parse_macro_input;
+use quote::{quote, quote_spanned};
+use syn::ItemFn;
+use syn::{
+    Error, FnArg, GenericArgument, Pat, PatType, PathArguments, ReturnType, Type, TypeReference,
+    TypeSlice, parse_macro_input,
+};
 
 use proc_macro2::TokenStream;
+use syn::spanned::Spanned;
 
 #[proc_macro_attribute]
 pub fn service(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    // This macro should be used to annotate a service struct.
     let item = syn::parse_macro_input!(item as syn::ItemStruct);
 
     let service_name = item.ident.clone();
@@ -60,7 +65,6 @@ fn is_return_type_register_sized_check(
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     let ret_ty = match &item.sig.output {
         syn::ReturnType::Default => {
-            // no "-> Type" present
             return Err(syn::Error::new_spanned(
                 &item.sig.output,
                 "syscall_handler: missing return type; expected a register‐sized type",
@@ -147,7 +151,6 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     let name = item.sig.ident.to_string().to_uppercase();
     let num_args = item.sig.inputs.len();
 
-    // Check if the function has a valid signature. So args <= 4 and return type is u32.
     if num_args > SYSCALL_MAX_ARGS {
         return syn::Error::new(
             item.sig.ident.span(),
@@ -155,7 +158,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
                 "syscall_handler: function {name} has too many arguments (max is {SYSCALL_MAX_ARGS})"
             ),
         )
-        .to_compile_error();
+            .to_compile_error();
     }
 
     let ret_check = match is_return_type_register_sized_check(item) {
@@ -172,14 +175,13 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
                         "syscall_handler: function {name} has too many arguments (max is {SYSCALL_MAX_ARGS})"
                     ),
                 )
-                .to_compile_error();
+                    .to_compile_error();
             }
             types
         }
         Err(e) => return e.to_compile_error(),
     };
 
-    // Check if each argument type is valid and fits in a register.
     let size_checks: Vec<TokenStream> = types.iter().map(|ty| {
         quote::quote! {
             const _: () = {
@@ -206,9 +208,7 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
     let wrapper = quote::quote! {
         #[unsafe(no_mangle)]
         pub extern "C" fn  #wrapper_name(svc_args: *const core::ffi::c_uint) -> core::ffi::c_int {
-            // This function needs to extract the arguments from the pointer and call the original function by passing the arguments as actual different parameters.
             let args = unsafe { svc_args as *const usize };
-            // Call the original function with the extracted arguments.
             #call
         }
     };
@@ -219,4 +219,403 @@ fn syscall_handler_fn(item: &syn::ItemFn) -> TokenStream {
         #ret_check
         #(#size_checks)*
     }
+}
+
+#[proc_macro_attribute]
+pub fn kernelmod_call(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(item as ItemFn);
+
+    match generate_wrapper(input) {
+        Ok(tokens) => proc_macro::TokenStream::from(tokens),
+        Err(e) => proc_macro::TokenStream::from(e.to_compile_error()),
+    }
+}
+
+fn snake_to_pascal(s: &str) -> String {
+    s.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+/// Structurally validates that the return type is `Result<T, PosixError>` and
+/// extracts the `T` (Ok type).
+///
+/// Checks performed (all at the AST / syntactic level):
+///   1. A return type is present (not `-> ()`-less).
+///   2. The outermost type path ends with `Result`.
+///   3. `Result` has exactly two generic type arguments.
+///   4. The second type argument's path ends with `PosixError`.
+///
+/// Returns the first generic argument (`T`) on success so the caller can emit
+/// targeted size / Copy checks against it.
+fn validate_and_extract_result_ok_type(return_type: &ReturnType) -> Result<Type, Error> {
+    // 1. Must have an explicit return type.
+    let ret_ty = match return_type {
+        ReturnType::Default => {
+            return Err(Error::new_spanned(
+                return_type,
+                "kernelmod_call: function must have an explicit return type.\n\
+                 Expected `Result<T, PosixError>` where T: Copy + size_of::<T>() <= size_of::<usize>()",
+            ));
+        }
+        ReturnType::Type(_, ty) => ty,
+    };
+
+    // 2. Outer type must be a path whose last segment is `Result`.
+    let type_path = match ret_ty.as_ref() {
+        Type::Path(tp) => tp,
+        _ => {
+            return Err(Error::new_spanned(
+                ret_ty,
+                "kernelmod_call: return type must be `Result<T, PosixError>`.\n\
+                 Got a non-path type (e.g. reference, tuple, etc.).",
+            ));
+        }
+    };
+
+    let last_segment = type_path.path.segments.last().ok_or_else(|| {
+        Error::new_spanned(
+            &type_path.path,
+            "kernelmod_call: empty type path in return position",
+        )
+    })?;
+
+    if last_segment.ident != "Result" {
+        return Err(Error::new_spanned(
+            &last_segment.ident,
+            format!(
+                "kernelmod_call: return type must be `Result<T, PosixError>`, but found `{}`.\n\
+                 Hint: the outermost type must be `Result`.",
+                last_segment.ident
+            ),
+        ));
+    }
+
+    // 3. Must have angle-bracketed generics with exactly 2 type arguments.
+    let args = match &last_segment.arguments {
+        PathArguments::AngleBracketed(ab) => &ab.args,
+        PathArguments::None => {
+            return Err(Error::new_spanned(
+                last_segment,
+                "kernelmod_call: `Result` must have type parameters.\n\
+                 Expected `Result<T, PosixError>`.",
+            ));
+        }
+        PathArguments::Parenthesized(_) => {
+            return Err(Error::new_spanned(
+                last_segment,
+                "kernelmod_call: `Result` must use angle-bracket generics.\n\
+                 Expected `Result<T, PosixError>`, not `Result(...)`.",
+            ));
+        }
+    };
+
+    let type_args: Vec<&Type> = args
+        .iter()
+        .filter_map(|arg| match arg {
+            GenericArgument::Type(ty) => Some(ty),
+            _ => None,
+        })
+        .collect();
+
+    if type_args.len() != 2 {
+        return Err(Error::new_spanned(
+            last_segment,
+            format!(
+                "kernelmod_call: `Result` must have exactly 2 type parameters, found {}.\n\
+                 Expected `Result<T, PosixError>`.",
+                type_args.len()
+            ),
+        ));
+    }
+
+    let ok_ty = type_args[0];
+    let err_ty = type_args[1];
+
+    // 4. The error type must be (or end with) `PosixError`.
+    let err_ident = match err_ty {
+        Type::Path(tp) => tp.path.segments.last().map(|s| &s.ident),
+        _ => None,
+    };
+
+    match err_ident {
+        Some(ident) if ident == "PosixError" => {}
+        _ => {
+            return Err(Error::new_spanned(
+                err_ty,
+                format!(
+                    "kernelmod_call: error type must be `PosixError`, but found `{}`.\n\
+                     Expected `Result<T, PosixError>`.",
+                    err_ty.to_token_stream()
+                ),
+            ));
+        }
+    }
+
+    Ok(ok_ty.clone())
+}
+
+fn generate_wrapper(input: ItemFn) -> Result<TokenStream, Error> {
+    let fn_name = &input.sig.ident;
+    let fn_name_str = fn_name.to_string();
+
+    if fn_name_str.chars().any(|c| c.is_uppercase()) {
+        return Err(Error::new_spanned(
+            fn_name,
+            "kernelmod_call: function names must be snake_case (no uppercase letters allowed)",
+        ));
+    }
+
+    let fn_vis = &input.vis;
+    let wrapper_name = syn::Ident::new(&format!("__{}_wrapper", fn_name), fn_name.span());
+    let pascal_name = snake_to_pascal(&fn_name_str);
+    let args_struct_name = syn::Ident::new(&format!("__{}Args", pascal_name), fn_name.span());
+
+    let ok_ty = validate_and_extract_result_ok_type(&input.sig.output)?;
+
+    let mut arg_fields = Vec::new();
+    let mut arg_names = Vec::new();
+    let mut arg_reconstructions = Vec::new();
+
+    for arg in &input.sig.inputs {
+        let (name, ty) = match arg {
+            FnArg::Typed(PatType { pat, ty, .. }) => {
+                let name = match &**pat {
+                    Pat::Ident(ident) => &ident.ident,
+                    _ => {
+                        return Err(Error::new_spanned(
+                            pat,
+                            "Expected simple identifier pattern",
+                        ));
+                    }
+                };
+                (name, ty)
+            }
+            FnArg::Receiver(_) => {
+                return Err(Error::new_spanned(
+                    arg,
+                    "Methods with 'self' are not supported",
+                ));
+            }
+        };
+
+        arg_names.push(name.clone());
+
+        match validate_and_generate_field(name, ty)? {
+            ArgFieldInfo::Direct(field, reconstruction) => {
+                arg_fields.push(field);
+                arg_reconstructions.push(reconstruction);
+            }
+            ArgFieldInfo::Slice(ptr_field, len_field, reconstruction) => {
+                arg_fields.push(ptr_field);
+                arg_fields.push(len_field);
+                arg_reconstructions.push(reconstruction);
+            }
+        }
+    }
+
+    // Emit compile-time checks against the *extracted* Ok type directly.
+    // This gives clear errors instead of opaque trait-resolution failures.
+    let ret_size_check = quote_spanned! { ok_ty.span() =>
+        const _: () = {
+            if core::mem::size_of::<#ok_ty>() > core::mem::size_of::<usize>() {
+                panic!(
+                    "kernelmod_call: the Ok type in Result<T, PosixError> is larger than usize. \
+                     T must fit in a single register."
+                );
+            }
+        };
+        // Compile-time Copy bound check on T.
+        const _: fn() = || {
+            fn assert_copy<T: Copy>() {}
+            assert_copy::<#ok_ty>();
+        };
+    };
+
+    let return_handling = generate_return_handling(&input.sig.output)?;
+
+    let original_fn = &input;
+
+    let output = quote! {
+        #original_fn
+
+        #ret_size_check
+
+        #[repr(C)]
+        struct #args_struct_name {
+            #(#arg_fields),*
+        }
+
+        #fn_vis unsafe fn #wrapper_name(args_ptr: *const u8) -> isize {
+            let args = &*(args_ptr as *const #args_struct_name);
+
+            #(#arg_reconstructions)*
+
+            let result = #fn_name(#(#arg_names),*);
+
+            #return_handling
+        }
+    };
+
+    Ok(output)
+}
+
+enum ArgFieldInfo {
+    Direct(proc_macro2::TokenStream, proc_macro2::TokenStream),
+    Slice(
+        proc_macro2::TokenStream,
+        proc_macro2::TokenStream,
+        proc_macro2::TokenStream,
+    ),
+}
+
+/// Generates the args-struct field(s) and reconstruction code for a single argument.
+///
+/// Dispatch is purely structural (AST node kind), never by type name:
+///   - `Type::Path`      → value type, single field, compile-time size + Copy check
+///   - `Type::Reference`
+///       - `Type::Slice` → fat pointer decomposed into (ptr, len) fields
+///       - `is_ident("str")` → same layout as &[u8], language primitive check
+///       - other `Type::Path` → thin pointer, single field
+fn validate_and_generate_field(name: &syn::Ident, ty: &Type) -> Result<ArgFieldInfo, Error> {
+    match ty {
+        Type::Path(_) => {
+            let field = quote! { #name: #ty };
+            let size_check = quote_spanned! { ty.span() =>
+                const _: () = {
+                    if core::mem::size_of::<#ty>() > core::mem::size_of::<usize>() {
+                        panic!("kernelmod_call: argument type is bigger than usize. arguments must fit in a register.");
+                    }
+                };
+            };
+            let reconstruction = quote! {
+                #size_check
+                let #name = args.#name;
+                // Compile-time Copy bound check — fails if the type is not Copy.
+                let _: fn() = || { fn assert_copy<T: Copy>() {} assert_copy::<#ty>(); };
+            };
+
+            Ok(ArgFieldInfo::Direct(field, reconstruction))
+        }
+        Type::Reference(TypeReference {
+            elem, mutability, ..
+        }) => {
+            if mutability.is_some() {
+                return Err(Error::new_spanned(
+                    ty,
+                    "Mutable references are not supported. Only immutable references are allowed.",
+                ));
+            }
+
+            match &**elem {
+                // &[T] — structurally a slice, decomposed into (ptr, len)
+                Type::Slice(TypeSlice {
+                    elem: slice_elem, ..
+                }) => {
+                    let ptr_name = syn::Ident::new(&format!("{}_ptr", name), name.span());
+                    let len_name = syn::Ident::new(&format!("{}_len", name), name.span());
+
+                    let ptr_field = quote! { #ptr_name: *const #slice_elem };
+                    let len_field = quote! { #len_name: usize };
+                    let reconstruction = quote! {
+                        let #name = unsafe {
+                            core::slice::from_raw_parts(args.#ptr_name, args.#len_name)
+                        };
+                    };
+
+                    Ok(ArgFieldInfo::Slice(ptr_field, len_field, reconstruction))
+                }
+                Type::Path(path) => {
+                    // &str — `str` is a language primitive (unsized), same wire layout as &[u8]
+                    if path.path.is_ident("str") {
+                        let ptr_name = syn::Ident::new(&format!("{}_ptr", name), name.span());
+                        let len_name = syn::Ident::new(&format!("{}_len", name), name.span());
+
+                        let ptr_field = quote! { #ptr_name: *const u8 };
+                        let len_field = quote! { #len_name: usize };
+                        let reconstruction = quote! {
+                            let #name = unsafe {
+                                let bytes = core::slice::from_raw_parts(args.#ptr_name, args.#len_name);
+                                core::str::from_utf8_unchecked(bytes)
+                            };
+                        };
+
+                        return Ok(ArgFieldInfo::Slice(ptr_field, len_field, reconstruction));
+                    }
+
+                    // &T where T is a sized type — stored as a thin pointer
+                    let field = quote! { #name: *const #path };
+                    let reconstruction = quote! { let #name = unsafe { &*args.#name }; };
+                    Ok(ArgFieldInfo::Direct(field, reconstruction))
+                }
+                _ => Err(Error::new_spanned(
+                    ty,
+                    "Unsupported reference type. Only references to structs, slices (&[T]), and &str are supported.",
+                )),
+            }
+        }
+        _ => Err(Error::new_spanned(
+            ty,
+            "Unsupported argument type. Supported types are:\n\
+             - Primitive types (at most usize)\n\
+             - Structs implementing Copy (at most usize)\n\
+             - References to structs (&T)\n\
+             - Slices (&[T])\n\
+             - String slices (&str)",
+        )),
+    }
+}
+
+fn generate_return_handling(return_type: &ReturnType) -> Result<proc_macro2::TokenStream, Error> {
+    match return_type {
+        ReturnType::Type(_, _ty) => {
+            Ok(quote! {
+                // SAFETY: `val` is guaranteed at most `size_of::<isize>()` by the
+                // compile-time const assert emitted alongside this wrapper.
+                // `raw` is zero-initialised so unwritten bytes remain zero.
+                // Both pointers are stack-local, valid, aligned, and non-overlapping.
+                match result {
+                    Ok(val) => {
+                        let mut raw: isize = 0;
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(
+                                &val as *const _ as *const u8,
+                                &mut raw as *mut isize as *mut u8,
+                                core::mem::size_of_val(&val),
+                            );
+                        }
+                        raw
+                    }
+                    Err(e) => e as isize,
+                }
+            })
+        }
+        _ => Err(Error::new_spanned(return_type, "Invalid return type")),
+    }
+}
+
+#[proc_macro_attribute]
+pub fn kernelmod_init(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    item
+}
+
+#[proc_macro_attribute]
+pub fn kernelmod_exit(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    item
 }
