@@ -1,5 +1,0 @@
-[env]
-OSIRIS_STACKPAGES = "1"
-
-[build]
-target = "host-tuple"
