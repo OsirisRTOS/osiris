@@ -1,0 +1,22 @@
+# Build artifacts
+build*/
+target/
+*.bin
+*.img
+*.info
+symbols.map
+*.gen.*
+compile_commands.json
+
+# Dev tooling / IDE
+.vscode/
+.cache/
+.venv/
+qemu/
+
+# Git & CI (not needed in build context)
+.git/
+.github/
+
+# Devcontainer config itself
+.devcontainer/
