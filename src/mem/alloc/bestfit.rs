@@ -682,8 +682,8 @@ mod tests {
 #[cfg(kani)]
 mod verification {
     use super::*;
-    use crate::mem::alloc::MAX_ADDR;
     use crate::mem::alloc::Allocator;
+    use crate::mem::alloc::MAX_ADDR;
 
     fn verify_block(user_ptr: NonNull<u8>, size: usize, next: Option<NonNull<u8>>) {
         let control_ptr = unsafe { BestFitAllocator::control_ptr(user_ptr) };
