@@ -137,14 +137,14 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                 // Mark all bits in the middle words as used.
                 {
                     let mid_cnt = len / Self::BITS_PER_WORD;
-                
+
                     for i in 0..mid_cnt {
                         self.l1[idx + i] = 0;
                     }
 
                     idx += mid_cnt;
                 }
-                
+
                 // Mark the remaining bits in the last word as used.
                 self.l1[idx] &= !((!0usize).unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
                 return Some(self.begin + (start * super::PAGE_SIZE));
@@ -193,9 +193,9 @@ mod tests {
 
     #[test]
     fn test_random_pattern() {
-        const ITARATIONS: usize = 1000;
+        const ITERATIONS: usize = 1000;
 
-        for i in 0..ITARATIONS {
+        for _ in 0..ITERATIONS {
             const N: usize = 1024;
             const BITS: usize = Allocator::<N>::BITS_PER_WORD;
             const ALLOC_SIZE: usize = 100;
