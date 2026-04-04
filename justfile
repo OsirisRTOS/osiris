@@ -16,7 +16,7 @@ fmt *args:
     cargo fmt {{args}}
 
 verify *args:
-    cargo kani -Z concrete-playback --concrete-playback=print -Z stubbing {{args}}
+    OSIRIS_STACKPAGES=1 cargo kani -Z concrete-playback --concrete-playback=print -Z stubbing {{args}}
 
 test *args:
     cargo test {{args}}
