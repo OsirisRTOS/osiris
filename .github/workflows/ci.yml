@@ -46,7 +46,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
         with:
-          context: .devcontainer
+          context: .
           file: .devcontainer/Dockerfile
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.set_output.outputs.container_name }}
