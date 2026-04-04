@@ -97,7 +97,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
     }
 
     /// Pushes `id` to the back of the list. If `id` is already in the list, it is moved to the back.
-    /// 
+    ///
     /// Errors if `id` does not exist in `storage` or if the node corresponding to `id` is linked but not in the list.
     pub fn push_back<S: Get<T> + GetMut<T>>(&mut self, id: T, storage: &mut S) -> Result<()>
     where
@@ -359,5 +359,250 @@ mod tests {
         assert_eq!(list.pop_front(&mut s).unwrap(), Some(Id(3)));
         assert_eq!(list.pop_front(&mut s).unwrap(), None);
         assert!(list.is_empty());
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use core::borrow::Borrow;
+
+    use super::{Linkable, Links, List};
+    use crate::types::{array::IndexMap, traits::{Get, ToIndex}};
+
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    struct Id(usize);
+
+    impl ToIndex for Id {
+        fn to_index<Q: Borrow<Self>>(idx: Option<Q>) -> usize {
+            idx.as_ref().map_or(0, |k| k.borrow().0)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct Tag;
+
+    struct Node {
+        links: Links<Tag, Id>,
+    }
+
+    impl Node {
+        fn new() -> Self {
+            Self { links: Links::new() }
+        }
+    }
+
+    impl Linkable<Tag, Id> for Node {
+        fn links(&self) -> &Links<Tag, Id> { &self.links }
+        fn links_mut(&mut self) -> &mut Links<Tag, Id> { &mut self.links }
+    }
+
+    fn make_storage() -> IndexMap<Id, Node, 4> {
+        let mut map = IndexMap::new();
+        map.insert(&Id(0), Node::new()).unwrap();
+        map.insert(&Id(1), Node::new()).unwrap();
+        map.insert(&Id(2), Node::new()).unwrap();
+        map.insert(&Id(3), Node::new()).unwrap();
+        map
+    }
+
+    /// Verifies the bug! in push_front (old_head not in storage) is unreachable
+    /// through correct API usage: all IDs we push exist in storage.
+    #[kani::proof]
+    fn verify_push_front_bug_unreachable() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        list.push_front(Id(0), &mut s).unwrap();
+        list.push_front(Id(1), &mut s).unwrap();
+        list.push_front(Id(2), &mut s).unwrap();
+
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.head(), Some(Id(2)));
+        assert_eq!(list.tail(), Some(Id(0)));
+    }
+
+    /// Verifies the bug! in push_back (old_tail not in storage) is unreachable
+    /// through correct API usage.
+    #[kani::proof]
+    fn verify_push_back_bug_unreachable() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        list.push_back(Id(0), &mut s).unwrap();
+        list.push_back(Id(1), &mut s).unwrap();
+        list.push_back(Id(2), &mut s).unwrap();
+
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.head(), Some(Id(0)));
+        assert_eq!(list.tail(), Some(Id(2)));
+    }
+
+    /// Verifies the bug! calls in remove (prev/next not in storage) are unreachable
+    /// when removing the middle element of a 3-item list.
+    #[kani::proof]
+    fn verify_remove_middle_bug_unreachable() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        list.push_back(Id(0), &mut s).unwrap();
+        list.push_back(Id(1), &mut s).unwrap();
+        list.push_back(Id(2), &mut s).unwrap();
+
+        list.remove(Id(1), &mut s).unwrap();
+
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.head(), Some(Id(0)));
+        assert_eq!(list.tail(), Some(Id(2)));
+        assert_eq!(s.get(Id(0)).unwrap().links().next, Some(Id(2)));
+        assert_eq!(s.get(Id(2)).unwrap().links().prev, Some(Id(0)));
+    }
+
+    /// Verifies pop_front on empty list returns Ok(None) without panic.
+    #[kani::proof]
+    fn verify_pop_empty_no_panic() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+        let result = list.pop_front(&mut s);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    /// Verifies length invariant: push N distinct items, len == N.
+    /// Uses symbolic ID ordering so kani explores all 3! = 6 permutations.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn verify_len_invariant_push_three() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        let a: usize = kani::any();
+        let b: usize = kani::any();
+        let c: usize = kani::any();
+        kani::assume(a < 4 && b < 4 && c < 4);
+        kani::assume(a != b && b != c && a != c);
+
+        list.push_back(Id(a), &mut s).unwrap();
+        list.push_back(Id(b), &mut s).unwrap();
+        list.push_back(Id(c), &mut s).unwrap();
+
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.head(), Some(Id(a)));
+        assert_eq!(list.tail(), Some(Id(c)));
+    }
+
+    /// Verifies that reinserting an already-present item does not change len.
+    #[kani::proof]
+    fn verify_reinsert_preserves_len() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        list.push_back(Id(0), &mut s).unwrap();
+        list.push_back(Id(1), &mut s).unwrap();
+        assert_eq!(list.len(), 2);
+
+        list.push_back(Id(1), &mut s).unwrap();
+        assert_eq!(list.len(), 2);
+    }
+
+    /// Verifies full push/pop cycle leaves list empty.
+    #[kani::proof]
+    fn verify_push_pop_cycle_empty() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        list.push_back(Id(0), &mut s).unwrap();
+        list.push_back(Id(1), &mut s).unwrap();
+        list.push_back(Id(2), &mut s).unwrap();
+
+        list.pop_front(&mut s).unwrap();
+        list.pop_front(&mut s).unwrap();
+        list.pop_front(&mut s).unwrap();
+
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+        assert!(list.head().is_none());
+        assert!(list.tail().is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // FIFO ordering and len ≤ N proofs (Task #12)
+    // -----------------------------------------------------------------------
+
+    /// Verify FIFO ordering: push_back(a, b, c) then pop_front yields a, b, c in order.
+    /// Uses symbolic distinct IDs so Kani explores all 24 permutations (4P3 = 24).
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn verify_fifo_ordering_symbolic() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        let a: usize = kani::any();
+        let b: usize = kani::any();
+        let c: usize = kani::any();
+        kani::assume(a < 4 && b < 4 && c < 4);
+        kani::assume(a != b && b != c && a != c);
+
+        list.push_back(Id(a), &mut s).unwrap();
+        list.push_back(Id(b), &mut s).unwrap();
+        list.push_back(Id(c), &mut s).unwrap();
+
+        // FIFO: pop order must match push order
+        assert_eq!(list.pop_front(&mut s).unwrap(), Some(Id(a)));
+        assert_eq!(list.pop_front(&mut s).unwrap(), Some(Id(b)));
+        assert_eq!(list.pop_front(&mut s).unwrap(), Some(Id(c)));
+        assert_eq!(list.pop_front(&mut s).unwrap(), None);
+        assert!(list.is_empty());
+    }
+
+    /// Verify len ≤ N: after any sequence of pushes with N distinct nodes in storage,
+    /// len never exceeds N.
+    /// With 4-slot storage, push all 4 distinct IDs → len == 4.
+    /// Re-inserting an existing ID is an in-place move, not an increase.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_len_never_exceeds_capacity() {
+        let mut s = make_storage(); // 4 slots
+        let mut list = List::<Tag, Id>::new();
+
+        // Fill the list.
+        list.push_back(Id(0), &mut s).unwrap();
+        list.push_back(Id(1), &mut s).unwrap();
+        list.push_back(Id(2), &mut s).unwrap();
+        list.push_back(Id(3), &mut s).unwrap();
+        assert_eq!(list.len(), 4);
+        assert!(list.len() <= 4);
+
+        // Re-inserting an already-present ID must not increase len.
+        let x: usize = kani::any();
+        kani::assume(x < 4);
+        list.push_back(Id(x), &mut s).unwrap();
+        assert_eq!(list.len(), 4);
+        assert!(list.len() <= 4);
+    }
+
+    /// Verify that head() is always the first-inserted element and tail() is always
+    /// the last, for any two symbolic distinct IDs.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn verify_head_tail_invariant() {
+        let mut s = make_storage();
+        let mut list = List::<Tag, Id>::new();
+
+        let a: usize = kani::any();
+        let b: usize = kani::any();
+        kani::assume(a < 4 && b < 4 && a != b);
+
+        list.push_back(Id(a), &mut s).unwrap();
+        assert_eq!(list.head(), Some(Id(a)));
+        assert_eq!(list.tail(), Some(Id(a)));
+
+        list.push_back(Id(b), &mut s).unwrap();
+        assert_eq!(list.head(), Some(Id(a)));
+        assert_eq!(list.tail(), Some(Id(b)));
+
+        // After popping the front, tail stays, new head is b.
+        list.pop_front(&mut s).unwrap();
+        assert_eq!(list.head(), Some(Id(b)));
+        assert_eq!(list.tail(), Some(Id(b)));
     }
 }

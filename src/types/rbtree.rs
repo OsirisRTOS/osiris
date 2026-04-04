@@ -116,7 +116,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
                     if node.cmp(last) == core::cmp::Ordering::Less {
                         last.links_mut().left = Some(id);
                     } else {
-                        last.links_mut().right = Some(id);  
+                        last.links_mut().right = Some(id);
                     }
                 }
             }
@@ -389,7 +389,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
         };
 
         let is_black = |node_id: Option<T>, storage: &S| -> bool { !is_red(node_id, storage) };
-        
+
         while id != self.root && is_black(id, storage) {
             let parent_id = parent.unwrap_or_else(|| {
                 bug!("node linked from tree does not have a parent.");
@@ -720,22 +720,19 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T>
 
 // TESTING ------------------------------------------------------------------------------------------------------------
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use super::{Get, GetMut};
-    use std::borrow::Borrow;
-    use std::collections::HashSet;
+#[cfg(any(test, kani))]
+mod test_common {
+    use super::{Compare, Linkable, Links};
 
-    struct Tree;
+    pub(super) struct Tree;
 
-    struct Node {
-        key: i32,
-        links: Links<Tree, usize>,
+    pub(super) struct Node {
+        pub(super) key: i32,
+        pub(super) links: Links<Tree, usize>,
     }
 
     impl Node {
-        fn new(key: i32) -> Self {
+        pub(super) fn new(key: i32) -> Self {
             Self {
                 key,
                 links: Links::new(),
@@ -758,6 +755,15 @@ mod tests {
             &mut self.links
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::{Get, GetMut};
+    use super::test_common::{Tree, Node};
+    use std::borrow::Borrow;
+    use std::collections::HashSet;
 
     struct NodeStore {
         nodes: Vec<Node>,
@@ -1148,3 +1154,480 @@ mod tests {
 }
 
 // END TESTING
+
+#[cfg(kani)]
+mod verification {
+    use core::borrow::Borrow;
+
+    use super::{Color, Compare, Linkable, Links, RbTree};
+    use super::test_common::{Tree, Node};
+    use crate::types::{array::IndexMap, traits::{Get, GetMut, ToIndex}};
+
+
+    /// Assert the three RB colour invariants hold on every reachable node:
+    ///   1. Root is black.
+    ///   2. No red node has a red child.
+    ///   3. Every root-to-null path passes through the same number of black nodes.
+    ///
+    /// Also asserts child→parent back-pointers are consistent.
+    fn assert_rb_invariants<const N: usize>(
+        root: Option<usize>,
+        storage: &IndexMap<usize, Node, N>,
+    ) {
+        // 1. Root colour.
+        if let Some(rid) = root {
+            assert!(
+                matches!(storage.get(rid).unwrap().links().color, Color::Black),
+                "root must be black"
+            );
+        }
+
+        const SENTINEL: usize = usize::MAX;
+        // Stack entry: (raw_id [SENTINEL = null], accumulated_black_count)
+        let mut stack: [(usize, u32); 16] = [(SENTINEL, 0); 16];
+        let mut sp = 0usize;
+
+        // Push the root.
+        stack[sp] = (root.unwrap_or(SENTINEL), 0);
+        sp += 1;
+
+        let mut expected_bh: i64 = -1; // not yet observed
+
+        while sp > 0 {
+            sp -= 1;
+            let (raw_id, bh) = stack[sp];
+
+            if raw_id == SENTINEL {
+                // Null leaf: counts as one extra black level.
+                let path_bh = bh as i64 + 1;
+                if expected_bh < 0 {
+                    expected_bh = path_bh;
+                } else {
+                    assert_eq!(path_bh, expected_bh, "black-height invariant violated");
+                }
+                continue;
+            }
+
+            let node = storage.get(raw_id).unwrap();
+            let links = node.links();
+            let is_red = matches!(links.color, Color::Red);
+            let new_bh = if is_red { bh } else { bh + 1 };
+
+            // 2. No adjacent red nodes.
+            if is_red {
+                if let Some(l) = links.left {
+                    assert!(
+                        !matches!(storage.get(l).unwrap().links().color, Color::Red),
+                        "red node has red left child"
+                    );
+                }
+                if let Some(r) = links.right {
+                    assert!(
+                        !matches!(storage.get(r).unwrap().links().color, Color::Red),
+                        "red node has red right child"
+                    );
+                }
+            }
+
+            // Parent-pointer consistency.
+            if let Some(l) = links.left {
+                assert_eq!(
+                    storage.get(l).unwrap().links().parent,
+                    Some(raw_id),
+                    "left child has wrong parent pointer"
+                );
+            }
+            if let Some(r) = links.right {
+                assert_eq!(
+                    storage.get(r).unwrap().links().parent,
+                    Some(raw_id),
+                    "right child has wrong parent pointer"
+                );
+            }
+
+            // Push children (right first so left is processed first).
+            assert!(sp + 2 <= 16, "DFS stack overflow — tree deeper than expected");
+            stack[sp] = (links.right.unwrap_or(SENTINEL), new_bh);
+            sp += 1;
+            stack[sp] = (links.left.unwrap_or(SENTINEL), new_bh);
+            sp += 1;
+        }
+    }
+
+    /// Assert the BST ordering property: an iterative in-order traversal
+    /// visits keys in strictly ascending order.
+    fn assert_bst_order<const N: usize>(
+        root: Option<usize>,
+        storage: &IndexMap<usize, Node, N>,
+    ) {
+        // Iterative in-order: push nodes going left, pop and visit, then go right.
+        let mut stack: [usize; 16] = [0; 16];
+        let mut sp = 0usize;
+        let mut cur = root;
+        let mut prev_key: Option<i32> = None;
+
+        loop {
+            // Descend left.
+            while let Some(id) = cur {
+                assert!(sp < 16, "in-order stack overflow");
+                stack[sp] = id;
+                sp += 1;
+                cur = storage.get(id).unwrap().links().left;
+            }
+            if sp == 0 {
+                break;
+            }
+            sp -= 1;
+            let id = stack[sp];
+            let node = storage.get(id).unwrap();
+            // Strictly increasing.
+            if let Some(prev) = prev_key {
+                assert!(node.key > prev, "BST order violated");
+            }
+            prev_key = Some(node.key);
+            cur = node.links().right;
+        }
+    }
+
+    /// Verify inserting a single node doesn't panic and min() is correct.
+    #[kani::proof]
+    fn verify_insert_single_no_bug() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(42)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+
+        assert_eq!(tree.min(), Some(0));
+    }
+
+    /// Verify inserting two nodes (both orderings via symbolic keys) doesn't panic,
+    /// and min() returns the node with the smaller key.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn verify_insert_two_min_correct() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        let key_a: i32 = kani::any();
+        let key_b: i32 = kani::any();
+        kani::assume(key_a != key_b);
+
+        s.insert(&0, Node::new(key_a)).unwrap();
+        s.insert(&1, Node::new(key_b)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+
+        let min_id = tree.min().unwrap();
+        let min_key = s.get(min_id).unwrap().key;
+        assert!(min_key <= key_a);
+        assert!(min_key <= key_b);
+    }
+
+    /// Verify insert of three concrete nodes exercises insert_fixup without bug!.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_insert_three_no_bug() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(10)).unwrap();
+        s.insert(&1, Node::new(5)).unwrap();
+        s.insert(&2, Node::new(15)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+        tree.insert(2, &mut s).unwrap();
+
+        assert_eq!(tree.min(), Some(1));
+    }
+
+    /// Verify remove of root from 3-node tree exercises delete_fixup without bug!.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_remove_root_no_bug() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(10)).unwrap();
+        s.insert(&1, Node::new(5)).unwrap();
+        s.insert(&2, Node::new(15)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+        tree.insert(2, &mut s).unwrap();
+
+        tree.remove(0, &mut s).unwrap();
+
+        // After removing 10 (root), min must still be 5 (id=1)
+        assert_eq!(tree.min(), Some(1));
+    }
+
+    /// Verify removing the current minimum updates min() correctly.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_min_updates_after_remove_min() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(10)).unwrap();
+        s.insert(&1, Node::new(5)).unwrap();
+        s.insert(&2, Node::new(15)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+        tree.insert(2, &mut s).unwrap();
+
+        assert_eq!(tree.min(), Some(1));
+        tree.remove(1, &mut s).unwrap(); // remove minimum (key=5)
+        assert_eq!(tree.min(), Some(0)); // new minimum is key=10
+    }
+
+    /// Verify that after removing all nodes the tree is empty.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_remove_all_empty() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(10)).unwrap();
+        s.insert(&1, Node::new(5)).unwrap();
+        s.insert(&2, Node::new(15)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+        tree.insert(2, &mut s).unwrap();
+
+        tree.remove(1, &mut s).unwrap();
+        tree.remove(0, &mut s).unwrap();
+        tree.remove(2, &mut s).unwrap();
+
+        assert!(tree.min().is_none());
+    }
+
+    /// Verify ascending-order insertion [1,2,3] — stress-tests right-leaning fixup.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_insert_ascending_order() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(1)).unwrap();
+        s.insert(&1, Node::new(2)).unwrap();
+        s.insert(&2, Node::new(3)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+        tree.insert(2, &mut s).unwrap();
+
+        let min_id = tree.min().unwrap();
+        assert_eq!(s.get(min_id).unwrap().key, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Invariant-checking proofs
+    // -----------------------------------------------------------------------
+
+    /// After inserting 3 concrete nodes the RB colour invariants and BST order hold.
+    /// Baseline check that the helpers themselves are correct on a small tree.
+    #[kani::proof]
+    #[kani::unwind(20)]
+    fn verify_rb_invariants_three_nodes() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(10)).unwrap();
+        s.insert(&1, Node::new(5)).unwrap();
+        s.insert(&2, Node::new(15)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+        tree.insert(2, &mut s).unwrap();
+
+        assert_rb_invariants(tree.root, &s);
+        assert_bst_order(tree.root, &s);
+    }
+
+    /// RB invariants hold after inserting 7 nodes in ascending order and after
+    /// removing all 7 nodes.  Ascending insertion maximally stresses the fixup path.
+    /// Unwind budget: 7 inserts×3 fixup iters = 21; 7 removes×3 = 21; 2 DFS calls×15 = 30;
+    /// 2 in-order calls×7 = 14; total ≈ 86.  Using unwind(100) for headroom.
+    #[kani::proof]
+    #[kani::unwind(100)]
+    fn verify_rb_invariants_seven_ascending() {
+        let mut s: IndexMap<usize, Node, 8> = IndexMap::new();
+        for i in 0usize..7 {
+            s.insert(&i, Node::new(i as i32 + 1)).unwrap();
+        }
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        for i in 0usize..7 {
+            tree.insert(i, &mut s).unwrap();
+        }
+
+        assert_rb_invariants(tree.root, &s);
+        assert_bst_order(tree.root, &s);
+
+        // Remove all and verify the tree empties cleanly.
+        for i in 0usize..7 {
+            tree.remove(i, &mut s).unwrap();
+        }
+        assert!(tree.root.is_none());
+        assert!(tree.min().is_none());
+        assert_rb_invariants(tree.root, &s); // trivially true for empty tree
+    }
+
+    /// RB invariants hold after inserting 7 nodes in descending order.
+    #[kani::proof]
+    #[kani::unwind(100)]
+    fn verify_rb_invariants_seven_descending() {
+        let mut s: IndexMap<usize, Node, 8> = IndexMap::new();
+        for i in 0usize..7 {
+            s.insert(&i, Node::new(7 - i as i32)).unwrap();
+        }
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        for i in 0usize..7 {
+            tree.insert(i, &mut s).unwrap();
+        }
+
+        assert_rb_invariants(tree.root, &s);
+        assert_bst_order(tree.root, &s);
+    }
+
+    /// RB invariants hold after balanced insertion [4,2,6,1,3,5,7] and after
+    /// removing the root and minimum.
+    #[kani::proof]
+    #[kani::unwind(100)]
+    fn verify_rb_invariants_balanced_with_removes() {
+        let keys: [i32; 7] = [4, 2, 6, 1, 3, 5, 7];
+        let mut s: IndexMap<usize, Node, 8> = IndexMap::new();
+        for (i, &k) in keys.iter().enumerate() {
+            s.insert(&i, Node::new(k)).unwrap();
+        }
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        for i in 0usize..7 {
+            tree.insert(i, &mut s).unwrap();
+        }
+
+        assert_rb_invariants(tree.root, &s);
+        assert_bst_order(tree.root, &s);
+
+        // Remove root (key=4, idx=0).
+        tree.remove(0, &mut s).unwrap();
+        assert_rb_invariants(tree.root, &s);
+        assert_bst_order(tree.root, &s);
+
+        // Remove current minimum (key=1, idx=3).
+        tree.remove(3, &mut s).unwrap();
+        assert_rb_invariants(tree.root, &s);
+        assert_bst_order(tree.root, &s);
+    }
+
+    /// Verify descending-order insertion [3,2,1] — stress-tests left-leaning fixup.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_insert_descending_order() {
+        let mut s: IndexMap<usize, Node, 4> = IndexMap::new();
+        s.insert(&0, Node::new(3)).unwrap();
+        s.insert(&1, Node::new(2)).unwrap();
+        s.insert(&2, Node::new(1)).unwrap();
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        tree.insert(0, &mut s).unwrap();
+        tree.insert(1, &mut s).unwrap();
+        tree.insert(2, &mut s).unwrap();
+
+        let min_id = tree.min().unwrap();
+        assert_eq!(s.get(min_id).unwrap().key, 1);
+    }
+
+    /// 7-node ascending insertion [1..7] — maximally stresses right-rotation fixup.
+    /// min() must equal 1 throughout; after removing all nodes tree is empty.
+    #[kani::proof]
+    #[kani::unwind(30)]
+    fn verify_seven_ascending_insert_remove_all() {
+        let mut s: IndexMap<usize, Node, 8> = IndexMap::new();
+        for i in 0usize..7 {
+            s.insert(&i, Node::new(i as i32 + 1)).unwrap(); // keys 1..=7
+        }
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        for i in 0usize..7 {
+            tree.insert(i, &mut s).unwrap();
+        }
+
+        // Min must be key 1 (stored at index 0).
+        assert_eq!(tree.min(), Some(0));
+        assert_eq!(s.get(0usize).unwrap().key, 1);
+
+        // Remove all nodes in insertion order; min must update correctly.
+        for i in 0usize..7 {
+            tree.remove(i, &mut s).unwrap();
+        }
+        assert!(tree.min().is_none());
+    }
+
+    /// 7-node descending insertion [7..1] — maximally stresses left-rotation fixup.
+    #[kani::proof]
+    #[kani::unwind(30)]
+    fn verify_seven_descending_insert_remove_all() {
+        let mut s: IndexMap<usize, Node, 8> = IndexMap::new();
+        for i in 0usize..7 {
+            s.insert(&i, Node::new(7 - i as i32)).unwrap(); // keys 7,6,5,4,3,2,1
+        }
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        for i in 0usize..7 {
+            tree.insert(i, &mut s).unwrap();
+        }
+
+        // After inserting [7,6,5,4,3,2,1], min is key 1 (stored at index 6).
+        assert_eq!(tree.min(), Some(6));
+        assert_eq!(s.get(6usize).unwrap().key, 1);
+
+        // Remove min repeatedly and verify it advances each time.
+        let expected_mins: [i32; 7] = [1, 2, 3, 4, 5, 6, 7];
+        for &expected_key in &expected_mins {
+            let min_id = tree.min().unwrap();
+            assert_eq!(s.get(min_id).unwrap().key, expected_key);
+            tree.remove(min_id, &mut s).unwrap();
+        }
+        assert!(tree.min().is_none());
+    }
+
+    /// 7-node BFS-level insertion [4,2,6,1,3,5,7] — produces a perfectly balanced tree.
+    /// Exercises the case where very few fixup rotations are needed.
+    /// Then removes nodes in reverse BFS order and checks min after each.
+    #[kani::proof]
+    #[kani::unwind(30)]
+    fn verify_seven_balanced_insert_remove() {
+        // keys stored at their storage indices
+        // idx: 0=4, 1=2, 2=6, 3=1, 4=3, 5=5, 6=7
+        let keys: [i32; 7] = [4, 2, 6, 1, 3, 5, 7];
+        let mut s: IndexMap<usize, Node, 8> = IndexMap::new();
+        for (i, &k) in keys.iter().enumerate() {
+            s.insert(&i, Node::new(k)).unwrap();
+        }
+
+        let mut tree: RbTree<Tree, usize> = RbTree::new();
+        for i in 0usize..7 {
+            tree.insert(i, &mut s).unwrap();
+        }
+
+        // Min is key 1 at index 3.
+        assert_eq!(tree.min(), Some(3));
+        assert_eq!(s.get(3usize).unwrap().key, 1);
+
+        // Remove the root (key=4, idx=0).
+        tree.remove(0, &mut s).unwrap();
+        // New min is still key 1 (index 3).
+        assert_eq!(tree.min(), Some(3));
+
+        // Remove min (key=1, idx=3). New min = key 2 (idx=1).
+        tree.remove(3, &mut s).unwrap();
+        assert_eq!(tree.min(), Some(1));
+        assert_eq!(s.get(1usize).unwrap().key, 2);
+
+        // Remove remaining 5 nodes.
+        for i in [1usize, 2, 4, 5, 6] {
+            tree.remove(i, &mut s).unwrap();
+        }
+        assert!(tree.min().is_none());
+    }
+}
