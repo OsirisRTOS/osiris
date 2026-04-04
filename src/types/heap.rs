@@ -106,3 +106,121 @@ impl<T: Clone + Copy + Ord, const N: usize> BinaryHeap<T, N> {
         self.vec.len()
     }
 }
+
+
+#[cfg(kani)]
+mod verification {
+    use super::BinaryHeap;
+
+    /// Verify that pushing a single element and popping it returns the same element.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn verify_push_pop_roundtrip() {
+        let mut heap = BinaryHeap::<u32, 4>::new();
+        let v: u32 = kani::any();
+        heap.push(v).unwrap();
+        let popped = heap.pop();
+        assert_eq!(popped, Some(v));
+        assert!(heap.is_empty());
+    }
+
+    /// Verify that pushing two elements and popping gives the smaller one first (min-heap).
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn verify_min_heap_two_elements() {
+        let mut heap = BinaryHeap::<u32, 4>::new();
+        let a: u32 = kani::any();
+        let b: u32 = kani::any();
+        heap.push(a).unwrap();
+        heap.push(b).unwrap();
+        let first = heap.pop().unwrap();
+        let second = heap.pop().unwrap();
+        // Min-heap: first <= second, and {first, second} == {a, b}
+        assert!(first <= second);
+        assert!((first == a && second == b) || (first == b && second == a));
+    }
+
+    /// Verify that pushing three elements pops them in non-decreasing order.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_min_heap_three_elements_sorted() {
+        let mut heap = BinaryHeap::<u32, 4>::new();
+        let a: u32 = kani::any();
+        let b: u32 = kani::any();
+        let c: u32 = kani::any();
+        heap.push(a).unwrap();
+        heap.push(b).unwrap();
+        heap.push(c).unwrap();
+        let x = heap.pop().unwrap();
+        let y = heap.pop().unwrap();
+        let z = heap.pop().unwrap();
+        // Must come out in non-decreasing order.
+        assert!(x <= y);
+        assert!(y <= z);
+    }
+
+    /// Verify that peek() always returns the minimum element after arbitrary pushes.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_peek_is_minimum() {
+        let mut heap = BinaryHeap::<u32, 4>::new();
+        let a: u32 = kani::any();
+        let b: u32 = kani::any();
+        let c: u32 = kani::any();
+        heap.push(a).unwrap();
+        heap.push(b).unwrap();
+        heap.push(c).unwrap();
+        let peeked = *heap.peek().unwrap();
+        // peeked must be <= all elements
+        assert!(peeked <= a);
+        assert!(peeked <= b);
+        assert!(peeked <= c);
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::BinaryHeap;
+
+    #[test]
+    fn test_heap_sorted_order() {
+        let mut heap = BinaryHeap::<u32, 8>::new();
+        for &v in &[5u32, 2, 8, 1, 9, 3] {
+            heap.push(v).unwrap();
+        }
+        let mut prev = 0u32;
+        while let Some(v) = heap.pop() {
+            assert!(v >= prev, "heap pop out of order: {} after {}", v, prev);
+            prev = v;
+        }
+    }
+
+    #[test]
+    fn test_heap_single_element() {
+        let mut heap = BinaryHeap::<u32, 4>::new();
+        heap.push(42).unwrap();
+        assert_eq!(heap.peek(), Some(&42));
+        assert_eq!(heap.pop(), Some(42));
+        assert!(heap.is_empty());
+    }
+
+    #[test]
+    fn test_heap_empty_peek_pop() {
+        let mut heap = BinaryHeap::<u32, 4>::new();
+        assert!(heap.peek().is_none());
+        assert!(heap.pop().is_none());
+   }
+
+    #[test]
+    fn test_heap_duplicate_values() {
+        let mut heap = BinaryHeap::<u32, 4>::new();
+        heap.push(3).unwrap();
+        heap.push(3).unwrap();
+        heap.push(1).unwrap();
+        assert_eq!(heap.pop(), Some(1));
+        assert_eq!(heap.pop(), Some(3));
+        assert_eq!(heap.pop(), Some(3));
+    }
+}
+
