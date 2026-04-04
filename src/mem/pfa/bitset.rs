@@ -181,6 +181,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn last_bit_underflow() {
+        // Only the last page in word 0 is free
+        let mut allocator = Allocator::<1>::new(PhysAddr::new(0)).unwrap();
+        allocator.l1[0] = 1;
+
+        let result = super::super::Allocator::alloc(&mut allocator, 1);
+
+        assert!(result.is_some());
+    }
+
+    #[test]
     fn test_random_pattern() {
         const ITARATIONS: usize = 1000;
 
@@ -223,5 +234,27 @@ mod tests {
                 assert_eq!(bit, 0, "Bit at index {} is not cleared", idx + i);
             }
         }
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use hal::mem::PhysAddr;
+
+    #[kani::proof]
+    #[kani::unwind(70)]
+    fn verify_alloc_no_rem_underflow_single_word() {
+        let mut allocator = Allocator::<1>::new(PhysAddr::new(0)).unwrap();
+
+        let l1_0: usize = kani::any();
+
+        allocator.l1[0] = l1_0;
+
+        let page_count: usize = kani::any();
+
+        kani::assume(page_count >= 1 && page_count <= 64);
+
+        let _ = super::super::Allocator::alloc(&mut allocator, page_count);
     }
 }
