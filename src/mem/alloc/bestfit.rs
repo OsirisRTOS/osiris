@@ -340,12 +340,11 @@ impl super::Allocator for BestFitAllocator {
 
         // Check if the size of the block is correct.
         bug_on!(
-            meta.size != super::super::align_up(size),
-            "Invalid size in free()"
+            size > meta.size,
+            "allocation size {} is larger than block size {}",
+            size,
+            meta.size
         );
-
-        // Set the size of the block.
-        meta.size = size;
 
         // Set the block as the new head.
         self.head = Some(block);
@@ -357,6 +356,7 @@ impl super::Allocator for BestFitAllocator {
 #[cfg(test)]
 mod tests {
     use crate::error::Kind;
+    use crate::mem::align_up;
 
     use super::super::*;
     use super::*;
@@ -642,6 +642,33 @@ mod tests {
         ptrs.push((ptr, SIZE));
 
         verify_ptrs_not_overlaping(ptrs.as_slice());
+    }
+
+    #[test]
+    fn free_corrupts_metadata() {
+        let mut allocator = BestFitAllocator::new();
+        const SIZE: usize = 17;
+        const ALIGNED: usize = 32;
+        assert!(align_up(SIZE) == ALIGNED);
+
+        let range = alloc_range(ALIGNED + size_of::<BestFitMeta>() + BestFitAllocator::align_up());
+        unsafe {
+            allocator.add_range(&range).unwrap();
+        }
+
+        let ptr1: core::ptr::NonNull<u8> = allocator.malloc(SIZE, 1, None).unwrap();
+
+        unsafe {
+            allocator.free(ptr1, SIZE);
+        }
+
+        let ptr2: core::ptr::NonNull<u8> = allocator
+            .malloc(SIZE, 1, None)
+            .expect("second malloc should succeed via fallback path");
+
+        unsafe {
+            allocator.free(ptr2, SIZE);
+        }
     }
 
     #[test]

@@ -22,12 +22,23 @@ pub struct RtAttrs {
 }
 
 pub fn spawn_thread(_func_ptr: EntryFn, attrs: Option<RtAttrs>) -> isize {
-    let _attr_ptr = if let Some(attrs) = attrs {
-        &attrs as *const RtAttrs as usize
+    if let Some(attrs) = attrs {
+        if attrs.budget == 0 || attrs.period == 0 {
+            return -1; // Invalid attributes
+        }
+
+        if attrs.budget > attrs.period {
+            return -1; // Budget cannot exceed period
+        }
+
+        if attrs.budget > u32::MAX / 2 || attrs.period > u32::MAX / 2 {
+            return -1; // Prevent potential overflow in calculations
+        }
+
+        hal::asm::syscall!(3, _func_ptr as u32, &attrs as *const RtAttrs as usize)
     } else {
-        0
-    };
-    hal::asm::syscall!(3, _func_ptr as u32, _attr_ptr)
+        -1
+    }
 }
 
 pub fn exit(_code: usize) -> ! {

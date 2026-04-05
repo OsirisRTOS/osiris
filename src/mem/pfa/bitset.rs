@@ -128,7 +128,7 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
                 // Mark all bits in the first word as used.
                 {
                     let skip = start % Self::BITS_PER_WORD;
-                    let rem = len.min(Self::BITS_PER_WORD) - skip;
+                    let rem = (Self::BITS_PER_WORD - skip).min(len);
 
                     self.l1[idx] &=
                         !((!0usize).unbounded_shl((Self::BITS_PER_WORD - rem) as u32) >> skip);
@@ -189,6 +189,17 @@ impl<const N: usize> super::Allocator<N> for Allocator<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn last_bit_underflow() {
+        // Only the last page in word 0 is free
+        let mut allocator = Allocator::<1>::new(PhysAddr::new(0)).unwrap();
+        allocator.l1[0] = 1;
+
+        let result = super::super::Allocator::alloc(&mut allocator, 1);
+
+        assert!(result.is_some());
+    }
 
     #[test]
     fn test_random_pattern() {

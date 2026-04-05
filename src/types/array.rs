@@ -80,31 +80,6 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
         self.data.iter()
     }
 
-    /// Get an cycling iterator over the elements in the map, starting from the given index.
-    ///
-    /// `index` - The index to start the iterator from.
-    ///
-    /// Returns an iterator over the elements in the map.
-    pub fn iter_from_cycle(&self, idx: Option<&K>) -> impl Iterator<Item = &Option<V>> {
-        self.data.iter().cycle().skip(K::to_index(idx) + 1)
-    }
-
-    /// Get the next index that contains a value (this will cycle).
-    ///
-    /// `index` - The index to start the search from.
-    ///
-    /// Returns the next index (potentially < index) that contains a value, otherwise `None`.
-    pub fn next(&self, idx: Option<&K>) -> Option<usize> {
-        for (i, elem) in self.iter_from_cycle(idx).enumerate() {
-            if elem.is_some() {
-                let idx = K::to_index(idx);
-                return Some((idx + i + 1) % N);
-            }
-        }
-
-        None
-    }
-
     pub fn raw_at(&self, idx: usize) -> Option<&V> {
         if idx < N {
             self.data[idx].as_ref()
@@ -259,7 +234,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
 
         // If we don't have enough space, we need to grow the extra storage.
-        let grow = additional - N + len_extra;
+        let grow = self.len + additional - N;
         let mut new_extra = Box::new_slice_uninit(grow)?;
 
         // Check that the new extra storage has the requested length.
@@ -446,7 +421,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// Returns `Some(&T)` if the index is in-bounds, otherwise `None`.
     pub fn at(&self, index: usize) -> Option<&T> {
         // Check if the index is in-bounds.
-        if index > self.len - 1 {
+        if index >= self.len {
             return None;
         }
 
@@ -594,7 +569,7 @@ impl<T, const N: usize> Drop for Vec<T, N> {
         }
 
         // Drop all elements in the extra storage.
-        for elem in &mut (*self.extra)[0..self.len - N] {
+        for elem in &mut (*self.extra)[0..self.len - min] {
             // Safety: the elements until self.len - N are initialized.
             unsafe {
                 elem.assume_init_drop();
@@ -649,5 +624,37 @@ impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
         Option<&mut Self::Output>,
     ) {
         self.at3_mut(*index1.borrow(), *index2.borrow(), *index3.borrow())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Vec;
+
+    #[test]
+    fn no_length_underflow() {
+        let vec = Vec::<usize, 8>::new();
+        assert!(vec.len() == 0);
+        assert_eq!(vec.at(0), None);
+    }
+
+    #[test]
+    fn reserve_works() {
+        let mut vec = Vec::<usize, 8>::new();
+        for i in 0..7usize {
+            vec.push(i).unwrap();
+        }
+        assert_eq!(vec.len(), 7);
+
+        let _ = vec.reserve(2);
+    }
+
+    #[test]
+    fn drop_underflow() {
+        let mut vec = Vec::<usize, 8>::new();
+        for i in 0..7usize {
+            vec.push(i).unwrap();
+        }
+        drop(vec);
     }
 }
