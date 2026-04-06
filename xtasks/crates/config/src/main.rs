@@ -23,7 +23,7 @@ struct Cli {
 enum Subcommand {
     /// Load a preset configuration.
     Load {
-        /// Name of the preset to load. Must correspond to a file in the `presets/` directory without the `.toml` extension.
+        /// Name of the preset to load. Can either be a path, or the name of a file in the `presets/` directory without the `.toml` extension.
         preset: String,
         /// Do not ask for confirmation.
         #[arg(long, default_value_t = false)]
