@@ -17,7 +17,7 @@ use crate::types::{
 use crate::uapi;
 
 pub const IDLE_THREAD: UId = UId {
-    uid: 1,
+    uid: 0,
     tid: Id {
         id: 0,
         owner: KERNEL_TASK,
@@ -64,6 +64,10 @@ pub struct UId {
 
 #[allow(dead_code)]
 impl UId {
+    pub fn new(uid: usize, tid: Id) -> Self {
+        Self { uid, tid }
+    }
+
     pub fn tid(&self) -> Id {
         self.tid
     }

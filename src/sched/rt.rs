@@ -1,4 +1,5 @@
 use crate::{
+    error::Result,
     sched::{
         ThreadMap,
         thread::{self},
@@ -21,12 +22,18 @@ impl<const N: usize> Scheduler<N> {
         Self { edf: RbTree::new() }
     }
 
-    pub fn enqueue(&mut self, uid: thread::UId, now: u64, storage: &mut ServerView<N>) {
+    pub fn enqueue(
+        &mut self,
+        uid: thread::UId,
+        now: u64,
+        storage: &mut ServerView<N>,
+    ) -> Result<()> {
         if let Some(server) = storage.get_mut(uid) {
             // Threads are only enqueued when they are runnable.
             server.on_wakeup(now);
-            let _ = self.edf.insert(uid, storage);
+            self.edf.insert(uid, storage)?;
         }
+        Ok(())
     }
 
     /// This should be called on each do_schedule call, to update the internal scheduler state.
@@ -49,7 +56,7 @@ impl<const N: usize> Scheduler<N> {
             .and_then(|id| storage.get(id).map(|s| (id, s.budget())))
     }
 
-    pub fn dequeue(&mut self, uid: thread::UId, storage: &mut ServerView<N>) {
-        let _ = self.edf.remove(uid, storage);
+    pub fn dequeue(&mut self, uid: thread::UId, storage: &mut ServerView<N>) -> Result<()> {
+        self.edf.remove(uid, storage)
     }
 }

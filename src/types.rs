@@ -1,4 +1,5 @@
 pub mod array;
+pub mod bitset;
 pub mod boxed;
 pub mod heap;
 pub mod list;

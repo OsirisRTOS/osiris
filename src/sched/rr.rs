@@ -41,8 +41,16 @@ impl<const N: usize> Scheduler<N> {
         match self.current {
             Some(current) if self.current_left > 0 => return Some((current, self.current_left)),
             Some(current) => {
-                let _ = self.queue.pop_front(storage);
-                let _ = self.queue.push_back(current, storage);
+                if self.queue.pop_front(storage).is_err() {
+                    // If this happens, it means the internal state was corrupted.
+                    // We cannot meaningfully continue, so we panic.
+                    bug!("current thread not found in queue");
+                }
+                if self.queue.push_back(current, storage).is_err() {
+                    // We popped the current thread from the queue, so it must be able to be pushed back.
+                    // The scheduler is run exclusively so the space cannot be taken by another thread.
+                    bug!("cannot push current thread back to queue");
+                }
 
                 self.current = self.queue.head();
                 self.current_left = self.quantum;
@@ -56,11 +64,13 @@ impl<const N: usize> Scheduler<N> {
         self.current.map(|id| (id, self.current_left))
     }
 
-    pub fn dequeue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N>) {
-        let _ = self.queue.remove(uid, storage);
+    pub fn dequeue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N>) -> Result<()> {
+        self.queue.remove(uid, storage)?;
 
         if self.current == Some(uid) {
             self.current = None;
         }
+
+        Ok(())
     }
 }

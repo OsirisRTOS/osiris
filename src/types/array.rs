@@ -1,12 +1,13 @@
 //! This module implements static and dynamic arrays for in-kernel use.
 
-use crate::error::Result;
+use crate::{error::Result, types::bitset::BitAlloc};
 
 use super::{
     boxed::Box,
     traits::{Get, GetMut, ToIndex},
 };
 
+use core::mem::ManuallyDrop;
 use core::ops::{Index, IndexMut};
 use core::{borrow::Borrow, mem::MaybeUninit};
 
@@ -46,22 +47,6 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
         }
     }
 
-    /// Insert a value at the next available index.
-    ///
-    /// `value` - The value to insert.
-    ///
-    /// Returns `Ok(index)` if the value was inserted, otherwise `Err(KernelError::OutOfMemory)`.
-    pub fn insert_next(&mut self, value: V) -> Result<usize> {
-        for (i, slot) in self.data.iter_mut().enumerate() {
-            if slot.is_none() {
-                *slot = Some(value);
-                return Ok(i);
-            }
-        }
-
-        Err(kerr!(OutOfMemory))
-    }
-
     /// Remove the value at the given index.
     ///
     /// `index` - The index to remove the value from.
@@ -73,11 +58,17 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
         if idx < N { self.data[idx].take() } else { None }
     }
 
-    /// Get an iterator over the elements in the map.
-    ///
-    /// Returns an iterator over the elements in the map.
-    pub fn iter(&self) -> impl Iterator<Item = &Option<V>> {
-        self.data.iter()
+    pub fn raw_insert(&mut self, idx: usize, value: V) -> Result<()> {
+        if idx < N {
+            self.data[idx] = Some(value);
+            Ok(())
+        } else {
+            Err(kerr!(OutOfMemory))
+        }
+    }
+
+    pub fn raw_remove(&mut self, idx: usize) -> Option<V> {
+        if idx < N { self.data[idx].take() } else { None }
     }
 
     pub fn raw_at(&self, idx: usize) -> Option<&V> {
@@ -94,16 +85,6 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
         } else {
             None
         }
-    }
-
-    pub fn find_empty(&self) -> Option<usize> {
-        for (i, slot) in self.data.iter().enumerate() {
-            if slot.is_none() {
-                return Some(i);
-            }
-        }
-
-        None
     }
 }
 
@@ -216,6 +197,31 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         Self {
             len: 0,
             data: [const { MaybeUninit::uninit() }; N],
+            extra: Box::new_slice_empty(),
+        }
+    }
+
+    pub const fn from_array(arr: [T; N]) -> Self {
+        let arr = ManuallyDrop::new(arr);
+        let mut data = [const { MaybeUninit::uninit() }; N];
+
+        let src: *const [T; N] = &arr as *const ManuallyDrop<[T; N]> as *const [T; N];
+        let dst: *mut [MaybeUninit<T>; N] = &mut data;
+
+        let mut i = 0;
+        while i < N {
+            unsafe {
+                let value = core::ptr::read((src as *const T).add(i));
+                (dst as *mut MaybeUninit<T>)
+                    .add(i)
+                    .write(MaybeUninit::new(value));
+            }
+            i += 1;
+        }
+
+        Self {
+            len: N,
+            data,
             extra: Box::new_slice_empty(),
         }
     }
@@ -442,7 +448,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// Returns `Some(&mut T)` if the index is in-bounds, otherwise `None`.
     pub fn at_mut(&mut self, index: usize) -> Option<&mut T> {
         // Check if the index is in-bounds.
-        if index > self.len - 1 {
+        if index >= self.len {
             return None;
         }
 
@@ -578,6 +584,33 @@ impl<T, const N: usize> Drop for Vec<T, N> {
     }
 }
 
+impl<T, const N: usize> Clone for Vec<T, N>
+where
+    T: Clone + Copy,
+{
+    fn clone(&self) -> Self {
+        let mut new_vec = Self::new();
+        let min = core::cmp::min(self.len, N);
+
+        // Clone the elements in the inline storage.
+        for i in 0..min {
+            // Safety: the elements until self.len are initialized.
+            let value = unsafe { self.data[i].assume_init_ref() };
+            new_vec.data[i].write(*value);
+        }
+
+        // Clone the elements in the extra storage.
+        for i in 0..self.len - min {
+            // Safety: the elements until self.len - N are initialized.
+            let value = unsafe { self.extra[i].assume_init_ref() };
+            new_vec.extra[i].write(*value);
+        }
+
+        new_vec.len = self.len;
+        new_vec
+    }
+}
+
 impl<T: Clone + Copy, const N: usize> Index<usize> for Vec<T, N> {
     type Output = T;
 
@@ -624,6 +657,92 @@ impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
         Option<&mut Self::Output>,
     ) {
         self.at3_mut(*index1.borrow(), *index2.borrow(), *index3.borrow())
+    }
+}
+
+/// This is an IndexMap that additionally tracks which indices are occupied through a bitset.
+pub struct BitReclaimMap<K: ?Sized + ToIndex, V, const N: usize> {
+    map: IndexMap<K, V, N>,
+    free: BitAlloc<N>,
+}
+
+impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
+    pub const fn new() -> Self {
+        Self {
+            map: IndexMap::new(),
+            free: BitAlloc::from_array([!0usize; N]),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn insert(&mut self, value: V) -> Result<usize> {
+        let idx = self.free.alloc(1).ok_or(kerr!(OutOfMemory))?;
+        self.map.raw_insert(idx, value)?;
+        Ok(idx)
+    }
+
+    pub fn remove(&mut self, idx: &K) -> Option<V> {
+        self.map.remove(idx).inspect(|_| {
+            self.free.free(K::to_index(Some(idx)), 1);
+        })
+    }
+}
+
+impl<K: Copy + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
+    pub fn insert_with(&mut self, f: impl FnOnce(usize) -> Result<(K, V)>) -> Result<K> {
+        let idx = self.free.alloc(1).ok_or(kerr!(OutOfMemory))?;
+        let (key, value) = f(idx)?;
+        self.map.raw_insert(idx, value)?;
+        Ok(key)
+    }
+}
+
+impl<K: Copy + ToIndex, V, const N: usize> Index<K> for BitReclaimMap<K, V, N> {
+    type Output = V;
+
+    fn index(&self, index: K) -> &Self::Output {
+        self.get::<K>(index).unwrap()
+    }
+}
+
+impl<K: Copy + ToIndex, V, const N: usize> IndexMut<K> for BitReclaimMap<K, V, N> {
+    fn index_mut(&mut self, index: K) -> &mut Self::Output {
+        self.get_mut::<K>(index).unwrap()
+    }
+}
+
+impl<K: ?Sized + ToIndex, V, const N: usize> Get<K> for BitReclaimMap<K, V, N> {
+    type Output = V;
+
+    fn get<Q: Borrow<K>>(&self, index: Q) -> Option<&Self::Output> {
+        self.map.get(index)
+    }
+}
+
+impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for BitReclaimMap<K, V, N> {
+    fn get_mut<Q: Borrow<K>>(&mut self, index: Q) -> Option<&mut Self::Output> {
+        self.map.get_mut(index)
+    }
+
+    fn get2_mut<Q: Borrow<K>>(
+        &mut self,
+        index1: Q,
+        index2: Q,
+    ) -> (Option<&mut Self::Output>, Option<&mut Self::Output>) {
+        self.map.get2_mut(index1, index2)
+    }
+
+    fn get3_mut<Q: Borrow<K>>(
+        &mut self,
+        index1: Q,
+        index2: Q,
+        index3: Q,
+    ) -> (
+        Option<&mut Self::Output>,
+        Option<&mut Self::Output>,
+        Option<&mut Self::Output>,
+    ) {
+        self.map.get3_mut(index1, index2, index3)
     }
 }
 

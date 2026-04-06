@@ -4,14 +4,13 @@ use core::fmt::Display;
 use core::num::NonZero;
 
 use envparse::parse_env;
-use hal::Stack;
 
 use hal::stack::Stacklike;
 
 use crate::error::Result;
+use crate::mem;
 use crate::sched::{ThreadMap, thread};
 use crate::types::list;
-use crate::{mem, sched};
 
 use crate::mem::vmm::AddressSpacelike;
 use crate::types::traits::ToIndex;
@@ -34,9 +33,8 @@ pub struct UId {
 }
 
 impl UId {
-    #[allow(dead_code)]
-    pub fn new(uid: usize) -> Option<Self> {
-        if uid == 0 { None } else { Some(Self { uid }) }
+    pub fn new(uid: usize) -> Self {
+        Self { uid }
     }
 
     pub fn is_kernel(&self) -> bool {
@@ -59,6 +57,7 @@ impl Display for UId {
 #[allow(dead_code)]
 pub struct Attributes {
     pub resrv_pgs: Option<NonZero<usize>>,
+    pub address_space: Option<mem::vmm::AddressSpace>,
 }
 
 /// The struct representing a task.
@@ -74,15 +73,15 @@ pub struct Task {
 }
 
 impl Task {
-    #[allow(dead_code)]
-    pub fn new(id: UId, attrs: &Attributes) -> Result<Self> {
-        // TODO: On MMU systems, the resrv_pgs attribute will be ignored, as memory will not be reserved.
-        let resrv_pgs = attrs.resrv_pgs.ok_or(kerr!(InvalidArgument))?;
-        let address_space = mem::vmm::AddressSpace::new(resrv_pgs.get())?;
-        Self::from_addr_space(id, address_space)
-    }
+    pub fn new(id: UId, attrs: Attributes) -> Result<Self> {
+        let address_space = match attrs.address_space {
+            Some(addr_space) => addr_space,
+            None => {
+                let resrv_pgs = attrs.resrv_pgs.ok_or(kerr!(InvalidArgument))?;
+                mem::vmm::AddressSpace::new(resrv_pgs.get())?
+            }
+        };
 
-    pub fn from_addr_space(id: UId, address_space: mem::vmm::AddressSpace) -> Result<Self> {
         Ok(Self {
             id,
             address_space,
@@ -91,14 +90,13 @@ impl Task {
         })
     }
 
-    fn allocate_tid(&mut self) -> sched::thread::Id {
+    pub fn allocate_tid(&mut self) -> thread::Id {
         let tid = self.tid_cntr;
         self.tid_cntr += 1;
-
-        sched::thread::Id::new(tid, self.id)
+        thread::Id::new(tid, self.id)
     }
 
-    fn allocate_stack(&mut self, attrs: &thread::Attributes) -> Result<hal::stack::Descriptor> {
+    pub fn allocate_stack(&mut self, attrs: &thread::Attributes) -> Result<hal::Stack> {
         let size = DEFAULTS.stack_pages * mem::pfa::PAGE_SIZE;
         let region = mem::vmm::Region::new(
             None,
@@ -108,29 +106,22 @@ impl Task {
         );
         let pa = self.address_space.map(region)?;
 
-        Ok(hal::stack::Descriptor {
-            top: pa + size,
-            size: NonZero::new(size).unwrap(),
-            entry: attrs.entry,
-            fin: attrs.fin,
+        Ok(unsafe {
+            hal::Stack::new(hal::stack::Descriptor {
+                top: pa + size,
+                size: NonZero::new(size).unwrap(),
+                entry: attrs.entry,
+                fin: attrs.fin,
+            })?
         })
     }
 
-    pub fn create_thread<const N: usize>(
+    pub fn register_thread<const N: usize>(
         &mut self,
-        uid: usize,
-        attrs: &thread::Attributes,
+        uid: thread::UId,
         storage: &mut ThreadMap<N>,
-    ) -> Result<thread::UId> {
-        let stack = self.allocate_stack(attrs)?;
-
-        let stack = unsafe { Stack::new(stack) }?;
-        let tid = self.allocate_tid();
-        let new = sched::thread::Thread::new(tid.get_uid(uid), stack, attrs.attrs);
-        storage.insert(&tid.get_uid(uid), new)?;
-        self.threads.push_back(tid.get_uid(uid), storage)?;
-
-        Ok(tid.get_uid(uid))
+    ) -> Result<()> {
+        self.threads.push_back(uid, storage)
     }
 
     #[allow(dead_code)]
