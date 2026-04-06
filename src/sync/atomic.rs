@@ -10,11 +10,20 @@ compile_error!(
     "The `atomic-cas` feature requires the target to have atomic operations on at least 8-bit integers."
 );
 
-// ----------------------------AtomicU8----------------------------
-#[cfg(all(feature = "no-atomic-cas"))]
+#[allow(unused_imports)]
 pub use core::sync::atomic::Ordering;
 
-#[cfg(all(feature = "no-atomic-cas"))]
+#[inline(always)]
+pub fn irq_free<T>(f: impl FnOnce() -> T) -> T {
+    let state = hal::asm::disable_irq_save();
+    let result = f();
+    hal::asm::enable_irq_restr(state);
+
+    result
+}
+
+// ----------------------------AtomicU8----------------------------
+#[cfg(any(feature = "no-atomic-cas", not(target_has_atomic = "64")))]
 use core::cell::UnsafeCell;
 
 #[cfg(all(feature = "no-atomic-cas"))]
@@ -47,6 +56,7 @@ impl AtomicU8 {
     }
 
     /// Compares the value and exchanges it.
+    #[allow(dead_code)]
     pub fn compare_exchange(
         &self,
         current: u8,
@@ -104,5 +114,104 @@ impl AtomicBool {
         _: Ordering,
     ) -> Result<bool, bool> {
         todo!("Implement atomic compare_exchange for bool");
+    }
+}
+
+// ----------------------------AtomicU64----------------------------
+#[allow(unused_imports)]
+#[cfg(target_has_atomic = "64")]
+pub use core::sync::atomic::AtomicU64;
+
+#[cfg(not(target_has_atomic = "64"))]
+/// An atomic `u64` implemented by disabling interrupts around each operation.
+pub struct AtomicU64 {
+    value: UnsafeCell<u64>,
+}
+
+#[cfg(not(target_has_atomic = "64"))]
+unsafe impl Sync for AtomicU64 {}
+
+#[cfg(not(target_has_atomic = "64"))]
+#[allow(dead_code)]
+impl AtomicU64 {
+    /// Creates a new atomic u64.
+    pub const fn new(value: u64) -> Self {
+        Self {
+            value: UnsafeCell::new(value),
+        }
+    }
+
+    /// Loads the value.
+    pub fn load(&self, _: Ordering) -> u64 {
+        irq_free(|| {
+            // SAFETY: Interrupts are disabled, so this read is exclusive with writes.
+            unsafe { *self.value.get() }
+        })
+    }
+
+    /// Stores a value.
+    pub fn store(&self, value: u64, _: Ordering) {
+        irq_free(|| {
+            // SAFETY: Interrupts are disabled, so this write is exclusive with other access.
+            unsafe {
+                *self.value.get() = value;
+            }
+        });
+    }
+
+    /// Compares the value and exchanges it.
+    pub fn compare_exchange(
+        &self,
+        current: u64,
+        new: u64,
+        _: Ordering,
+        _: Ordering,
+    ) -> Result<u64, u64> {
+        irq_free(|| {
+            // SAFETY: Interrupts are disabled, so this read-modify-write is exclusive.
+            unsafe {
+                let value = self.value.get();
+                if *value == current {
+                    *value = new;
+                    Ok(current)
+                } else {
+                    Err(*value)
+                }
+            }
+        })
+    }
+
+    /// Fetches and adds, returning the previous value.
+    pub fn fetch_add(&self, value: u64, _: Ordering) -> u64 {
+        irq_free(|| {
+            // SAFETY: Interrupts are disabled, so this read-modify-write is exclusive.
+            unsafe {
+                let ptr = self.value.get();
+                let old = *ptr;
+                *ptr = old.wrapping_add(value);
+                old
+            }
+        })
+    }
+
+    /// Fetches a value, applies the function and writes it back atomically.
+    #[allow(dead_code)]
+    pub fn fetch_update<F>(&self, _: Ordering, _: Ordering, mut f: F) -> Result<u64, u64>
+    where
+        F: FnMut(u64) -> Option<u64>,
+    {
+        irq_free(|| {
+            // SAFETY: Interrupts are disabled, so this read-modify-write is exclusive.
+            unsafe {
+                let ptr = self.value.get();
+                let old = *ptr;
+                if let Some(new) = f(old) {
+                    *ptr = new;
+                    Ok(old)
+                } else {
+                    Err(old)
+                }
+            }
+        })
     }
 }

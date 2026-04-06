@@ -1,19 +1,16 @@
 [package]
 name = "hal-arm"
 version = "0.1.0"
-rust-version = "1.85.0"
 authors = ["Thomas Wachter"]
 edition = "2024"
 build = "build.rs"
-# Through this we can access env variables set by the build script through DEP_HAL_<VAR_NAME>
-# It has nothing to do with native libraries.
-links = "halarm"
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
 hal-api = { path = "../api" }
+critical-section = { version = "1.2", features = ["restore-state-usize"] }
 
 [build-dependencies]
 cbindgen = "0.28.0"
@@ -21,6 +18,9 @@ bindgen = "0.72.0"
 cmake = "0.1.54"
 anyhow = "1.0.99"
 serde_json = "1.0.145"
+quote = "1.0.26"
+syn = { version = "2.0.36", features = ["full"] }
+dtgen = { workspace = true }
 
 [features]
 # This enables the host implementation of the HAL. Mainly used for testing.

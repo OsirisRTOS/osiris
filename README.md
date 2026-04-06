@@ -1,5 +1,7 @@
 # Osiris
-An RTOS for embedded systems. This is still a very early work in progress.
+An RTOS for embedded systems.
+
+**⚠️ WARNING: This is very experimental software. Use at your own risk. ⚠️**
 
 ## Project Structure
 

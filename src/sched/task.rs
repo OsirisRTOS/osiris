@@ -1,189 +1,139 @@
 //! This module provides the basic task and thread structures for the scheduler.
+use core::borrow::Borrow;
+use core::fmt::Display;
 use core::num::NonZero;
-use core::ops::Range;
-use core::ptr::NonNull;
 
-use hal::Stack;
+use envparse::parse_env;
 
 use hal::stack::Stacklike;
 
+use crate::error::Result;
 use crate::mem;
+use crate::sched::{ThreadMap, thread};
+use crate::types::list;
 
-use crate::mem::alloc::{Allocator, BestFitAllocator};
-use crate::sched::thread::{ThreadDescriptor, ThreadId, Timing};
-use crate::utils::KernelError;
+use crate::mem::vmm::AddressSpacelike;
+use crate::types::traits::ToIndex;
+
+pub struct Defaults {
+    pub stack_pages: usize,
+}
+
+const DEFAULTS: Defaults = Defaults {
+    stack_pages: parse_env!("OSIRIS_STACKPAGES" as usize),
+};
+
+pub const KERNEL_TASK: UId = UId { uid: 0 };
 
 /// Id of a task. This is unique across all tasks.
-#[repr(u16)]
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub enum TaskId {
-    // Task with normal user privileges in user mode.
-    User(usize),
-    // Task with kernel privileges in user mode.
-    Kernel(usize),
+#[proc_macros::fmt]
+#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
+pub struct UId {
+    uid: usize,
+}
+
+impl UId {
+    pub fn new(uid: usize) -> Self {
+        Self { uid }
+    }
+
+    pub fn is_kernel(&self) -> bool {
+        self.uid == 0
+    }
+}
+
+impl ToIndex for UId {
+    fn to_index<Q: Borrow<Self>>(idx: Option<Q>) -> usize {
+        idx.as_ref().map_or(0, |uid| uid.borrow().uid)
+    }
+}
+
+impl Display for UId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.uid)
+    }
 }
 
 #[allow(dead_code)]
-impl TaskId {
-    /// Check if the task is a user task.
-    pub fn is_user(&self) -> bool {
-        matches!(self, TaskId::User(_))
-    }
-
-    /// Check if the task is a kernel task.
-    pub fn is_kernel(&self) -> bool {
-        matches!(self, TaskId::Kernel(_))
-    }
-
-    pub fn new_user(id: usize) -> Self {
-        TaskId::User(id)
-    }
-
-    pub fn new_kernel(id: usize) -> Self {
-        TaskId::Kernel(id)
-    }
-}
-
-impl From<TaskId> for usize {
-    fn from(val: TaskId) -> Self {
-        match val {
-            TaskId::User(id) => id,
-            TaskId::Kernel(id) => id,
-        }
-    }
-}
-
-/// Descibes a task.
-pub struct TaskDescriptor {
-    /// The size of the memory that the task requires.
-    pub mem_size: usize,
+pub struct Attributes {
+    pub resrv_pgs: Option<NonZero<usize>>,
+    pub address_space: Option<mem::vmm::AddressSpace>,
 }
 
 /// The struct representing a task.
-#[derive(Debug)]
 pub struct Task {
     /// The unique identifier of the task.
-    pub id: TaskId,
-    /// The memory of the task.
-    memory: TaskMemory,
+    pub id: UId,
     /// The counter for the thread ids.
     tid_cntr: usize,
-    /// The threads associated with the task.
-    threads: mem::array::Vec<ThreadId, 4>,
+    /// Sets up the memory for the task.
+    address_space: mem::vmm::AddressSpace,
+    /// The threads belonging to this task.
+    threads: list::List<thread::ThreadList, thread::UId>,
 }
 
 impl Task {
-    /// Create a new task.
-    ///
-    /// `memory_size` - The size of the memory that the task requires.
-    ///
-    /// Returns a new task if the task was created successfully, or an error if the task could not be created.
-    pub fn new(memory_size: usize, id: TaskId) -> Result<Self, KernelError> {
-        let memory = TaskMemory::new(memory_size)?;
-        let threads = mem::array::Vec::new();
+    pub fn new(id: UId, attrs: Attributes) -> Result<Self> {
+        let address_space = match attrs.address_space {
+            Some(addr_space) => addr_space,
+            None => {
+                let resrv_pgs = attrs.resrv_pgs.ok_or(kerr!(InvalidArgument))?;
+                mem::vmm::AddressSpace::new(resrv_pgs.get())?
+            }
+        };
 
         Ok(Self {
             id,
-            memory,
+            address_space,
             tid_cntr: 0,
-            threads,
+            threads: list::List::new(),
         })
     }
 
-    fn allocate_tid(&mut self) -> ThreadId {
+    pub fn allocate_tid(&mut self) -> thread::Id {
         let tid = self.tid_cntr;
         self.tid_cntr += 1;
-
-        ThreadId::new(tid, self.id)
+        thread::Id::new(tid, self.id)
     }
 
-    pub fn create_thread(
+    pub fn allocate_stack(&mut self, attrs: &thread::Attributes) -> Result<hal::Stack> {
+        let size = DEFAULTS.stack_pages * mem::pfa::PAGE_SIZE;
+        let region = mem::vmm::Region::new(
+            None,
+            size,
+            mem::vmm::Backing::Uninit,
+            mem::vmm::Perms::Read | mem::vmm::Perms::Write,
+        );
+        let pa = self.address_space.map(region)?;
+
+        Ok(unsafe {
+            hal::Stack::new(hal::stack::Descriptor {
+                top: pa + size,
+                size: NonZero::new(size).unwrap(),
+                entry: attrs.entry,
+                fin: attrs.fin,
+            })?
+        })
+    }
+
+    pub fn register_thread<const N: usize>(
         &mut self,
-        entry: extern "C" fn(),
-        fin: Option<extern "C" fn() -> !>,
-        timing: Timing,
-    ) -> Result<ThreadDescriptor, KernelError> {
-        // Safe unwrap because stack size is non zero.
-        // TODO: Make this configurable
-        let stack_size = NonZero::new(4096usize).unwrap();
-        // TODO: Revert if error occurs
-        let stack_mem = self.memory.malloc(stack_size.into(), align_of::<u128>())?;
-        let stack_top = unsafe { stack_mem.byte_add(stack_size.get()) };
-
-        let stack = hal::stack::StackDescriptor {
-            top: stack_top,
-            size: stack_size,
-            entry,
-            fin,
-        };
-
-        let stack = unsafe { Stack::new(stack) }?;
-
-        let tid = self.allocate_tid();
-
-        // TODO: Revert if error occurs
-        self.register_thread(tid)?;
-
-        Ok(ThreadDescriptor { tid, stack, timing })
+        uid: thread::UId,
+        storage: &mut ThreadMap<N>,
+    ) -> Result<()> {
+        self.threads.push_back(uid, storage)
     }
 
-    /// Register a thread with the task.
-    ///
-    /// `thread_id` - The id of the thread to register.
-    ///
-    /// Returns `Ok(())` if the thread was registered successfully, or an error if the thread could not be registered. TODO: Check if the thread is using the same memory as the task.
-    fn register_thread(&mut self, thread_id: ThreadId) -> Result<(), KernelError> {
-        self.threads.push(thread_id)
-    }
-}
-
-/// The memory of a task.
-#[derive(Debug)]
-pub struct TaskMemory {
-    /// The beginning of the memory.
-    begin: NonNull<u8>,
-    /// The size of the memory.
-    size: usize,
-
-    /// The allocator for the task's memory.
-    alloc: BestFitAllocator,
-}
-
-#[allow(dead_code)]
-impl TaskMemory {
-    /// Create a new task memory.
-    ///
-    /// `size` - The size of the memory.
-    ///
-    /// Returns a new task memory if the memory was created successfully, or an error if the memory could not be created.
-    pub fn new(size: usize) -> Result<Self, KernelError> {
-        let begin = mem::malloc(size, align_of::<u128>()).ok_or(KernelError::OutOfMemory)?;
-
-        let mut alloc = BestFitAllocator::new();
-        let range = Range {
-            start: begin.as_ptr() as usize,
-            end: begin.as_ptr() as usize + size,
-        };
-
-        if let Err(e) = unsafe { alloc.add_range(range) } {
-            unsafe { mem::free(begin, size) };
-            return Err(e);
-        }
-
-        Ok(Self { begin, size, alloc })
+    #[allow(dead_code)]
+    pub fn tid_cntr(&self) -> usize {
+        self.tid_cntr
     }
 
-    pub fn malloc<T>(&mut self, size: usize, align: usize) -> Result<NonNull<T>, KernelError> {
-        self.alloc.malloc(size, align)
+    pub fn threads_mut(&mut self) -> &mut list::List<thread::ThreadList, thread::UId> {
+        &mut self.threads
     }
 
-    pub fn free<T>(&mut self, ptr: NonNull<T>, size: usize) {
-        unsafe { self.alloc.free(ptr, size) }
-    }
-}
-
-impl Drop for TaskMemory {
-    fn drop(&mut self) {
-        unsafe { mem::free(self.begin, self.size) };
+    pub fn threads(&self) -> &list::List<thread::ThreadList, thread::UId> {
+        &self.threads
     }
 }

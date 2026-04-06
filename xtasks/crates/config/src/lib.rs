@@ -1,3 +1,6 @@
+#![cfg_attr(target_os = "none", no_std)]
+#![cfg(not(target_os = "none"))]
+
 use std::{path::Path, process::exit};
 
 use crate::{
@@ -21,8 +24,7 @@ mod toml_patch;
 pub mod types;
 pub mod ui;
 
-use anyhow::anyhow;
-use toml_edit::{DocumentMut, ImDocument, Item, Table};
+use toml_edit::{DocumentMut, ImDocument};
 
 pub fn load_config(root: &Path, filename: &str) -> ConfigNode {
     let files = file::load_files(root, filename);
@@ -116,6 +118,7 @@ pub fn load_state<'node>(
 }
 
 pub fn load_toml_mut(toml: &Path) -> Result<DocumentMut, Error> {
+    file::create_if_not_exists(&toml)?;
     let File { path, content } = file::load_file(&toml)?;
 
     let path = path.to_string_lossy();
@@ -151,41 +154,11 @@ pub fn load_toml(toml: &Path) -> Result<ImDocument<String>, Error> {
     Ok(doc)
 }
 
-#[rustversion::since(1.94)]
-compile_error!("config-includes are stable since Rust 1.94; fix the TODOs below.");
-
 pub fn apply_preset(config: &mut DocumentMut, preset: &ImDocument<String>) -> Result<(), Error> {
+    config.clear();
+
     for (key, value) in preset.iter() {
-        // We override with a depth of zero or one granularity.
-
-        // TODO: Until we have config-includes stabilized, we skip alias sections.
-        if key == "alias" {
-            continue;
-        }
-
-        match value {
-            Item::Table(src) => {
-                let dst = config.entry(key).or_insert(Item::Table(Table::new()));
-
-                if let Item::Table(dst) = dst {
-                    dst.clear();
-
-                    for (key, value) in src.iter() {
-                        dst.insert(key, value.clone());
-                    }
-                } else {
-                    return Err(anyhow!(
-                        "type mismatch when applying preset key '{}': expected table, found {}",
-                        key,
-                        dst.type_name()
-                    )
-                    .into());
-                }
-            }
-            _ => {
-                config.insert(key, value.clone());
-            }
-        }
+        config.insert(key, value.clone());
     }
 
     Ok(())

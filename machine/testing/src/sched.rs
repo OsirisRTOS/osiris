@@ -2,17 +2,17 @@ use std::ffi::c_void;
 
 use hal_api::{
     Result,
-    stack::{StackDescriptor, Stacklike},
+    stack::{Descriptor, Stacklike},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TestingStack {}
 
 impl Stacklike for TestingStack {
     type ElemSize = usize;
     type StackPtr = *mut c_void;
 
-    unsafe fn new(_desc: StackDescriptor) -> Result<Self>
+    unsafe fn new(_desc: Descriptor) -> Result<Self>
     where
         Self: Sized,
     {

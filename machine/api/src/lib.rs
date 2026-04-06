@@ -2,6 +2,7 @@
 
 use core::{fmt::Display, ops::Range};
 
+pub mod mem;
 pub mod stack;
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
@@ -10,6 +11,7 @@ pub enum Error {
     Generic,
     OutOfMemory(usize),
     OutOfBoundsPtr(usize, Range<usize>),
+    InvalidAddress(usize),
 }
 
 pub enum Fault {
@@ -31,6 +33,7 @@ impl Display for Error {
                     *ptr as *const u8, range.start as *const u8, range.end as *const u8
                 )
             }
+            Error::InvalidAddress(addr) => write!(f, "Invalid address {:p}", *addr as *const u8),
         }
     }
 }
@@ -43,6 +46,11 @@ pub trait Machinelike {
 
     fn bench_start();
     fn bench_end() -> (u32, f32);
+
+    fn monotonic_now() -> u64;
+    fn monotonic_freq() -> u64;
+    // Returns the frequency of the machine's systick timer in Hz.
+    fn systick_freq() -> u64;
 
     type ExcepBacktrace: Display;
     type ExcepStackFrame: Display;

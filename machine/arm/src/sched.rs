@@ -7,7 +7,7 @@ use core::{
     ptr::NonNull,
 };
 
-use hal_api::{Result, stack::StackDescriptor};
+use hal_api::{Result, stack::Descriptor};
 
 use crate::print::println;
 
@@ -55,14 +55,14 @@ impl Add<usize> for StackPtr {
 }
 
 /// A stack on arm is 4 byte aligned and grows downwards.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ArmStack {
     /// The top of the stack (highest address).
     /// Safety: NonNull<u32> can safely be covariant over u32.
     top: NonNull<u32>,
-    /// The current offset from the top of the stack (in 4 byte steps).
+    /// The current offset from the top of the stack
     sp: StackPtr,
-    /// The size of the stack (in 4 byte steps).
+    /// The size of the stack
     size: NonZero<usize>,
 }
 
@@ -72,7 +72,7 @@ impl ArmStack {
     }
 
     fn is_call_aligned(sp: StackPtr) -> bool {
-        (sp.offset % 2) == 0
+        sp.offset.is_multiple_of(2)
     }
 
     fn in_bounds(&self, sp: *mut u32) -> Option<usize> {
@@ -161,14 +161,9 @@ impl ArmStack {
             Self::push(&mut write_index, EXEC_RETURN_THREAD_PSP);
 
             // R12 (dummy), R11 - R10
-            for _ in 0..3 {
+            for _ in 0..4 {
                 Self::push(&mut write_index, 0);
             }
-
-            // R9, fixed
-            let r9: u32;
-            core::arch::asm!("mov {}, r9", out(reg) r9);
-            Self::push(&mut write_index, r9);
 
             // R8 - R4
             for _ in 0..5 {
@@ -191,16 +186,20 @@ impl hal_api::stack::Stacklike for ArmStack {
     type ElemSize = u32;
     type StackPtr = StackPtr;
 
-    unsafe fn new(desc: StackDescriptor) -> Result<Self>
+    unsafe fn new(desc: Descriptor) -> Result<Self>
     where
         Self: Sized,
     {
-        let StackDescriptor {
+        let Descriptor {
             top,
             size,
             entry,
             fin,
         } = desc;
+
+        // We expect a PhysAddr, which can be converted to a ptr on nommu.
+        let top = NonNull::new(top.as_mut_ptr::<u32>())
+            .ok_or(hal_api::Error::InvalidAddress(top.as_usize()))?;
 
         let mut stack = Self {
             top,
@@ -220,7 +219,7 @@ impl hal_api::stack::Stacklike for ArmStack {
         Err(hal_api::Error::OutOfBoundsPtr(
             ptr as usize,
             Range {
-                start: self.top.as_ptr() as usize - self.size.get() * size_of::<u32>(),
+                start: self.top.as_ptr() as usize - self.size.get(),
                 end: self.top.as_ptr() as usize,
             },
         ))

@@ -1,3 +1,6 @@
+#![cfg_attr(target_os = "none", no_std)]
+#![cfg(not(target_os = "none"))]
+
 use core::result::Result::Ok;
 use hal_api::{Result, Schedable};
 
@@ -24,6 +27,18 @@ impl hal_api::Machinelike for TestingMachine {
     fn bench_end() -> (u32, f32) {
         // Return dummy values for benchmarking in testing.
         (0, 0.0)
+    }
+
+    fn monotonic_now() -> u64 {
+        0
+    }
+
+    fn monotonic_freq() -> u64 {
+        0
+    }
+
+    fn systick_freq() -> u64 {
+        0
     }
 
     type ExcepBacktrace = String;

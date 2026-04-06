@@ -1,3 +1,7 @@
+#![cfg_attr(target_os = "none", no_std)]
+#![cfg_attr(target_os = "none", no_main)]
+#![cfg(not(target_os = "none"))]
+
 use cargo_metadata::MetadataCommand;
 use clap::Parser;
 use object::{Object, ObjectSection};
@@ -104,7 +108,7 @@ fn inject(elf: &PathBuf) -> Result<(), String> {
 }
 
 fn get_target_from_cargo_config(manifest_dir: &PathBuf) -> Option<String> {
-    let cargo_config = manifest_dir.join(".cargo").join("config.toml");
+    let cargo_config = manifest_dir.join("config.toml");
 
     if !cargo_config.exists() {
         return None;

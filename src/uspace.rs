@@ -1,22 +1,30 @@
 //! This module provides access to userspace structures and services.
 
-use ::core::mem::transmute;
+use crate::{sched, time};
 
-pub fn init_app(boot_info: &crate::BootInfo) -> Result<(), crate::utils::KernelError> {
-    let len = boot_info.args.init.len;
+unsafe extern "C" {
+    /// The entry point for the userspace application.
+    fn app_main() -> ();
+}
 
-    if len == 0 {
-        return Err(crate::utils::KernelError::InvalidArgument);
-    }
+extern "C" fn app_main_entry() {
+    unsafe { app_main() }
+}
 
-    let entry = unsafe {
-        transmute::<usize, extern "C" fn()>(
-            boot_info.args.init.begin as usize + boot_info.args.init.entry_offset as usize,
-        )
+pub fn init_app() {
+    let attrs = sched::thread::Attributes {
+        entry: app_main_entry,
+        fin: None,
+        attrs: None,
     };
 
-    // We don't expect coming back from the init program.
-    // But for future user mode support the init program will be run by the scheduler, thus we leave a result as a return value here.
-    entry();
-    Ok(())
+    sched::with(|sched| {
+        if let Ok(uid) = sched.create_thread(Some(sched::task::KERNEL_TASK), &attrs) {
+            if sched.enqueue(time::tick(), uid).is_err() {
+                panic!("failed to enqueue init thread.");
+            }
+        } else {
+            panic!("failed to create init task.");
+        }
+    })
 }

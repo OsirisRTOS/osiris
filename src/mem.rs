@@ -1,54 +1,67 @@
 //! This module provides access to the global memory allocator.
 
+use crate::mem::pfa::PAGE_SIZE;
+use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 use crate::sync::spinlock::SpinLocked;
-use crate::{BootInfo, utils};
 use alloc::Allocator;
 use core::ptr::NonNull;
+use hal::mem::PhysAddr;
 
 pub mod alloc;
-pub mod array;
-pub mod boxed;
-pub mod heap;
-pub mod pool;
-pub mod queue;
+pub mod pfa;
+pub mod vmm;
 
-/// The possible types of memory. Which is compatible with the multiboot2 memory map.
-/// Link: https://www.gnu.org/software/grub/manual/multiboot/multiboot.html
-#[repr(C)]
-#[allow(unused)]
-enum MemoryTypes {
-    /// Memory that is available for use.
-    Available = 1,
-    /// Memory that is reserved for the system.
-    Reserved = 2,
-    /// Memory that is reclaimable after ACPI tables are read.
-    ACPIReclaimable = 3,
-    /// ACPI Non-volatile-sleeping memory.
-    Nvs = 4,
-    /// Memory that is bad.
-    BadMemory = 5,
+#[allow(dead_code)]
+pub const BITS_PER_PTR: usize = core::mem::size_of::<usize>() * 8;
+
+unsafe extern "C" {
+    unsafe static __stack_top: u8;
 }
 
 /// The global memory allocator.
-static GLOBAL_ALLOCATOR: SpinLocked<alloc::BestFitAllocator> =
-    SpinLocked::new(alloc::BestFitAllocator::new());
+static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
+    SpinLocked::new(alloc::bestfit::BestFitAllocator::new());
 
 /// Initialize the memory allocator.
 ///
 /// `regions` - The memory node module of device tree codegen file.
 ///
 /// Returns an error if the memory allocator could not be initialized.
-pub fn init_memory(regions: &[(&str, usize, usize)]) -> Result<(), utils::KernelError> {
-    let mut allocator = GLOBAL_ALLOCATOR.lock();
+pub fn init_memory() -> vmm::AddressSpace {
+    let stack_top = &raw const __stack_top as usize;
+    if let Err(e) = pfa::init_pfa(PhysAddr::new(stack_top)) {
+        // TODO: Get this from the DeviceTree.
+        panic!("failed to initialize PFA. Error: {e}");
+    }
 
-    for &(_, base, size) in regions {
-        let range = base..base + size;
-        unsafe {
-            allocator.add_range(range)?;
+    // TODO: Configure.
+    let pgs = 10;
+
+    let mut kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
+        panic!("failed to create kernel address space. Error: {e}");
+    });
+
+    let begin = kaddr_space
+        .map(Region::new(
+            None,
+            2 * PAGE_SIZE,
+            Backing::Zeroed,
+            Perms::all(),
+        ))
+        .unwrap_or_else(|e| {
+            panic!("failed to map kernel address space. Error: {e}");
+        });
+
+    {
+        let mut allocator = GLOBAL_ALLOCATOR.lock();
+
+        let range = begin..(begin + pgs * PAGE_SIZE);
+        if let Err(e) = unsafe { allocator.add_range(&range) } {
+            panic!("failed to add range to allocator. Error: {e}");
         }
     }
 
-    Ok(())
+    kaddr_space
 }
 
 /// Allocate a memory block. Normally Box<T> or SizedPool<T> should be used instead of this function.
@@ -59,7 +72,7 @@ pub fn init_memory(regions: &[(&str, usize, usize)]) -> Result<(), utils::Kernel
 /// Returns a pointer to the allocated memory block if the allocation was successful, or `None` if the allocation failed.
 pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
-    allocator.malloc(size, align).ok()
+    allocator.malloc(size, align, None).ok()
 }
 
 /// Free a memory block.
@@ -88,61 +101,3 @@ pub fn align_up(size: usize) -> usize {
     let align = align_of::<u128>();
     (size + align - 1) & !(align - 1)
 }
-
-// VERIFICATION -----------------------------------------------------------------------------------
-#[cfg(kani)]
-mod verification {
-    use super::*;
-    use crate::mem::alloc::MAX_ADDR;
-
-    fn mock_ptr_write<T>(dst: *mut T, src: T) {
-        // noop
-    }
-
-    #[kani::proof]
-    #[kani::stub(core::ptr::write, mock_ptr_write)]
-    fn proof_init_allocator_good() {
-        const MAX_REGIONS: usize = 8;
-        let regions: [(&str, usize, usize); MAX_REGIONS] =
-            core::array::from_fn(|i| ("dummy", kani::any(), kani::any()));
-
-        // contrain all regions
-        for &(_, base, size) in regions.iter() {
-            kani::assume(base % align_of::<u128>() == 0);
-            kani::assume(base > 0);
-            kani::assume(size > 0);
-            kani::assume(size < alloc::MAX_ADDR && size > alloc::BestFitAllocator::MIN_RANGE_SIZE);
-            kani::assume(base < alloc::MAX_ADDR - size);
-        }
-
-        // for any i, j, i != j as indices into the memory regions the following should hold
-        let i: usize = kani::any();
-        let j: usize = kani::any();
-        kani::assume(i < MAX_REGIONS);
-        kani::assume(j < MAX_REGIONS);
-        kani::assume(i != j);
-
-        // non-overlapping regions
-        let (_, base_i, size_i) = regions[i];
-        let (_, base_j, size_j) = regions[j];
-        kani::assume(base_i + size_i <= base_j || base_j + size_j <= base_i);
-
-        // verify memory init
-        assert!(init_memory(&regions).is_ok());
-    }
-
-    #[kani::proof]
-    fn check_align_up() {
-        let size = kani::any();
-        kani::assume(size > 0);
-
-        let align = align_up(size);
-        assert_ne!(align, 0);
-
-        if align != usize::MAX {
-            assert_eq!(align % align_of::<u128>(), 0);
-            assert!(align >= size);
-        }
-    }
-}
-// END VERIFICATION

@@ -1,4 +1,5 @@
 use core::fmt::Display;
+use core::mem::align_of;
 
 #[repr(C)]
 pub struct ExcepStackFrame {
@@ -43,6 +44,11 @@ impl Display for ExcepStackFrame {
 
 const BACKTRACE_MAX_FRAMES: usize = 20;
 
+#[inline]
+fn is_call_aligned(ptr: *const usize) -> bool {
+    (ptr as usize).is_multiple_of(align_of::<usize>())
+}
+
 #[repr(C)]
 pub struct ExcepBacktrace {
     stack_frame: ExcepStackFrame,
@@ -79,6 +85,11 @@ impl Display for ExcepBacktrace {
             writeln!(f, "0:     0x{:08x}", self.stack_frame.pc)?;
         }
 
+        if fp.is_null() || !is_call_aligned(fp) {
+            writeln!(f, "<invalid frame pointer: 0x{:08x}>", fp as usize)?;
+            return writeln!(f);
+        }
+
         for i in 1..BACKTRACE_MAX_FRAMES {
             // Read the return address from the stack.
             let ret_addr = unsafe { fp.add(1).read_volatile() };
@@ -89,6 +100,9 @@ impl Display for ExcepBacktrace {
                 break;
             }
 
+            // Return addresses in Thumb mode carry bit0 = 1.
+            let ret_addr = ret_addr & !1;
+
             // Print the return address.
             if let Some(symbol) = crate::debug::find_nearest_symbol(ret_addr) {
                 writeln!(f, "{i}:     {symbol} (0x{ret_addr:08x})")?;
@@ -98,6 +112,19 @@ impl Display for ExcepBacktrace {
 
             // If the next frame pointer is 0 or 1. (thumb mode adds +1 to the address)
             if next_fp == 0 || next_fp == 1 {
+                break;
+            }
+
+            let fp_addr = fp as usize;
+            let next_fp_addr = next_fp;
+
+            if next_fp_addr <= fp_addr {
+                writeln!(f, "<invalid frame pointer: 0x{next_fp_addr:08x}>")?;
+                break;
+            }
+
+            if !is_call_aligned(next_fp_addr as *const usize) {
+                writeln!(f, "<invalid frame pointer: 0x{next_fp_addr:08x}>")?;
                 break;
             }
 

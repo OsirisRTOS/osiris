@@ -1,19 +1,21 @@
-use core::{ffi::c_void, num::NonZero, ptr::NonNull};
+use crate::{Result, mem::PhysAddr};
+use core::{ffi::c_void, num::NonZero};
 
-use crate::Result;
+pub type EntryFn = extern "C" fn();
+pub type FinFn = extern "C" fn() -> !;
 
-pub struct StackDescriptor {
-    pub top: NonNull<u32>,
+pub struct Descriptor {
+    pub top: PhysAddr,
     pub size: NonZero<usize>,
-    pub entry: extern "C" fn(),
-    pub fin: Option<extern "C" fn() -> !>,
+    pub entry: EntryFn,
+    pub fin: Option<FinFn>,
 }
 
 pub trait Stacklike {
     type ElemSize: Copy;
     type StackPtr;
 
-    unsafe fn new(desc: StackDescriptor) -> Result<Self>
+    unsafe fn new(desc: Descriptor) -> Result<Self>
     where
         Self: Sized;
 

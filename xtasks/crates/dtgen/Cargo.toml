@@ -11,10 +11,13 @@ path = "src/lib.rs"
 name = "dtgen"
 path = "src/main.rs"
 
-[dependencies]
+[target.'cfg(not(target_os = "none"))'.dependencies]
 fdt = "0.1.5"
+logging = { workspace = true }
+log = "0.4.27"
 clap = { version = "4", features = ["derive"] }
 quote = "1"
 proc-macro2 = "1"
 prettyplease = "0.2"
 syn = { version = "2", features = ["full"] }
+indoc = "2.0.7"

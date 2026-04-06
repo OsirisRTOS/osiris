@@ -3,8 +3,15 @@ name = "hello-world"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "hello-world"
+path = "src/main.rs"
+test = false
+bench = false
+doctest = false
+
 [dependencies]
-osiris = { path = "../../" }
+osiris = { workspace = true }
 
 [build-dependencies]
 cfg_aliases = "0.2.1"
