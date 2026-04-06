@@ -7,6 +7,10 @@ config *args:
 
 example name *args: (build args)
     cargo build -p {{name}} {{args}}
+    cargo xtask --release injector Cargo.toml
+    # TODO: This does override the injector binary
+    # Post build steps should be target specific, this is just a temporary hack
+    cargo objcopy -p {{name}} {{args}} -- -O binary {{name}}.bin
 
 fmt *args:
     cargo fmt {{args}}
