@@ -23,7 +23,7 @@ struct Cli {
 enum Subcommand {
     /// Load a preset configuration.
     Load {
-        /// Name of the preset to load. Must correspond to a file in the `presets/` directory without the `.toml` extension.
+        /// Name of the preset to load. Can either be a path, or the name of a file in the `presets/` directory without the `.toml` extension.
         preset: String,
         /// Do not ask for confirmation.
         #[arg(long, default_value_t = false)]
@@ -79,8 +79,14 @@ fn ask_confirmation(prompt: &str) -> bool {
 }
 
 fn run_load_preset(preset_name: &str, no_confirm: bool, current_dir: &Path) -> Result<(), Error> {
-    // Load the preset file from the `presets/` directory.
-    let preset_path = PathBuf::from("presets").join(format!("{preset_name}.toml"));
+    // Load the file, or get it from the `presets/` directory
+    let pb = PathBuf::from(preset_name);
+    let preset_path = if pb.is_file() {
+        pb
+    } else {
+        PathBuf::from("presets").join(format!("{preset_name}.toml"))
+    };
+
     let preset = config::load_toml(&preset_path)?;
 
     let config_path = current_dir.join("config.toml");
