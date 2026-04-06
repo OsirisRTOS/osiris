@@ -158,7 +158,7 @@ jobs:
         run: just config load stm32l4r5zi_def --no-confirm
 
       - name: Generate docs
-        run: cargo doc --no-deps --workspace
+        run: cargo doc --document-private-items --no-deps --workspace
 
       - name: Upload docs artifact
         uses: actions/upload-artifact@v4
