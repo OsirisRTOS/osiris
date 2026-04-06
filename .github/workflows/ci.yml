@@ -89,6 +89,8 @@ jobs:
     needs: [container]
     container:
       image: ${{ needs.container.outputs.container_name }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -104,6 +106,8 @@ jobs:
     needs: [container]
     container:
       image: ${{ needs.container.outputs.container_name }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -122,6 +126,8 @@ jobs:
     needs: [container]
     container:
       image: ${{ needs.container.outputs.container_name }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -140,6 +146,8 @@ jobs:
     needs: [container]
     container:
       image: ${{ needs.container.outputs.container_name }}
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
