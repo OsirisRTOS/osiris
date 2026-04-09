@@ -52,6 +52,7 @@
                         glibc_multi
                         ninja
                         nix-tools.packages.${pkgs.stdenv.hostPlatform.system}.kani
+                        dtc
 
                         stlink
                     ];
