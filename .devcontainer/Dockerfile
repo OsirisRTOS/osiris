@@ -49,6 +49,7 @@ RUN --mount=type=cache,target=/var/cache/dnf,id=dev-dnf \
 	arm-none-eabi-gcc-c++ \
 	arm-none-eabi-newlib \
 	cmake \
+	repo \
 	git \
 	make \
 	ninja-build \
