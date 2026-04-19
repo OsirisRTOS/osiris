@@ -14,12 +14,17 @@ use std::process;
 #[command(name = "injector")]
 #[command(about = "Patches runtime symbols into the kernel ELF", long_about = None)]
 struct Cli {
-    /// Path to the crate's manifest.
-    manifest: PathBuf,
+    /// Path to the crate's manifest (used to discover ELF binaries).
+    /// Not needed when --elf is given.
+    manifest: Option<PathBuf>,
 
     /// Target triple. If not specified, will be read from .cargo/config.toml
     #[arg(short, long)]
     target: Option<String>,
+
+    /// Patch a specific ELF file directly, bypassing cargo metadata discovery.
+    #[arg(long)]
+    elf: Option<PathBuf>,
 }
 
 fn extract_section(file_path: &PathBuf, section_name: &str) -> Result<Vec<u8>, String> {
@@ -188,11 +193,19 @@ fn main() {
 
     let cli = Cli::parse();
 
-    let binaries = match extract_binaries(&cli.manifest, cli.target) {
-        Ok(bins) => bins,
-        Err(e) => {
-            log::error!("{}", e);
+    let binaries = if let Some(elf) = cli.elf {
+        vec![elf]
+    } else {
+        let manifest = cli.manifest.unwrap_or_else(|| {
+            log::error!("either <MANIFEST> or --elf must be provided");
             process::exit(1);
+        });
+        match extract_binaries(&manifest, cli.target) {
+            Ok(bins) => bins,
+            Err(e) => {
+                log::error!("{}", e);
+                process::exit(1);
+            }
         }
     };
 
