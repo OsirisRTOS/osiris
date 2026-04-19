@@ -188,7 +188,7 @@ fn forward_fpu_config(config: &mut Config) -> Result<()> {
     config.asmflag(format!("-mfpu={fpu_type}"));
     config.asmflag(format!("-mfloat-abi={float_abi}"));
 
-    println!("cargo::info=ARM FPU: {fpu_type}, Float ABI: {float_abi}");
+    println!("cargo::warning=ARM FPU: {fpu_type}, Float ABI: {float_abi}");
 
     Ok(())
 }
