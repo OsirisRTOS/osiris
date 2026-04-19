@@ -48,7 +48,11 @@ add_custom_command(
   COMMAND ${CMAKE_C_COMPILER} -E -P -x c
           ${CONFIG_DEFINES}
           ${LINKER_SCRIPT_IN}
-          -o ${LINKER_SCRIPT_OUT}
+          -o ${LINKER_SCRIPT_OUT}.tmp
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${LINKER_SCRIPT_OUT}.tmp
+          ${LINKER_SCRIPT_OUT}
+  COMMAND ${CMAKE_COMMAND} -E remove ${LINKER_SCRIPT_OUT}.tmp
   DEPENDS ${LINKER_SCRIPT_IN} ${DEPS_FILE}
   COMMENT "Generating link.ld"
   VERBATIM
