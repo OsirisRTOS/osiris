@@ -23,69 +23,31 @@ use std::{
     process::Command,
 };
 
-/// Determines the host target triple by querying the Rust compiler.
-///
-/// This function executes `rustc -vV` and parses the output to extract
-/// the host triple, which is used to detect when we're building for the
-/// host platform versus a cross-compilation target.
-///
-/// # Returns
-///
-/// The host target triple as a string (e.g., "x86_64-unknown-linux-gnu")
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - `rustc` command execution fails
-/// - Output cannot be parsed as UTF-8
-/// - Host triple line is not found in compiler output
-fn host_triple() -> Result<String> {
-    let out = Command::new("rustc")
-        .arg("-vV")
-        .output()
-        .context("Failed to get host triple")?;
+fn check_cortex_m() -> bool {
+    let target = env::var("TARGET").unwrap();
 
-    let s = String::from_utf8(out.stdout)?;
-    let triple = s
-        .lines()
-        .find_map(|l| l.strip_prefix("host: ").map(str::to_owned))
-        .context("could not parse host triple")?;
-    Ok(triple)
-}
-
-/// Sets ARM core-specific Rust configuration flags based on the target architecture.
-///
-/// This function analyzes the TARGET environment variable and emits appropriate
-/// `cargo::rustc-cfg` directives to enable conditional compilation for different
-/// ARM Cortex-M cores:
-///
-/// - `cm0` for Cortex-M0/M0+ (thumbv6m*)
-/// - `cm3` for Cortex-M3 (thumbv7m*)  
-/// - `cm4` for Cortex-M4/M7 (thumbv7em*)
-///
-/// These cfg flags can be used in Rust code with `#[cfg(cm4)]` for core-specific
-/// optimizations or feature availability.
-///
-/// # Returns
-///
-/// `Ok(())` on success
-///
-/// # Errors
-///
-/// Returns an error if the TARGET environment variable is not set
-fn set_arm_core_cfg() -> Result<()> {
-    // Add a rust cfg based on the target architecture. For thumbv7em we set "cortex-m4".
-    let target = env::var("TARGET").context("TARGET environment variable not set")?;
+    let mut is_cortex_m = true;
 
     if target.starts_with("thumbv6m") {
-        println!("cargo::rustc-cfg=cm0");
+        println!("cargo:rustc-cfg=cm0");
     } else if target.starts_with("thumbv7m") {
-        println!("cargo::rustc-cfg=cm3");
+        println!("cargo:rustc-cfg=cm3");
     } else if target.starts_with("thumbv7em") {
-        println!("cargo::rustc-cfg=cm4");
+        println!("cargo:rustc-cfg=cm4");
+    } else if target.starts_with("thumbv8m.base") {
+        println!("cargo:rustc-cfg=cm23");
+    } else if target.starts_with("thumbv8m.main") {
+        println!("cargo:rustc-cfg=cm33");
+    } else {
+        is_cortex_m = false;
     }
 
-    Ok(())
+    if is_cortex_m {
+        println!("cargo:rustc-cfg=cortex_m");
+        return true;
+    }
+
+    false
 }
 
 /// Forwards OSIRIS_* environment variables to CMake configuration.
@@ -225,35 +187,6 @@ fn generate_bindings(out: &Path, hal: &Path) -> Result<()> {
 
     println!("cargo::rerun-if-changed={}", hal.display());
     Ok(())
-}
-
-/// Detects if we're building for the host platform and enables host-only features.
-///
-/// This function compares the current target with the host triple to determine
-/// if we're building for the host platform rather than cross-compiling. When
-/// building for host, it enables the "host" feature and skips HAL compilation
-/// since hardware-specific code isn't needed.
-///
-/// # Returns
-///
-/// `true` if building for host platform, `false` for cross-compilation
-fn check_for_host() -> bool {
-    // Enable host feature when target triplet is equal to host target
-    match host_triple() {
-        Ok(host) => {
-            if host == env::var("TARGET").unwrap_or_default() {
-                println!("cargo::rustc-cfg=feature=\"host\"");
-                println!("cargo::warning=Building for host, skipping HAL build.");
-                // Only build when we are not on the host
-                return true;
-            }
-        }
-        Err(e) => {
-            println!("cargo::warning=Could not determine host triple: {e}");
-        }
-    }
-
-    false
 }
 
 /// Error handling wrapper that converts Result failures to build script exit.
@@ -397,8 +330,7 @@ mod dt {
     pub fn build_device_tree(
         out: &Path,
     ) -> Result<dtgen::ir::DeviceTree, Box<dyn std::error::Error>> {
-        let dts = std::env::var("OSIRIS_TUNING_DTS")
-            .expect("OSIRIS_TUNING_DTS environment variable not set");
+        let dts = std::env::var("OSIRIS_DTS").expect("OSIRIS_DTS environment variable not set");
         let workspace_root = workspace_dir().ok_or("Could not determine workspace root")?;
         let dts_path = workspace_root.join("boards").join(dts);
         println!("cargo::rerun-if-changed={}", dts_path.display());
@@ -543,6 +475,10 @@ mod dt {
 ///
 /// Exits with error code 1 if any critical build step fails
 fn main() {
+    if !hal_builder::check_enabled("cortex-m") || !check_cortex_m() {
+        return;
+    }
+
     let out = env::var("OUT_DIR").unwrap();
     let out = Path::new(&out);
     println!("cargo::rustc-link-search={}", out.display());
@@ -560,18 +496,11 @@ fn main() {
 
         if hal.exists() {
             fail_on_error(generate_bindings(&out, &hal));
-            fail_on_error(set_arm_core_cfg());
-
             let vector_code = vector_table::generate();
 
             if let Err(e) = fs::write(PathBuf::from(&out).join("vector_table.rs"), vector_code) {
                 println!("cargo::error=Failed to write vector_table.rs: {e}");
                 std::process::exit(1);
-            }
-
-            // Only build when we are not on the host
-            if check_for_host() {
-                return;
             }
 
             let build_dir = PathBuf::from(&out).join("build");

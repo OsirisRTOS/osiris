@@ -16,11 +16,11 @@ fmt *args:
     cargo fmt {{args}}
 
 verify *args:
-    # This is giga hacky. But we need it until kani updates to the next version of cargo.
-    OSIRIS_STACKPAGES=1 cargo kani -Z concrete-playback --concrete-playback=print -Z stubbing {{args}}
+    # This is a temporary hack.
+    OSIRIS_STACKPAGES=1 OSIRIS_MACHINE=cortex-m RUSTFLAGS="-Zcrate-attr=feature(cfg_select)" cargo kani -Z concrete-playback --concrete-playback=print -Z stubbing {{args}}
 
 test *args:
-    cargo test {{args}}
+    cargo test --target host-tuple {{args}}
 
 cov *args:
     cargo tarpaulin --out Lcov --skip-clean --engine llvm {{args}}

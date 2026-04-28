@@ -1,6 +1,10 @@
 # This is the default configuration for the STM32L4R5ZI MCU.
 
 [env]
+# Core
+OSIRIS_DTS = "nucleo_l4r5zi.dts"
+OSIRIS_MACHINE = "cortex-m"
+
 # Debugging configuration
 OSIRIS_DEBUG_UART = "LPUART1"
 OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
@@ -8,7 +12,7 @@ OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
 # Tuning parameters
 OSIRIS_TUNING_ENABLEFPU = "false"
 OSIRIS_STACKPAGES = "1"
-OSIRIS_TUNING_DTS = "nucleo_l4r5zi.dts"
+
 
 [build]
 target = "thumbv7em-none-eabi"

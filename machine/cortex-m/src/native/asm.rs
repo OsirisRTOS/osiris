@@ -1,4 +1,3 @@
-#[cfg(not(feature = "host"))]
 #[macro_export]
 macro_rules! __macro_nop {
     () => {
@@ -6,17 +5,10 @@ macro_rules! __macro_nop {
     };
 }
 
-#[cfg(feature = "host")]
-#[macro_export]
-macro_rules! __macro_nop {
-    () => {{}};
-}
-
 // This prefixing is a little cursed but necessary to avoid name conflicts, because #[macro_export] exports macros at the top level.
-pub use crate::__macro_nop as nop;
+pub use __macro_nop as nop;
 
 /// Macro for doing a system call.
-#[cfg(not(feature = "host"))]
 #[macro_export]
 macro_rules! __macro_syscall {
     ($num:expr) => {
@@ -102,19 +94,8 @@ macro_rules! __macro_syscall {
     };
 }
 
-#[cfg(feature = "host")]
-#[macro_export]
-macro_rules! __macro_syscall {
-    ($num:expr) => {{ 0isize }};
-    ($num:expr, $arg0:expr) => {{ 0isize }};
-    ($num:expr, $arg0:expr, $arg1:expr) => {{ 0isize }};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr) => {{ 0isize }};
-    ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{ 0isize }};
-}
+pub use __macro_syscall as syscall;
 
-pub use crate::__macro_syscall as syscall;
-
-#[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn disable_irq_save() -> usize {
     use core::arch::asm;
@@ -133,13 +114,6 @@ pub fn disable_irq_save() -> usize {
     old
 }
 
-#[cfg(feature = "host")]
-#[inline(always)]
-pub fn disable_irq_save() -> usize {
-    0
-}
-
-#[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn are_interrupts_enabled() -> bool {
     use core::arch::asm;
@@ -151,13 +125,6 @@ pub fn are_interrupts_enabled() -> bool {
     primask == 0
 }
 
-#[cfg(feature = "host")]
-#[inline(always)]
-pub fn are_interrupts_enabled() -> bool {
-    true
-}
-
-#[cfg(not(feature = "host"))]
 #[inline(always)]
 pub fn enable_irq_restr(state: usize) {
     use core::arch::asm;
@@ -173,11 +140,6 @@ pub fn enable_irq_restr(state: usize) {
     }
 }
 
-#[cfg(feature = "host")]
-#[inline(always)]
-pub fn enable_irq_restr(state: usize) {}
-
-#[cfg(not(feature = "host"))]
 #[macro_export]
 macro_rules! __macro_startup_trampoline {
     () => {{
@@ -186,18 +148,8 @@ macro_rules! __macro_startup_trampoline {
     }};
 }
 
-#[cfg(feature = "host")]
-#[macro_export]
-macro_rules! __macro_startup_trampoline {
-    () => {{
-        use core::arch::naked_asm;
-        naked_asm!("")
-    }};
-}
+pub use __macro_startup_trampoline as startup_trampoline;
 
-pub use crate::__macro_startup_trampoline as startup_trampoline;
-
-#[cfg(not(feature = "host"))]
 #[macro_export]
 macro_rules! __macro_delay {
     ($cycles:expr) => {{
@@ -207,15 +159,8 @@ macro_rules! __macro_delay {
     }};
 }
 
-#[cfg(feature = "host")]
-#[macro_export]
-macro_rules! __macro_delay {
-    ($cycles:expr) => {{}};
-}
+pub use __macro_delay as delay;
 
-pub use crate::__macro_delay as delay;
-
-#[cfg(not(feature = "host"))]
 #[macro_export]
 macro_rules! __macro_fault_do_not_use_under_any_circumstances {
     () => {{
@@ -227,10 +172,4 @@ macro_rules! __macro_fault_do_not_use_under_any_circumstances {
     }};
 }
 
-#[cfg(feature = "host")]
-#[macro_export]
-macro_rules! __macro_fault_do_not_use_under_any_circumstances {
-    () => {{}};
-}
-
-pub use crate::__macro_fault_do_not_use_under_any_circumstances as fault_do_not_use_under_any_circumstances;
+pub use __macro_fault_do_not_use_under_any_circumstances as fault_do_not_use_under_any_circumstances;

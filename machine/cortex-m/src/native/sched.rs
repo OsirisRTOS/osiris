@@ -9,8 +9,6 @@ use core::{
 
 use hal_api::{Result, stack::Descriptor};
 
-use crate::print::println;
-
 // A default finalizer used if none is supplied: just spins forever.
 #[inline(never)]
 extern "C" fn default_finalizer() -> ! {

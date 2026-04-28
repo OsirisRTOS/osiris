@@ -29,11 +29,12 @@ macro_rules! println {
 #[allow(unused_imports)]
 pub(crate) use println;
 
+#[allow(unused)]
 pub struct Printer;
 
 impl Write for Printer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        crate::ArmMachine::print(s).map_err(|_| fmt::Error)?;
+        super::ArmMachine::print(s).map_err(|_| fmt::Error)?;
         Ok(())
     }
 }

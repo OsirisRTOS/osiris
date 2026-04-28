@@ -3,7 +3,7 @@
 
 use core::ptr::NonNull;
 
-use hal::mem::PhysAddr;
+use crate::hal::mem::PhysAddr;
 
 use crate::error::Result;
 

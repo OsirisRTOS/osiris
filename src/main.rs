@@ -4,7 +4,7 @@
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
 pub extern "C" fn main() -> ! {
-    hal::asm::startup_trampoline!();
+    osiris::hal::asm::startup_trampoline!();
 }
 
 #[unsafe(no_mangle)]

@@ -1,15 +1,15 @@
-#![cfg_attr(target_os = "none", no_std)]
-#![cfg(not(target_os = "none"))]
-
 use core::result::Result::Ok;
-use hal_api::{Result, Schedable};
+pub use hal_api::*;
 
 pub mod asm;
 pub mod sched;
 
-pub struct TestingMachine;
+pub type Machine = StubMachine;
+pub type Stack = sched::StubStack;
 
-impl hal_api::Machinelike for TestingMachine {
+pub struct StubMachine;
+
+impl hal_api::Machinelike for StubMachine {
     fn init() {
         // No hardware to initialize in testing.
     }
@@ -67,7 +67,7 @@ impl hal_api::Machinelike for TestingMachine {
     }
 }
 
-impl Schedable for TestingMachine {
+impl Schedable for StubMachine {
     fn trigger_reschedule() {
         // No scheduling in testing.
     }

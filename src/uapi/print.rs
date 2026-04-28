@@ -1,5 +1,6 @@
 use core::fmt::{self, Write};
 
+use crate::hal;
 use hal::Machinelike;
 
 #[macro_export]

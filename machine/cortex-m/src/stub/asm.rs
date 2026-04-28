@@ -6,7 +6,7 @@ macro_rules! __macro_nop {
 }
 
 // This prefixing is a little cursed but necessary to avoid name conflicts, because #[macro_export] exports macros at the top level.
-pub use crate::__macro_nop as nop;
+pub use __macro_nop as nop;
 
 /// Macro for doing a system call.
 #[macro_export]
@@ -18,7 +18,7 @@ macro_rules! __macro_syscall {
     ($num:expr, $arg0:expr, $arg1:expr, $arg2:expr, $arg3:expr) => {{ 0isize }};
 }
 
-pub use crate::__macro_syscall as syscall;
+pub use __macro_syscall as syscall;
 
 #[inline(always)]
 pub fn disable_irq_save() -> usize {
@@ -41,7 +41,7 @@ macro_rules! __macro_startup_trampoline {
     }};
 }
 
-pub use crate::__macro_startup_trampoline as startup_trampoline;
+pub use __macro_startup_trampoline as startup_trampoline;
 
 #[macro_export]
 macro_rules! __macro_delay {
@@ -52,4 +52,4 @@ macro_rules! __macro_delay {
     }};
 }
 
-pub use crate::__macro_delay as delay;
+pub use __macro_delay as delay;
