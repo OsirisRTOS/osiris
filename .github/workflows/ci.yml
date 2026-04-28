@@ -61,19 +61,15 @@ jobs:
       fail-fast: false
       matrix:
         preset:
-          - default
           - stm32l4r5zi
         task:
           - build
           - test
           - verify
         include:
-          - preset: default
-            config:
-              path: config.toml
           - preset: stm32l4r5zi
             config:
-              path: presets/stm32l4r5zi_def.toml
+              name: stm32l4r5zi_def
     container:
       image: ${{ needs.container.outputs.container_name }}
     permissions:
@@ -86,7 +82,7 @@ jobs:
           submodules: recursive
 
       - name: Load config
-        run: just config load ${{ matrix.config.path }} --no-confirm
+        run: just config load ${{ matrix.config.name }} --no-confirm
 
       - name: Run task
         run: just ${{ matrix.task }}
