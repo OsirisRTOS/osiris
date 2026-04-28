@@ -25,6 +25,9 @@ test *args:
 cov *args:
     cargo tarpaulin --out Lcov --skip-clean --engine llvm {{args}}
 
+docs *args:
+    cargo doc --document-private-items --no-deps {{args}}
+
 clean:
     cargo clean
     rm -f Kernel.bin
