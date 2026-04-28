@@ -137,12 +137,6 @@ impl ArmStack {
         // R12 (dummy for alignment)
         // R11 - R4 (scratch - 0)
 
-        println!(
-            "Pushing IRQ return frame: sp offset {}, top: {:p}\n",
-            self.sp.offset(),
-            self.top
-        );
-
         unsafe {
             let mut write_index = self.sp.as_ptr(self.top);
 
