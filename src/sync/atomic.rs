@@ -10,6 +10,8 @@ compile_error!(
     "The `atomic-cas` feature requires the target to have atomic operations on at least 8-bit integers."
 );
 
+use crate::hal;
+
 #[allow(unused_imports)]
 pub use core::sync::atomic::Ordering;
 

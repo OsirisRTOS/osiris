@@ -3,6 +3,7 @@
 use core::fmt::Display;
 use core::{borrow::Borrow, ffi::c_void};
 
+use crate::hal;
 use hal::stack::{FinFn, Stacklike};
 use hal::{Stack, stack::EntryFn};
 use proc_macros::TaggedLinks;

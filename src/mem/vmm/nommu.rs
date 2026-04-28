@@ -1,6 +1,6 @@
 use core::ptr::copy_nonoverlapping;
 
-use hal::mem::{PhysAddr, VirtAddr};
+use crate::hal::mem::{PhysAddr, VirtAddr};
 
 use crate::{
     error::Result,

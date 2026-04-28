@@ -1,7 +1,0 @@
-# This is the default configuration for running tests and verification.
-
-[env]
-OSIRIS_STACKPAGES = "1"
-
-[build]
-target = "host-tuple"

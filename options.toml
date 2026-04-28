@@ -26,12 +26,6 @@ description = "Enables the Floating Point Unit (FPU). This is required for appli
 type = "Boolean"
 default = false
 
-[tuning.dts]
-name = "Device Tree Source"
-description = "Board DTS file targeted to build OS for. Relative to the toplevel boards/ directory."
-type = "String"
-default = "nucleo_l4r5zi.dts"
-
 [stackpages]
 name = "Stack Pages"
 description = "Number of pages to allocate for the kernel stack."

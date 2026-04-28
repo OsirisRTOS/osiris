@@ -20,7 +20,9 @@ name = "Kernel"
 path = "src/main.rs"
 
 [dependencies]
-hal = { package = "hal-select", path = "machine/select" }
+hal_api = { package = "hal-api", path = "machine/api" }
+hal_cortex_m = { package = "hal-cortex-m", path = "machine/cortex-m" }
+
 proc_macros = { package = "macros", path = "macros" }
 envparse = "0.1.0"
 bitflags = "2.10.0"
@@ -28,8 +30,6 @@ defmt = { version = "1.0", optional = true }
 defmt-rtt = { version = "1.0", optional = true }
 
 [dev-dependencies]
-# This is a host-compatible HAL which will be used for running tests and verification on the host.
-hal-testing = { path = "machine/testing", features = [] }
 rand = "0.8.5"
 
 [target.'cfg(kani_ra)'.dependencies]

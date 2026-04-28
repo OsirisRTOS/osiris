@@ -1,6 +1,5 @@
+use crate::hal::{self, Machinelike};
 use core::fmt::{self, Write};
-
-use hal::Machinelike;
 
 pub struct Printer;
 

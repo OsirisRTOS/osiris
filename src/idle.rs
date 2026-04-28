@@ -1,3 +1,4 @@
+use crate::hal;
 use crate::sched;
 
 extern "C" fn entry() {

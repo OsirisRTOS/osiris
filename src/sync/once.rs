@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use crate::hal;
+
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use core::sync::atomic::AtomicU8;

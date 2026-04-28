@@ -1,4 +1,4 @@
-use hal::Machinelike;
+use crate::hal::{self, Machinelike};
 
 use crate::{sched, sync};
 

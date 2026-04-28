@@ -1,6 +1,8 @@
 use core::fmt::Display;
 use core::mem::align_of;
 
+use super::debug;
+
 #[repr(C)]
 pub struct ExcepStackFrame {
     r0: u32,
@@ -79,7 +81,7 @@ impl Display for ExcepBacktrace {
         let mut fp = self.initial_fp;
         write!(f, "\nBacktrace:\n")?;
 
-        if let Some(symbol) = crate::debug::find_nearest_symbol(self.stack_frame.pc as usize) {
+        if let Some(symbol) = debug::find_nearest_symbol(self.stack_frame.pc as usize) {
             writeln!(f, "0:     {} (0x{:08x})", symbol, self.stack_frame.pc)?;
         } else {
             writeln!(f, "0:     0x{:08x}", self.stack_frame.pc)?;
@@ -104,7 +106,7 @@ impl Display for ExcepBacktrace {
             let ret_addr = ret_addr & !1;
 
             // Print the return address.
-            if let Some(symbol) = crate::debug::find_nearest_symbol(ret_addr) {
+            if let Some(symbol) = debug::find_nearest_symbol(ret_addr) {
                 writeln!(f, "{i}:     {symbol} (0x{ret_addr:08x})")?;
             } else {
                 writeln!(f, "{i}:     0x{ret_addr:08x}")?;
@@ -148,9 +150,9 @@ impl Display for FaultStatus {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.fault {
             hal_api::Fault::Hard => write!(f, "Hard Fault - No additional info"),
-            hal_api::Fault::MemManage => crate::debug::print_mem_manage_fault_status(f),
-            hal_api::Fault::Bus => crate::debug::print_bus_fault_status(f),
-            hal_api::Fault::Usage => crate::debug::print_usage_fault_status(f),
+            hal_api::Fault::MemManage => debug::print_mem_manage_fault_status(f),
+            hal_api::Fault::Bus => debug::print_bus_fault_status(f),
+            hal_api::Fault::Usage => debug::print_usage_fault_status(f),
         }
     }
 }
