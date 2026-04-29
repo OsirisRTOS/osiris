@@ -1,5 +1,6 @@
 //! This module provides access to the global memory allocator.
 
+use crate::hal;
 use crate::mem::pfa::PAGE_SIZE;
 use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 use crate::sync::spinlock::SpinLocked;

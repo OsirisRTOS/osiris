@@ -2,8 +2,7 @@
 #![allow(missing_docs)]
 
 use core::panic::PanicInfo;
-
-use crate::asm;
+use super::asm;
 
 pub fn panic_handler(_info: &PanicInfo) -> ! {
     asm::disable_irq_save();

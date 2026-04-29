@@ -1,8 +1,6 @@
-#![cfg_attr(all(not(test), not(feature = "host")), no_std)]
-
 use core::ffi::c_char;
 
-use hal_api::{Result, Schedable};
+pub use hal_api::*;
 
 pub mod asm;
 pub mod debug;
@@ -29,6 +27,9 @@ unsafe extern "C" {}
 
 include!(concat!(env!("OUT_DIR"), "/vector_table.rs"));
 
+pub type Machine = ArmMachine;
+pub type Stack = sched::ArmStack;
+
 pub struct ArmMachine;
 
 impl hal_api::Machinelike for ArmMachine {
@@ -41,7 +42,6 @@ impl hal_api::Machinelike for ArmMachine {
     }
 
     fn print(s: &str) -> Result<()> {
-        use crate::asm;
         let state = asm::disable_irq_save();
 
         if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0)

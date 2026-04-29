@@ -5,7 +5,7 @@ use core::num::NonZero;
 
 use envparse::parse_env;
 
-use hal::stack::Stacklike;
+use crate::hal::{self, stack::Stacklike};
 
 use crate::error::Result;
 use crate::mem;

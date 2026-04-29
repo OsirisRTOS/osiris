@@ -1,6 +1,6 @@
 // The top level page frame allocator.
 
-use hal::mem::PhysAddr;
+use crate::hal::mem::PhysAddr;
 
 use crate::error::Result;
 use crate::sync::spinlock::SpinLocked;

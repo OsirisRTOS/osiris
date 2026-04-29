@@ -1,6 +1,5 @@
-use hal::mem::{PhysAddr, VirtAddr};
-
 use crate::error::Result;
+use crate::hal::mem::{PhysAddr, VirtAddr};
 
 mod nommu;
 

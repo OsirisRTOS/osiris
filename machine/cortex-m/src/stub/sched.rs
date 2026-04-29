@@ -6,9 +6,9 @@ use hal_api::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct TestingStack {}
+pub struct StubStack {}
 
-impl Stacklike for TestingStack {
+impl Stacklike for StubStack {
     type ElemSize = usize;
     type StackPtr = *mut c_void;
 

@@ -1,42 +1,3 @@
-# We build qemu in a separate stage to avoid installing a bunch of build dependencies in the final image
-FROM fedora:latest AS qemu-builder
-
-RUN --mount=type=cache,target=/var/cache/dnf,id=qemu-dnf \
-	dnf update -y && \
-	dnf install -y \
-	@development-tools \
-	git \
-	clang \
-	python3 \
-	python3-pip \
-	python3-setuptools \
-	python3-wheel \
-	ninja-build \
-	clang \
-	glib2-devel \
-	flex \
-	bison \
-	zlib-devel \
-	meson \
-	pixman-devel \
-	dtc && \
-	ln -sf /usr/bin/clang /usr/bin/cc && \
-	ln -sf /usr/bin/clang++ /usr/bin/c++
-
-RUN	git clone --depth 1 https://github.com/thomasw04/qemu.git /tmp/qemu
-
-RUN --mount=type=cache,target=/tmp/qemu/build \
-	--mount=type=cache,target=/tmp/.cache/pip \
-	export PIP_CACHE_DIR=/tmp/.cache/pip && \
-	cd /tmp/qemu && \
-	python3 -m venv .venv && \
-	. .venv/bin/activate && \
-	pip install --no-cache-dir tomli sphinx && \
-	mkdir -p build && cd build && \
-	../configure --disable-werror --extra-cflags="-Wno-error -fdeclspec" --target-list=arm-softmmu,arm-linux-user --enable-kvm && \
-	make -j$(nproc) && \
-	make install
-
 # This is the final image
 FROM fedora:latest AS devcontainer
 
@@ -116,7 +77,5 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/usr/local/cargo/target \
 	CARGO_TARGET_DIR=/usr/local/cargo/target cargo install --locked cbindgen
-
-COPY --from=qemu-builder /usr/local/ /usr/local/
 
 CMD ["/bin/bash"]

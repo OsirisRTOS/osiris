@@ -11,7 +11,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use hal::Schedable;
+use crate::hal::{self, Schedable};
 
 use crate::{
     error::Result,
@@ -267,6 +267,7 @@ impl<const N: usize> Scheduler<N> {
     /// If the thread is currently sleeping, this will trigger a wakeup on the next reschedule. Note this does not trigger an immediate reschedule.
     ///
     /// Returns an error if the thread does not exist, or if the thread is not currently sleeping.
+    #[allow(dead_code)]
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
         WaiterView::<N>::with(&mut self.threads, |view| {
             self.wakeup.remove(uid, view)?;

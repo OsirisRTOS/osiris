@@ -1,3 +1,4 @@
+use crate::hal;
 use hal::stack::EntryFn;
 
 pub fn sleep(_until: u64) -> isize {

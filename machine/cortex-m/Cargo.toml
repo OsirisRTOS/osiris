@@ -1,5 +1,5 @@
 [package]
-name = "hal-arm"
+name = "hal-cortex-m"
 version = "0.1.0"
 authors = ["Thomas Wachter"]
 edition = "2024"
@@ -13,6 +13,7 @@ hal-api = { path = "../api" }
 critical-section = { version = "1.2", features = ["restore-state-usize"] }
 
 [build-dependencies]
+hal-builder = { path = "../builder" }
 cbindgen = "0.28.0"
 bindgen = "0.72.0"
 cmake = "0.1.54"
@@ -20,13 +21,10 @@ anyhow = "1.0.99"
 serde_json = "1.0.145"
 quote = "1.0.26"
 syn = { version = "2.0.36", features = ["full"] }
-dtgen = { workspace = true }
 
 [features]
-# This enables the host implementation of the HAL. Mainly used for testing.
-host = []
 panic-exit = []
 panic-uart = []
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cm4)']}
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cortex_m)', 'cfg(disabled)'] }

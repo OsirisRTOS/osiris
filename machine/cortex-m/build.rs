@@ -23,69 +23,31 @@ use std::{
     process::Command,
 };
 
-/// Determines the host target triple by querying the Rust compiler.
-///
-/// This function executes `rustc -vV` and parses the output to extract
-/// the host triple, which is used to detect when we're building for the
-/// host platform versus a cross-compilation target.
-///
-/// # Returns
-///
-/// The host target triple as a string (e.g., "x86_64-unknown-linux-gnu")
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - `rustc` command execution fails
-/// - Output cannot be parsed as UTF-8
-/// - Host triple line is not found in compiler output
-fn host_triple() -> Result<String> {
-    let out = Command::new("rustc")
-        .arg("-vV")
-        .output()
-        .context("Failed to get host triple")?;
+fn check_cortex_m() -> bool {
+    let target = env::var("TARGET").unwrap();
 
-    let s = String::from_utf8(out.stdout)?;
-    let triple = s
-        .lines()
-        .find_map(|l| l.strip_prefix("host: ").map(str::to_owned))
-        .context("could not parse host triple")?;
-    Ok(triple)
-}
-
-/// Sets ARM core-specific Rust configuration flags based on the target architecture.
-///
-/// This function analyzes the TARGET environment variable and emits appropriate
-/// `cargo::rustc-cfg` directives to enable conditional compilation for different
-/// ARM Cortex-M cores:
-///
-/// - `cm0` for Cortex-M0/M0+ (thumbv6m*)
-/// - `cm3` for Cortex-M3 (thumbv7m*)  
-/// - `cm4` for Cortex-M4/M7 (thumbv7em*)
-///
-/// These cfg flags can be used in Rust code with `#[cfg(cm4)]` for core-specific
-/// optimizations or feature availability.
-///
-/// # Returns
-///
-/// `Ok(())` on success
-///
-/// # Errors
-///
-/// Returns an error if the TARGET environment variable is not set
-fn set_arm_core_cfg() -> Result<()> {
-    // Add a rust cfg based on the target architecture. For thumbv7em we set "cortex-m4".
-    let target = env::var("TARGET").context("TARGET environment variable not set")?;
+    let mut is_cortex_m = true;
 
     if target.starts_with("thumbv6m") {
-        println!("cargo::rustc-cfg=cm0");
+        println!("cargo:rustc-cfg=cm0");
     } else if target.starts_with("thumbv7m") {
-        println!("cargo::rustc-cfg=cm3");
+        println!("cargo:rustc-cfg=cm3");
     } else if target.starts_with("thumbv7em") {
-        println!("cargo::rustc-cfg=cm4");
+        println!("cargo:rustc-cfg=cm4");
+    } else if target.starts_with("thumbv8m.base") {
+        println!("cargo:rustc-cfg=cm23");
+    } else if target.starts_with("thumbv8m.main") {
+        println!("cargo:rustc-cfg=cm33");
+    } else {
+        is_cortex_m = false;
     }
 
-    Ok(())
+    if is_cortex_m {
+        println!("cargo:rustc-cfg=cortex_m");
+        return true;
+    }
+
+    false
 }
 
 /// Forwards OSIRIS_* environment variables to CMake configuration.
@@ -227,35 +189,6 @@ fn generate_bindings(out: &Path, hal: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Detects if we're building for the host platform and enables host-only features.
-///
-/// This function compares the current target with the host triple to determine
-/// if we're building for the host platform rather than cross-compiling. When
-/// building for host, it enables the "host" feature and skips HAL compilation
-/// since hardware-specific code isn't needed.
-///
-/// # Returns
-///
-/// `true` if building for host platform, `false` for cross-compilation
-fn check_for_host() -> bool {
-    // Enable host feature when target triplet is equal to host target
-    match host_triple() {
-        Ok(host) => {
-            if host == env::var("TARGET").unwrap_or_default() {
-                println!("cargo::rustc-cfg=feature=\"host\"");
-                println!("cargo::warning=Building for host, skipping HAL build.");
-                // Only build when we are not on the host
-                return true;
-            }
-        }
-        Err(e) => {
-            println!("cargo::warning=Could not determine host triple: {e}");
-        }
-    }
-
-    false
-}
-
 /// Error handling wrapper that converts Result failures to build script exit.
 ///
 /// # Arguments
@@ -347,177 +280,6 @@ mod vector_table {
     }
 }
 
-// Device Tree Codegen ----------------------------------------------------------------------------
-
-mod dt {
-    use std::{
-        fs,
-        path::{Path, PathBuf},
-        process::Command,
-    };
-
-    use crate::workspace_dir;
-
-    /// Returns the compatible (vendor, name) tuple for the SoC node in the device tree.
-    pub fn soc(dt: &dtgen::ir::DeviceTree) -> Vec<(&str, &str)> {
-        let soc_node = dt
-            .nodes
-            .iter()
-            .find(|n| n.name == "soc")
-            .expect("Device tree must have a soc node");
-
-        soc_node
-            .compatible
-            .iter()
-            .filter_map(|s| {
-                let parts: Vec<&str> = s.split(',').collect();
-                if parts.len() == 2 {
-                    Some((parts[0], parts[1]))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn generate_device_tree(
-        dt: &dtgen::ir::DeviceTree,
-        out: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let rust_content = dtgen::generate_rust(dt);
-        std::fs::write(out.join("device_tree.rs"), rust_content)?;
-
-        let ld_content =
-            dtgen::generate_ld(dt).map_err(|e| format!("linker script generation failed: {e}"))?;
-        std::fs::write(out.join("prelude.ld"), ld_content)?;
-        println!("cargo::rustc-link-search=native={}", out.display());
-        Ok(())
-    }
-
-    pub fn build_device_tree(
-        out: &Path,
-    ) -> Result<dtgen::ir::DeviceTree, Box<dyn std::error::Error>> {
-        let dts = std::env::var("OSIRIS_TUNING_DTS")
-            .expect("OSIRIS_TUNING_DTS environment variable not set");
-        let workspace_root = workspace_dir().ok_or("Could not determine workspace root")?;
-        let dts_path = workspace_root.join("boards").join(dts);
-        println!("cargo::rerun-if-changed={}", dts_path.display());
-
-        // dependencies SoC/HAL/pins
-        let zephyr = Path::new(out).join("zephyr");
-        let hal_stm32 = Path::new(out).join("hal_stm32");
-
-        if !zephyr.exists() {
-            sparse_clone(
-                "https://github.com/zephyrproject-rtos/zephyr",
-                &zephyr,
-                // the west.yaml file is a manifest to manage/pin subprojects used for a specific zephyr
-                // release
-                &["include", "dts", "boards", "west.yaml"],
-                Some("v4.3.0"),
-            )?;
-        }
-
-        if !hal_stm32.exists() {
-            // retrieve from manifest
-            let hal_rev = get_hal_revision(&zephyr)?;
-            println!("cargo:warning=Detected hal_stm32 revision: {hal_rev}");
-
-            sparse_clone(
-                "https://github.com/zephyrproject-rtos/hal_stm32",
-                &hal_stm32,
-                &["dts"],
-                Some(&hal_rev),
-            )?;
-        }
-
-        //let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("device_tree.rs");
-        let include_paths = [
-            zephyr.join("include"),
-            zephyr.join("dts/arm/st"),
-            zephyr.join("dts/arm/st/l4"),
-            zephyr.join("dts"),
-            zephyr.join("dts/arm"),
-            zephyr.join("dts/common"),
-            zephyr.join("boards/st"),
-            hal_stm32.join("dts"),
-            hal_stm32.join("dts/st"),
-        ];
-        let include_refs: Vec<&Path> = include_paths.iter().map(PathBuf::as_path).collect();
-
-        for path in &include_paths {
-            if !path.exists() {
-                println!("cargo:warning=MISSING INCLUDE PATH: {:?}", path);
-            }
-        }
-
-        Ok(dtgen::parse_dts(&dts_path, &include_refs)?)
-    }
-
-    fn get_hal_revision(zephyr_path: &Path) -> Result<String, Box<dyn std::error::Error>> {
-        let west_yml = fs::read_to_string(zephyr_path.join("west.yml"))?;
-        let mut in_hal_stm32_block = false;
-
-        for line in west_yml.lines() {
-            let trimmed = line.trim();
-
-            // Check if we've entered the hal_stm32 section
-            if trimmed == "- name: hal_stm32" || trimmed == "name: hal_stm32" {
-                in_hal_stm32_block = true;
-                continue;
-            }
-
-            // If we are in the block, look for the revision
-            if in_hal_stm32_block {
-                if trimmed.starts_with("revision:") {
-                    return Ok(trimmed.replace("revision:", "").trim().to_string());
-                }
-
-                // If we hit a new project name before finding a revision, something is wrong
-                if trimmed.starts_with("- name:") || trimmed.starts_with("name:") {
-                    in_hal_stm32_block = false;
-                }
-            }
-        }
-
-        Err("Could not find hal_stm32 revision in west.yml".into())
-    }
-
-    fn sparse_clone(
-        url: &str,
-        dest: &Path,
-        paths: &[&str],
-        revision: Option<&str>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Command::new("git")
-            .args(["clone", "--filter=blob:none", "--no-checkout", url])
-            .arg(dest)
-            .status()?;
-
-        Command::new("git")
-            .args(["sparse-checkout", "init", "--cone"])
-            .current_dir(dest)
-            .status()?;
-
-        Command::new("git")
-            .arg("sparse-checkout")
-            .arg("set")
-            .args(paths)
-            .current_dir(dest)
-            .status()?;
-
-        let mut checkout = Command::new("git");
-        checkout.current_dir(dest).arg("checkout");
-
-        if let Some(rev) = revision {
-            checkout.arg(rev);
-        }
-
-        checkout.status()?;
-        Ok(())
-    }
-}
-
 /// Main build script entry point.
 ///
 /// This function orchestrates the entire build process:
@@ -543,25 +305,28 @@ mod dt {
 ///
 /// Exits with error code 1 if any critical build step fails
 fn main() {
-    let out = env::var("OUT_DIR").unwrap();
-    let out = Path::new(&out);
+    if !hal_builder::check_enabled("cortex-m") || !check_cortex_m() {
+        return;
+    }
+
+    let dts = hal_builder::dt::check_dts()
+        .expect("No DeviceTree specified. Set OSIRIS_DTS_PATH to specify.");
+    let out = hal_builder::read_path_env("OUT_DIR");
     println!("cargo::rustc-link-search={}", out.display());
 
-    let dt = dt::build_device_tree(out).unwrap_or_else(|e| {
+    let dt = hal_builder::dt::build_device_tree(&dts).unwrap_or_else(|e| {
         panic!("Failed to build device tree from DTS files: {e}");
     });
 
-    if let Err(e) = dt::generate_device_tree(&dt, out) {
+    if let Err(e) = hal_builder::dt::generate_device_tree(&dt, &out) {
         panic!("Failed to generate device tree scripts: {e}");
     }
 
-    for (vendor, name) in dt::soc(&dt) {
+    for (vendor, name) in hal_builder::dt::soc(&dt) {
         let hal = Path::new(vendor).join(name);
 
         if hal.exists() {
             fail_on_error(generate_bindings(&out, &hal));
-            fail_on_error(set_arm_core_cfg());
-
             let vector_code = vector_table::generate();
 
             if let Err(e) = fs::write(PathBuf::from(&out).join("vector_table.rs"), vector_code) {
@@ -569,19 +334,14 @@ fn main() {
                 std::process::exit(1);
             }
 
-            // Only build when we are not on the host
-            if check_for_host() {
-                return;
-            }
-
             let build_dir = PathBuf::from(&out).join("build");
 
             // Build the HAL library
             let mut libhal_config = cmake::Config::new(&hal);
             libhal_config.generator("Ninja");
-            libhal_config.define("OUT_DIR", out);
+            libhal_config.define("OUT_DIR", &out);
 
-            for (vendor, name) in dt::soc(&dt) {
+            for (vendor, name) in hal_builder::dt::soc(&dt) {
                 if vendor == "st" {
                     libhal_config.cflag(format!("-D{}xx", name.to_uppercase()));
                 }

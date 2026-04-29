@@ -1,9 +1,7 @@
-#[cfg(not(feature = "host"))]
 unsafe extern "C" {
     static __syms_area_start: usize;
 }
 
-#[cfg(not(feature = "host"))]
 #[repr(C)]
 struct SymtabEntry {
     name: usize,  // Offset into the string table
@@ -14,7 +12,6 @@ struct SymtabEntry {
     shndx: u16,   // Section index
 }
 
-#[cfg(not(feature = "host"))]
 pub fn find_nearest_symbol(addr: usize) -> Option<&'static str> {
     use core::ffi::CStr;
     use core::ffi::c_char;
@@ -59,13 +56,6 @@ pub fn find_nearest_symbol(addr: usize) -> Option<&'static str> {
     nearest_symbol
 }
 
-#[cfg(feature = "host")]
-pub fn find_nearest_symbol(_addr: usize) -> Option<&'static str> {
-    // In host mode, we do not have a symbol table.
-    None
-}
-
-#[cfg(all(not(feature = "host"), cm4))]
 pub fn print_mem_manage_fault_status(
     f: &mut core::fmt::Formatter<'_>,
 ) -> Result<(), core::fmt::Error> {
@@ -100,7 +90,6 @@ pub fn print_mem_manage_fault_status(
     Ok(())
 }
 
-#[cfg(all(not(feature = "host"), cm4))]
 pub fn print_bus_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
     let cfsr = unsafe { core::ptr::read_volatile(0xE000ED28 as *const u32) };
 
@@ -138,7 +127,6 @@ pub fn print_bus_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), co
     Ok(())
 }
 
-#[cfg(all(not(feature = "host"), cm4))]
 pub fn print_usage_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
     let cfsr = unsafe { core::ptr::read_volatile(0xE000ED28 as *const u32) };
 
@@ -167,22 +155,5 @@ pub fn print_usage_fault_status(f: &mut core::fmt::Formatter<'_>) -> Result<(), 
         writeln!(f, "  DIVBYZERO: Divide by zero")?;
     }
 
-    Ok(())
-}
-
-#[cfg(any(feature = "host", not(cm4)))]
-pub fn print_mem_manage_fault_status(
-    _f: &mut core::fmt::Formatter<'_>,
-) -> Result<(), core::fmt::Error> {
-    Ok(())
-}
-
-#[cfg(any(feature = "host", not(cm4)))]
-pub fn print_bus_fault_status(_f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
-    Ok(())
-}
-
-#[cfg(any(feature = "host", not(cm4)))]
-pub fn print_usage_fault_status(_f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
     Ok(())
 }

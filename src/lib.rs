@@ -21,9 +21,10 @@ mod time;
 
 pub mod uapi;
 
-use hal::Machinelike;
+pub use hal_cortex_m::*;
+// Add new hals here. No cfg needed.
 
-pub use hal;
+pub use hal::Machinelike;
 pub use proc_macros::app_main;
 
 /// The kernel initialization function.

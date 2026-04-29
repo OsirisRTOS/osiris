@@ -9,3 +9,10 @@ type = { type = "String", allowed_values = ["arm", "x86_64"] }
 default = "${target_arch}"
 # This option is hidden in the UI and is also not stored in the config.
 attributes = ["hidden", "no_store"]
+
+[machine]
+name = "Machine"
+description = "Selects the machine backend to use."
+type = { type = "String", allowed_values = ["cortex-m"] }
+default = "cortex-m"
+attributes = ["hidden"]

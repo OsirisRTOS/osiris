@@ -1,4 +1,4 @@
-use hal::Machinelike;
+use crate::hal::{self, Machinelike};
 
 #[unsafe(no_mangle)]
 pub extern "C" fn handle_hard_fault(stack: *const usize, initial_fp: *const usize) -> ! {

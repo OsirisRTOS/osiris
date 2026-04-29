@@ -763,7 +763,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "hal-arm"
+name = "hal-builder"
+version = "0.1.0"
+dependencies = [
+ "dtgen",
+]
+
+[[package]]
+name = "hal-cortex-m"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -771,28 +778,11 @@ dependencies = [
  "cbindgen",
  "cmake",
  "critical-section",
- "dtgen",
  "hal-api",
+ "hal-builder",
  "quote",
  "serde_json",
  "syn",
-]
-
-[[package]]
-name = "hal-select"
-version = "0.1.0"
-dependencies = [
- "cfg_aliases",
- "hal-api",
- "hal-arm",
- "hal-testing",
-]
-
-[[package]]
-name = "hal-testing"
-version = "0.1.0"
-dependencies = [
- "hal-api",
 ]
 
 [[package]]
@@ -1148,8 +1138,8 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "envparse",
- "hal-select",
- "hal-testing",
+ "hal-api",
+ "hal-cortex-m",
  "kani",
  "macros",
  "quote",

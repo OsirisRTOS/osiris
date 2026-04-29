@@ -53,16 +53,29 @@ jobs:
           cache-from: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache
           cache-to: type=registry,ref=${{ steps.set_output.outputs.container_name }}-cache,mode=max
 
-  test:
-    name: Testing
+  checks:
+    name: ${{ matrix.task }} (${{ matrix.preset }})
     runs-on: ubuntu-latest
     needs: [container]
+    strategy:
+      fail-fast: false
+      matrix:
+        preset:
+          - stm32l4r5zi
+        task:
+          - build
+          - test
+          - verify
+          - docs
+        include:
+          - preset: stm32l4r5zi
+            config:
+              name: stm32l4r5zi_def
+              target: thumbv7em-none-eabi
     container:
       image: ${{ needs.container.outputs.container_name }}
     permissions:
       contents: read
-      issues: write
-      pull-requests: write
       packages: read
     steps:
       - name: Checkout
@@ -70,18 +83,19 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set testing config
-        run: just config load testing_def --no-confirm
+      - name: Load config
+        run: just config load ${{ matrix.config.name }} --no-confirm
 
-      - name: Run test coverage
-        run: just cov
+      - name: Run task
+        run: just ${{ matrix.task }}
 
-      - name: Report code coverage
-        uses: xarantolus/github-actions-report-lcov@v5
+      - name: Upload docs artifact
+        if: matrix.task == 'docs'
+        uses: actions/upload-artifact@v4
         with:
-          coverage-files: lcov.info
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          update-comment: true
+          name: docs-${{ matrix.preset }}
+          path: target/${{ matrix.config.target }}/doc
+
 
   fmt:
     name: Check formatting
@@ -100,82 +114,10 @@ jobs:
       - name: Check formatting for all Cargo manifests
         run: just fmt --check
 
-  kani:
-    name: Kani verification
-    runs-on: ubuntu-latest
-    needs: [container]
-    container:
-      image: ${{ needs.container.outputs.container_name }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set testing config
-        run: just config load testing_def --no-confirm
-
-      - name: Run Kani
-        run: just verify
-
-  build-stm32-l4r5zi-def:
-    name: Build for the STM32 Nucleo L4R5ZI
-    runs-on: ubuntu-latest
-    needs: [container]
-    container:
-      image: ${{ needs.container.outputs.container_name }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set stm32l4r5zi config
-        run: just config load stm32l4r5zi_def --no-confirm
-
-      - name: Build
-        run: just build
-
-  build-docs:
-    name: Build the documentation
-    runs-on: ubuntu-latest
-    needs: [container]
-    container:
-      image: ${{ needs.container.outputs.container_name }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set stm32l4r5zi config
-        run: just config load stm32l4r5zi_def --no-confirm
-
-      - name: Generate docs
-        run: cargo doc --document-private-items --no-deps --workspace
-
-      - name: Stage docs for upload
-        run: |
-          mkdir -p docs/thumbv7em-none-eabi
-          cp -a target/doc/. docs/
-          cp -a target/thumbv7em-none-eabi/doc/. docs/thumbv7em-none-eabi/
-
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docs
-          path: docs
-
   deploy-docs:
     name: Deploy the documentation online
     runs-on: ubuntu-latest
-    needs: [build-docs]
+    needs: [checks]
     if: github.ref == 'refs/heads/main'
     environment:
       name: github-pages
@@ -193,8 +135,9 @@ jobs:
       - name: Download docs
         uses: actions/download-artifact@v4
         with:
-          name: docs
-          path: website/docs
+          pattern: docs-*
+          path: docs
+          merge-multiple: false
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
