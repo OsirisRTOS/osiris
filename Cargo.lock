@@ -765,6 +765,9 @@ dependencies = [
 [[package]]
 name = "hal-builder"
 version = "0.1.0"
+dependencies = [
+ "dtgen",
+]
 
 [[package]]
 name = "hal-cortex-m"
@@ -775,7 +778,6 @@ dependencies = [
  "cbindgen",
  "cmake",
  "critical-section",
- "dtgen",
  "hal-api",
  "hal-builder",
  "quote",

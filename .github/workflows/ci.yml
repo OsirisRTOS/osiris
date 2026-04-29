@@ -66,6 +66,7 @@ jobs:
           - build
           - test
           - verify
+          - docs
         include:
           - preset: stm32l4r5zi
             config:

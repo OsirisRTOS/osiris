@@ -2,7 +2,7 @@
 
 [env]
 # Core
-OSIRIS_DTS = "nucleo_l4r5zi.dts"
+DTS_PATH = { value = "../boards/nucleo_l4r5zi.dts", relative = true }
 OSIRIS_MACHINE = "cortex-m"
 
 # Debugging configuration

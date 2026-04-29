@@ -14,4 +14,5 @@ attributes = ["hidden", "no_store"]
 name = "Machine"
 description = "Selects the machine backend to use."
 type = { type = "String", allowed_values = ["cortex-m"] }
+default = "cortex-m"
 attributes = ["hidden"]

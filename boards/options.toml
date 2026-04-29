@@ -1,8 +1,0 @@
-[metadata]
-parent = "."
-
-[dts]
-name = "Device Tree Source"
-description = "Board DTS file targeted to build OS for. Relative to the toplevel boards/ directory."
-type = "String"
-default = "nucleo_l4r5zi.dts"

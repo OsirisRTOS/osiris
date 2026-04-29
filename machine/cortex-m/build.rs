@@ -280,176 +280,6 @@ mod vector_table {
     }
 }
 
-// Device Tree Codegen ----------------------------------------------------------------------------
-
-mod dt {
-    use std::{
-        fs,
-        path::{Path, PathBuf},
-        process::Command,
-    };
-
-    use crate::workspace_dir;
-
-    /// Returns the compatible (vendor, name) tuple for the SoC node in the device tree.
-    pub fn soc(dt: &dtgen::ir::DeviceTree) -> Vec<(&str, &str)> {
-        let soc_node = dt
-            .nodes
-            .iter()
-            .find(|n| n.name == "soc")
-            .expect("Device tree must have a soc node");
-
-        soc_node
-            .compatible
-            .iter()
-            .filter_map(|s| {
-                let parts: Vec<&str> = s.split(',').collect();
-                if parts.len() == 2 {
-                    Some((parts[0], parts[1]))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn generate_device_tree(
-        dt: &dtgen::ir::DeviceTree,
-        out: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let rust_content = dtgen::generate_rust(dt);
-        std::fs::write(out.join("device_tree.rs"), rust_content)?;
-
-        let ld_content =
-            dtgen::generate_ld(dt).map_err(|e| format!("linker script generation failed: {e}"))?;
-        std::fs::write(out.join("prelude.ld"), ld_content)?;
-        println!("cargo::rustc-link-search=native={}", out.display());
-        Ok(())
-    }
-
-    pub fn build_device_tree(
-        out: &Path,
-    ) -> Result<dtgen::ir::DeviceTree, Box<dyn std::error::Error>> {
-        let dts = std::env::var("OSIRIS_DTS").expect("OSIRIS_DTS environment variable not set");
-        let workspace_root = workspace_dir().ok_or("Could not determine workspace root")?;
-        let dts_path = workspace_root.join("boards").join(dts);
-        println!("cargo::rerun-if-changed={}", dts_path.display());
-
-        // dependencies SoC/HAL/pins
-        let zephyr = Path::new(out).join("zephyr");
-        let hal_stm32 = Path::new(out).join("hal_stm32");
-
-        if !zephyr.exists() {
-            sparse_clone(
-                "https://github.com/zephyrproject-rtos/zephyr",
-                &zephyr,
-                // the west.yaml file is a manifest to manage/pin subprojects used for a specific zephyr
-                // release
-                &["include", "dts", "boards", "west.yaml"],
-                Some("v4.3.0"),
-            )?;
-        }
-
-        if !hal_stm32.exists() {
-            // retrieve from manifest
-            let hal_rev = get_hal_revision(&zephyr)?;
-            println!("cargo:warning=Detected hal_stm32 revision: {hal_rev}");
-
-            sparse_clone(
-                "https://github.com/zephyrproject-rtos/hal_stm32",
-                &hal_stm32,
-                &["dts"],
-                Some(&hal_rev),
-            )?;
-        }
-
-        //let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("device_tree.rs");
-        let include_paths = [
-            zephyr.join("include"),
-            zephyr.join("dts/arm/st"),
-            zephyr.join("dts/arm/st/l4"),
-            zephyr.join("dts"),
-            zephyr.join("dts/arm"),
-            zephyr.join("dts/common"),
-            zephyr.join("boards/st"),
-            hal_stm32.join("dts"),
-            hal_stm32.join("dts/st"),
-        ];
-        let include_refs: Vec<&Path> = include_paths.iter().map(PathBuf::as_path).collect();
-
-        for path in &include_paths {
-            if !path.exists() {
-                println!("cargo:warning=MISSING INCLUDE PATH: {:?}", path);
-            }
-        }
-
-        Ok(dtgen::parse_dts(&dts_path, &include_refs)?)
-    }
-
-    fn get_hal_revision(zephyr_path: &Path) -> Result<String, Box<dyn std::error::Error>> {
-        let west_yml = fs::read_to_string(zephyr_path.join("west.yml"))?;
-        let mut in_hal_stm32_block = false;
-
-        for line in west_yml.lines() {
-            let trimmed = line.trim();
-
-            // Check if we've entered the hal_stm32 section
-            if trimmed == "- name: hal_stm32" || trimmed == "name: hal_stm32" {
-                in_hal_stm32_block = true;
-                continue;
-            }
-
-            // If we are in the block, look for the revision
-            if in_hal_stm32_block {
-                if trimmed.starts_with("revision:") {
-                    return Ok(trimmed.replace("revision:", "").trim().to_string());
-                }
-
-                // If we hit a new project name before finding a revision, something is wrong
-                if trimmed.starts_with("- name:") || trimmed.starts_with("name:") {
-                    in_hal_stm32_block = false;
-                }
-            }
-        }
-
-        Err("Could not find hal_stm32 revision in west.yml".into())
-    }
-
-    fn sparse_clone(
-        url: &str,
-        dest: &Path,
-        paths: &[&str],
-        revision: Option<&str>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Command::new("git")
-            .args(["clone", "--filter=blob:none", "--no-checkout", url])
-            .arg(dest)
-            .status()?;
-
-        Command::new("git")
-            .args(["sparse-checkout", "init", "--cone"])
-            .current_dir(dest)
-            .status()?;
-
-        Command::new("git")
-            .arg("sparse-checkout")
-            .arg("set")
-            .args(paths)
-            .current_dir(dest)
-            .status()?;
-
-        let mut checkout = Command::new("git");
-        checkout.current_dir(dest).arg("checkout");
-
-        if let Some(rev) = revision {
-            checkout.arg(rev);
-        }
-
-        checkout.status()?;
-        Ok(())
-    }
-}
-
 /// Main build script entry point.
 ///
 /// This function orchestrates the entire build process:
@@ -479,19 +309,20 @@ fn main() {
         return;
     }
 
-    let out = env::var("OUT_DIR").unwrap();
-    let out = Path::new(&out);
+    let dts = hal_builder::dt::check_dts()
+        .expect("No DeviceTree specified. Set OSIRIS_DTS_PATH to specify.");
+    let out = hal_builder::read_path_env("OUT_DIR");
     println!("cargo::rustc-link-search={}", out.display());
 
-    let dt = dt::build_device_tree(out).unwrap_or_else(|e| {
+    let dt = hal_builder::dt::build_device_tree(&dts).unwrap_or_else(|e| {
         panic!("Failed to build device tree from DTS files: {e}");
     });
 
-    if let Err(e) = dt::generate_device_tree(&dt, out) {
+    if let Err(e) = hal_builder::dt::generate_device_tree(&dt, &out) {
         panic!("Failed to generate device tree scripts: {e}");
     }
 
-    for (vendor, name) in dt::soc(&dt) {
+    for (vendor, name) in hal_builder::dt::soc(&dt) {
         let hal = Path::new(vendor).join(name);
 
         if hal.exists() {
@@ -508,9 +339,9 @@ fn main() {
             // Build the HAL library
             let mut libhal_config = cmake::Config::new(&hal);
             libhal_config.generator("Ninja");
-            libhal_config.define("OUT_DIR", out);
+            libhal_config.define("OUT_DIR", &out);
 
-            for (vendor, name) in dt::soc(&dt) {
+            for (vendor, name) in hal_builder::dt::soc(&dt) {
                 if vendor == "st" {
                     libhal_config.cflag(format!("-D{}xx", name.to_uppercase()));
                 }
