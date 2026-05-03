@@ -75,6 +75,14 @@ impl hal_api::Machinelike for ArmMachine {
         unsafe { bindings::monotonic_freq() }
     }
 
+    fn get_rtc_raw() -> u64 {
+        unsafe { bindings::get_rtc_raw() }
+    }
+
+    fn set_rtc_raw(time: u64) {
+        unsafe { bindings::set_rtc_raw(time) }
+    }
+
     fn systick_freq() -> u64 {
         unsafe { bindings::systick_freq() }
     }

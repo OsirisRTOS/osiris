@@ -1,7 +1,98 @@
 #include "lib.h"
+#include <assert.h>
 #include <stm32l4xx_hal.h>
+#include "stm32l4xx_hal_rcc.h"
+#include <sys/_intsup.h>
 
 static volatile uint64_t monotonic_hi = 0;
+
+#define RTC_BKP_MAGIC 0x4F534952U
+#define LSE_READY_TIMEOUT_LOOPS 2000000U
+#define LSI_READY_TIMEOUT_LOOPS 200000U
+
+static RTC_HandleTypeDef rtc_handle;
+
+static int wait_rcc_ready_flag(uint32_t flag, uint32_t timeout_loops)
+{
+    while (timeout_loops > 0U) {
+        if (__HAL_RCC_GET_FLAG(flag) != RESET) {
+            return 1;
+        }
+
+        timeout_loops--;
+    }
+
+    return 0;
+}
+
+static HAL_StatusTypeDef select_rtc_clock_source(uint32_t source)
+{
+    RCC_PeriphCLKInitTypeDef periph = {0};
+
+    periph.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+    periph.RTCClockSelection = source;
+
+    return HAL_RCCEx_PeriphCLKConfig(&periph);
+}
+
+static void init_rtc_clock_source(void)
+{
+    __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_HIGH);
+    __HAL_RCC_LSE_CONFIG(RCC_LSE_ON);
+
+    if (wait_rcc_ready_flag(RCC_FLAG_LSERDY, LSE_READY_TIMEOUT_LOOPS)) {
+        if (select_rtc_clock_source(RCC_RTCCLKSOURCE_LSE) != HAL_OK) {
+            while (1) {
+            }
+        }
+    } else {
+        __HAL_RCC_LSE_CONFIG(RCC_LSE_OFF);
+        __HAL_RCC_LSI_ENABLE();
+
+        if (!wait_rcc_ready_flag(RCC_FLAG_LSIRDY, LSI_READY_TIMEOUT_LOOPS) ||
+            select_rtc_clock_source(RCC_RTCCLKSOURCE_LSI) != HAL_OK) {
+            while (1) {
+            }
+        }
+    }
+
+    __HAL_RCC_RTC_ENABLE();
+}
+
+void set_rtc_raw(unsigned long long raw);
+void init_rtc(void)
+{
+    __HAL_RCC_PWR_CLK_ENABLE();
+    HAL_PWR_EnableBkUpAccess();
+
+    init_rtc_clock_source();
+
+    rtc_handle.Instance = RTC;
+    rtc_handle.Init.HourFormat = RTC_HOURFORMAT_24;
+    rtc_handle.Init.AsynchPrediv = 0x7FU;
+    rtc_handle.Init.SynchPrediv = 0x00FFU;
+    rtc_handle.Init.OutPut = RTC_OUTPUT_DISABLE;
+    rtc_handle.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
+    rtc_handle.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+    rtc_handle.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+
+    if (HAL_RTC_Init(&rtc_handle) != HAL_OK) {
+        while (1) {
+        }
+    }
+
+    if (HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR0) != RTC_BKP_MAGIC) {
+        // Sat 01.01.2000
+        unsigned long long time = ((uint64_t)0) |
+           ((uint64_t)0 << 8U) |
+           ((uint64_t)0 << 16U) |
+           ((uint64_t)RTC_WEEKDAY_SATURDAY << 32U) |              
+           ((uint64_t)RTC_MONTH_JANUARY << 40U) |
+           ((uint64_t)0 << 48U) |
+           ((uint64_t)0 << 56U);
+        set_rtc_raw(time);
+    }
+}
 
 static void init_monotonic_timer(void)
 {
@@ -99,6 +190,7 @@ void init_clock_cfg(void)
 
     SystemCoreClockUpdate();
     init_monotonic_timer();
+    init_rtc();
 }
 
 unsigned long long monotonic_now(void)
@@ -127,4 +219,55 @@ unsigned long long monotonic_now(void)
 unsigned long long monotonic_freq(void)
 {
     return 1000000ULL;
+}
+}
+
+unsigned long long get_rtc_raw(void)
+{
+    RTC_TimeTypeDef time = {0};
+    RTC_DateTypeDef date = {0};
+
+    if (HAL_RTC_GetTime(&rtc_handle, &time, RTC_FORMAT_BCD) != HAL_OK) {
+        return 0U;
+    }
+
+    if (HAL_RTC_GetDate(&rtc_handle, &date, RTC_FORMAT_BCD) != HAL_OK) {
+        return 0U;
+    }
+
+    return ((uint64_t)time.Hours) |
+           ((uint64_t)time.Minutes << 8U) |
+           ((uint64_t)time.Seconds << 16U) |
+           ((uint64_t)date.WeekDay << 32U) |              
+           ((uint64_t)date.Month << 40U) |
+           ((uint64_t)date.Date << 48U) |
+           ((uint64_t)date.Year << 56U);
+}
+
+void set_rtc_raw(unsigned long long raw)
+{
+    RTC_TimeTypeDef rtc_time = {0};
+    RTC_DateTypeDef rtc_date = {0};
+
+    rtc_time.Hours = (uint8_t)(raw & 0xFFU);
+    rtc_time.Minutes = (uint8_t)((raw >> 8U) & 0xFFU);
+    rtc_time.Seconds = (uint8_t)((raw >> 16U) & 0xFFU);
+    rtc_time.TimeFormat = RTC_HOURFORMAT_24;
+
+    rtc_date.WeekDay = (uint8_t)((raw >> 32U) & 0xFFU);
+    rtc_date.Month = (uint8_t)((raw >> 40U) & 0xFFU);
+    rtc_date.Date = (uint8_t)((raw >> 48U) & 0xFFU);
+    rtc_date.Year = (uint8_t)((raw >> 56U) & 0xFFU);
+
+    if (HAL_RTC_SetTime(&rtc_handle, &rtc_time, RTC_FORMAT_BCD) != HAL_OK) {
+        while (1) {
+        }
+    }
+
+    if (HAL_RTC_SetDate(&rtc_handle, &rtc_date, RTC_FORMAT_BCD) != HAL_OK) {
+        while (1) {
+        }
+    }
+
+    HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0, RTC_BKP_MAGIC);
 }

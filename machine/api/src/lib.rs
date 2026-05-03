@@ -49,6 +49,8 @@ pub trait Machinelike {
 
     fn monotonic_now() -> u64;
     fn monotonic_freq() -> u64;
+    fn get_rtc_raw() -> u64;
+    fn set_rtc_raw(time: u64);
     // Returns the frequency of the machine's systick timer in Hz.
     fn systick_freq() -> u64;
 

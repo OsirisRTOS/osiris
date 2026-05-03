@@ -23,3 +23,5 @@ void SystemClock_Config(void);
 
 unsigned long long monotonic_now(void);
 unsigned long long monotonic_freq(void);
+unsigned long long get_rtc_raw(void);
+void set_rtc_raw(unsigned long long time);
