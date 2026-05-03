@@ -37,14 +37,15 @@ impl hal_api::Machinelike for StubMachine {
         0
     }
 
-    fn get_rtc_raw() -> u64 {
+    fn rtc_raw() -> u64 {
         0
     }
 
-    fn set_rtc_raw(_time: u64) {
+    fn set_rtc_raw(_time: u64) -> i32 {
+        0
     }
 
-    fn get_rtc_backup_register(index: u8) -> u32 {
+    fn rtc_backup_register(index: u8) -> u32 {
         0
     }
 

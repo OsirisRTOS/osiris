@@ -10,13 +10,19 @@ static volatile uint64_t monotonic_hi = 0;
 #define LSE_READY_TIMEOUT_LOOPS 2000000U
 #define LSI_READY_TIMEOUT_LOOPS 200000U
 
+#define ERROR_CONTROL_VOLTAGE_SCALING -1
+#define ERROR_RCC_OSC_CONFIG -2
+#define ERROR_RCC_CLOCK_CONFIG -3
+#define ERROR_RTC_INIT_CLOCK_SOURCE -4
+#define ERROR_RTC_INIT -5
+
 static RTC_HandleTypeDef rtc_handle;
 
 static int wait_rcc_ready_flag(uint32_t flag, uint32_t timeout_loops)
 {
     while (timeout_loops > 0U) {
         if (__HAL_RCC_GET_FLAG(flag) != RESET) {
-            return 1;
+            return -1;
         }
 
         timeout_loops--;
@@ -35,37 +41,38 @@ static HAL_StatusTypeDef select_rtc_clock_source(uint32_t source)
     return HAL_RCCEx_PeriphCLKConfig(&periph);
 }
 
-static void init_rtc_clock_source(void)
+static int init_rtc_clock_source(void)
 {
     __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_HIGH);
     __HAL_RCC_LSE_CONFIG(RCC_LSE_ON);
 
-    if (wait_rcc_ready_flag(RCC_FLAG_LSERDY, LSE_READY_TIMEOUT_LOOPS)) {
-        if (select_rtc_clock_source(RCC_RTCCLKSOURCE_LSE) != HAL_OK) {
-            while (1) {
-            }
-        }
-    } else {
-        __HAL_RCC_LSE_CONFIG(RCC_LSE_OFF);
-        __HAL_RCC_LSI_ENABLE();
-
-        if (!wait_rcc_ready_flag(RCC_FLAG_LSIRDY, LSI_READY_TIMEOUT_LOOPS) ||
-            select_rtc_clock_source(RCC_RTCCLKSOURCE_LSI) != HAL_OK) {
-            while (1) {
-            }
-        }
+    if (!wait_rcc_ready_flag(RCC_FLAG_LSERDY, LSE_READY_TIMEOUT_LOOPS) &&
+        select_rtc_clock_source(RCC_RTCCLKSOURCE_LSE) == HAL_OK) {
+        __HAL_RCC_RTC_ENABLE();
+        return 0;
     }
+    
+    __HAL_RCC_LSE_CONFIG(RCC_LSE_OFF);
+    __HAL_RCC_LSI_ENABLE();
 
-    __HAL_RCC_RTC_ENABLE();
+    if (!wait_rcc_ready_flag(RCC_FLAG_LSIRDY, LSI_READY_TIMEOUT_LOOPS) &&
+        select_rtc_clock_source(RCC_RTCCLKSOURCE_LSI) == HAL_OK) {
+        __HAL_RCC_RTC_ENABLE();
+        return 0;
+    }
+    return -1;
 }
 
-void set_rtc_raw(unsigned long long raw);
-void init_rtc(void)
+int set_rtc_raw(unsigned long long raw);
+int init_rtc(void)
 {
     __HAL_RCC_PWR_CLK_ENABLE();
     HAL_PWR_EnableBkUpAccess();
 
-    init_rtc_clock_source();
+    // TODO: setup Clock Security System
+    if (init_rtc_clock_source()) {
+        return ERROR_RTC_INIT_CLOCK_SOURCE;
+    }
 
     rtc_handle.Instance = RTC;
     rtc_handle.Init.HourFormat = RTC_HOURFORMAT_24;
@@ -77,8 +84,7 @@ void init_rtc(void)
     rtc_handle.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
 
     if (HAL_RTC_Init(&rtc_handle) != HAL_OK) {
-        while (1) {
-        }
+        return ERROR_RTC_INIT;
     }
 
     if (HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR0) != RTC_BKP_MAGIC) {
@@ -88,10 +94,11 @@ void init_rtc(void)
            ((uint64_t)0 << 16U) |
            ((uint64_t)RTC_WEEKDAY_SATURDAY << 32U) |              
            ((uint64_t)RTC_MONTH_JANUARY << 40U) |
-           ((uint64_t)0 << 48U) |
+           ((uint64_t)1 << 48U) |
            ((uint64_t)0 << 56U);
-        set_rtc_raw(time);
+        return set_rtc_raw(time);
     }
+    return 0;
 }
 
 static void init_monotonic_timer(void)
@@ -144,7 +151,7 @@ void tim2_hndlr(void)
     }
 }
 
-void init_clock_cfg(void)
+int init_clock_cfg(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
@@ -153,7 +160,7 @@ void init_clock_cfg(void)
     __HAL_RCC_PWR_CLK_ENABLE();
 
     if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK) {
-        while (1) {}
+       return ERROR_CONTROL_VOLTAGE_SCALING;
     }
 
     /* HSI16 -> PLL -> 80 MHz SYSCLK */
@@ -170,7 +177,7 @@ void init_clock_cfg(void)
     RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;   // arbitrary unless you use PLLQ
 
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-        while (1) {}
+       return ERROR_RCC_OSC_CONFIG;
     }
 
     RCC_ClkInitStruct.ClockType =
@@ -185,12 +192,12 @@ void init_clock_cfg(void)
     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
     if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK) {
-        while (1) {}
+       return ERROR_RCC_CLOCK_CONFIG;
     }
 
     SystemCoreClockUpdate();
     init_monotonic_timer();
-    init_rtc();
+    return init_rtc();
 }
 
 unsigned long long monotonic_now(void)
@@ -221,7 +228,7 @@ unsigned long long monotonic_freq(void)
     return 1000000ULL;
 }
 
-long get_rtc_backup_register(unsigned index)
+long rtc_backup_register(unsigned index)
 {
     return HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR0 + index);
 }
@@ -232,17 +239,17 @@ void set_rtc_backup_register(unsigned index, long value)
     HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0 + index, value);
 }
 
-unsigned long long get_rtc_raw(void)
+unsigned long long rtc_raw(void)
 {
     RTC_TimeTypeDef time = {0};
     RTC_DateTypeDef date = {0};
 
     if (HAL_RTC_GetTime(&rtc_handle, &time, RTC_FORMAT_BCD) != HAL_OK) {
-        return 0U;
+        return -1U;
     }
 
     if (HAL_RTC_GetDate(&rtc_handle, &date, RTC_FORMAT_BCD) != HAL_OK) {
-        return 0U;
+        return -2U;
     }
 
     return ((uint64_t)time.Hours) |
@@ -254,7 +261,7 @@ unsigned long long get_rtc_raw(void)
            ((uint64_t)date.Year << 56U);
 }
 
-void set_rtc_raw(unsigned long long raw)
+int set_rtc_raw(unsigned long long raw)
 {
     RTC_TimeTypeDef rtc_time = {0};
     RTC_DateTypeDef rtc_date = {0};
@@ -270,14 +277,13 @@ void set_rtc_raw(unsigned long long raw)
     rtc_date.Year = (uint8_t)((raw >> 56U) & 0xFFU);
 
     if (HAL_RTC_SetTime(&rtc_handle, &rtc_time, RTC_FORMAT_BCD) != HAL_OK) {
-        while (1) {
-        }
+        return -1;
     }
 
     if (HAL_RTC_SetDate(&rtc_handle, &rtc_date, RTC_FORMAT_BCD) != HAL_OK) {
-        while (1) {
-        }
+        return -2;
     }
 
     HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0, RTC_BKP_MAGIC);
+    return 0;
 }
