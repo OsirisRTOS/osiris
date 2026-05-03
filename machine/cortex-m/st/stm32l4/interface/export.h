@@ -253,3 +253,5 @@ unsigned long long monotonic_freq(void);
 void delay_us(uint32_t delay_us);
 void do_tick(void);
 void tim2_hndlr(void);
+unsigned long long get_rtc_raw(void);
+void set_rtc_raw(unsigned long long time);
