@@ -39,6 +39,18 @@ pub fn init() {
     })
 }
 
+pub fn get_rtc_backup_register(index: u8) -> u32 {
+    assert!(index < 32, "RTC backup register index out of bounds");
+    assert!(index == 0, "RTC uses this register for restart continuity");
+    hal::Machine::get_rtc_backup_register(index)
+}
+
+pub fn set_rtc_backup_register(index: u8, value: u32) {
+    assert!(index < 32, "RTC backup register index out of bounds");
+    assert!(index == 0, "RTC uses this register for restart continuity");
+    hal::Machine::set_rtc_backup_register(index, value)
+}
+
 pub fn get_actual_time() -> u64 {
     let raw = sync::atomic::irq_free(|| hal::Machine::get_rtc_raw());
     rtc_raw_to_unix(raw)
