@@ -44,6 +44,13 @@ impl hal_api::Machinelike for StubMachine {
     fn set_rtc_raw(_time: u64) {
     }
 
+    fn get_rtc_backup_register(index: u8) -> u32 {
+        0
+    }
+
+    fn set_rtc_backup_register(index: u8, value: u32) {
+    }
+
     fn systick_freq() -> u64 {
         0
     }

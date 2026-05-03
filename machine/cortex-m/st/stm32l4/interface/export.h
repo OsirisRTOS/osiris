@@ -25,3 +25,6 @@ unsigned long long monotonic_now(void);
 unsigned long long monotonic_freq(void);
 unsigned long long get_rtc_raw(void);
 void set_rtc_raw(unsigned long long time);
+
+unsigned long get_rtc_backup_register(unsigned char index);
+void set_rtc_backup_register(unsigned char index, unsigned long value);

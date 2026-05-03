@@ -83,6 +83,14 @@ impl hal_api::Machinelike for ArmMachine {
         unsafe { bindings::set_rtc_raw(time) }
     }
 
+    fn get_rtc_backup_register(index: u8) -> u32 {
+        unsafe { bindings::get_rtc_backup_register(index) }
+    }
+
+    fn set_rtc_backup_register(index: u8, value: u32) {
+        unsafe { bindings::set_rtc_backup_register(index, value) }
+    }
+
     fn systick_freq() -> u64 {
         unsafe { bindings::systick_freq() }
     }

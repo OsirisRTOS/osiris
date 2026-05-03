@@ -220,6 +220,16 @@ unsigned long long monotonic_freq(void)
 {
     return 1000000ULL;
 }
+
+long get_rtc_backup_register(unsigned index)
+{
+    return HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR0 + index);
+}
+
+void set_rtc_backup_register(unsigned index, long value)
+{
+    assert(index != 0 && "Register 0 is reserved for RTC init");
+    HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0 + index, value);
 }
 
 unsigned long long get_rtc_raw(void)
