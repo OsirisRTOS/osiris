@@ -2,7 +2,12 @@
 #![allow(dead_code)]
 
 use core::{
-    cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit, num::NonZeroUsize, ops::{Deref, DerefMut, Range}, ptr::{self, write}
+    cell::UnsafeCell,
+    marker::PhantomData,
+    mem::MaybeUninit,
+    num::NonZeroUsize,
+    ops::{Deref, DerefMut, Range},
+    ptr::{self, write},
 };
 
 use crate::{sync::spinlock::SpinLocked, types::bitset::BitAlloc};
@@ -10,7 +15,7 @@ use crate::{sync::spinlock::SpinLocked, types::bitset::BitAlloc};
 pub struct FixedPoolRef<'a, T, const N: usize> {
     idx: usize,
     pool: &'a FixedPool<T, N>,
-    _marker: PhantomData<T>
+    _marker: PhantomData<T>,
 }
 
 impl<'a, T, const N: usize> Deref for FixedPoolRef<'a, T, N> {
@@ -61,7 +66,11 @@ impl<T, const N: usize> FixedPool<T, N> {
             let ptr = self.blocks[idx].get();
             // Safety: A block can only be allocated once.
             unsafe { ptr.write(MaybeUninit::new(new)) };
-            FixedPoolRef { idx, pool: self, _marker: PhantomData }
+            FixedPoolRef {
+                idx,
+                pool: self,
+                _marker: PhantomData,
+            }
         })
     }
 

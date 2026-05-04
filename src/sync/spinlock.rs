@@ -1,7 +1,6 @@
 //! Synchronization primitives.
 #![allow(dead_code)]
 
-
 use crate::hal;
 
 use core::cell::UnsafeCell;

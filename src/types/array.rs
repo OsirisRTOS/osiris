@@ -563,7 +563,6 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
 }
 
 impl<T, const N: usize> Vec<T, N> {
-
     /// Clear the Vec, dropping all elements.
     pub fn clear(&mut self) {
         let min = core::cmp::min(self.len, N);

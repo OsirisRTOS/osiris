@@ -258,23 +258,27 @@ mod vector_table {
             .map(|i| quote::format_ident!("__irq_{i}_handler"))
             .collect();
 
-        let defs: Vec<_> = refs.iter().enumerate().map(|(i, entry)| {
-            quote::quote! {
-                #[unsafe(no_mangle)]
-                #[unsafe(naked)]
-                unsafe extern "C" fn #entry() {
-                   core::arch::naked_asm!(
-                        "tst lr, #4",
-                        "ite eq",
-                        "mrseq r0, msp",
-                        "mrsne r0, psp",
-                        "mov r1, {vector}",
-                        "b kernel_irq_handler",
-                        vector = const #i,
-                   );  
+        let defs: Vec<_> = refs
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| {
+                quote::quote! {
+                    #[unsafe(no_mangle)]
+                    #[unsafe(naked)]
+                    unsafe extern "C" fn #entry() {
+                       core::arch::naked_asm!(
+                            "tst lr, #4",
+                            "ite eq",
+                            "mrseq r0, msp",
+                            "mrsne r0, psp",
+                            "mov r1, {vector}",
+                            "b kernel_irq_handler",
+                            vector = const #i,
+                       );
+                    }
                 }
-            }
-        }).collect();
+            })
+            .collect();
 
         quote::quote! {
             #(#defs)*
