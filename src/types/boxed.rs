@@ -16,6 +16,13 @@ pub struct Box<T: ?Sized> {
     ptr: NonNull<T>,
 }
 
+// Safety: Box uniquely owns `ptr` and only exposes shared access through `&Box`
+// or exclusive access through `&mut Box`.
+unsafe impl<T: ?Sized + Send> Send for Box<T> {}
+
+// Safety: shared access through Box is equivalent to shared access through `T`.
+unsafe impl<T: ?Sized + Sync> Sync for Box<T> {}
+
 #[allow(dead_code)]
 impl<T> Box<[T]> {
     /// Create a new zeroed heap-allocated slice with the given length.

@@ -13,6 +13,7 @@ mod mem;
 mod print;
 mod types;
 mod uspace;
+mod irq;
 
 mod sched;
 mod sync;

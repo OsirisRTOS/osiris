@@ -562,8 +562,10 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     }
 }
 
-impl<T, const N: usize> Drop for Vec<T, N> {
-    fn drop(&mut self) {
+impl<T, const N: usize> Vec<T, N> {
+
+    /// Clear the Vec, dropping all elements.
+    pub fn clear(&mut self) {
         let min = core::cmp::min(self.len, N);
 
         // Drop all elements in the inline storage.
@@ -581,6 +583,14 @@ impl<T, const N: usize> Drop for Vec<T, N> {
                 elem.assume_init_drop();
             }
         }
+
+        self.len = 0;
+    }
+}
+
+impl<T, const N: usize> Drop for Vec<T, N> {
+    fn drop(&mut self) {
+        self.clear();
     }
 }
 
