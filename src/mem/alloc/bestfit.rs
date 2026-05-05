@@ -205,7 +205,7 @@ impl super::Allocator for BestFitAllocator {
     /// `align` - The alignment of the block.
     ///
     /// Returns the user pointer to the block if successful, otherwise an error.
-    /// 
+    ///
     /// # Safety
     ///
     /// The caller must ensure that the returned pointer is not used after the allocator is dropped.

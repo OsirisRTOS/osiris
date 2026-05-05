@@ -708,7 +708,9 @@ impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> BitReclaimMap<K, 
     }
 }
 
-impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> Index<K> for BitReclaimMap<K, V, N, WORDS> {
+impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> Index<K>
+    for BitReclaimMap<K, V, N, WORDS>
+{
     type Output = V;
 
     fn index(&self, index: K) -> &Self::Output {
@@ -716,13 +718,17 @@ impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> Index<K> for BitR
     }
 }
 
-impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> IndexMut<K> for BitReclaimMap<K, V, N, WORDS> {
+impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> IndexMut<K>
+    for BitReclaimMap<K, V, N, WORDS>
+{
     fn index_mut(&mut self, index: K) -> &mut Self::Output {
         self.get_mut::<K>(index).unwrap()
     }
 }
 
-impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> Get<K> for BitReclaimMap<K, V, N, WORDS> {
+impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> Get<K>
+    for BitReclaimMap<K, V, N, WORDS>
+{
     type Output = V;
 
     fn get<Q: Borrow<K>>(&self, index: Q) -> Option<&Self::Output> {
@@ -730,7 +736,9 @@ impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> Get<K> for BitR
     }
 }
 
-impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> GetMut<K> for BitReclaimMap<K, V, N, WORDS> {
+impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> GetMut<K>
+    for BitReclaimMap<K, V, N, WORDS>
+{
     fn get_mut<Q: Borrow<K>>(&mut self, index: Q) -> Option<&mut Self::Output> {
         self.map.get_mut(index)
     }

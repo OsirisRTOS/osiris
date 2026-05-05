@@ -27,7 +27,8 @@ use crate::{
     },
 };
 
-type ThreadMap<const N: usize, const WORDS: usize> = BitReclaimMap<thread::UId, thread::Thread, N, WORDS>;
+type ThreadMap<const N: usize, const WORDS: usize> =
+    BitReclaimMap<thread::UId, thread::Thread, N, WORDS>;
 type TaskMap<const N: usize, const WORDS: usize> = BitReclaimMap<task::UId, task::Task, N, WORDS>;
 
 const THREAD_COUNT: usize = 32;
@@ -38,7 +39,8 @@ static SCHED: SpinLocked<GlobalScheduler> = SpinLocked::new(GlobalScheduler::new
 static DISABLED: AtomicBool = AtomicBool::new(true);
 static NEXT_TICK: AtomicU64 = AtomicU64::new(0);
 
-type WaiterView<'a, const N: usize, const WORDS: usize> = ViewMut<'a, thread::UId, thread::Waiter, ThreadMap<N, WORDS>>;
+type WaiterView<'a, const N: usize, const WORDS: usize> =
+    ViewMut<'a, thread::UId, thread::Waiter, ThreadMap<N, WORDS>>;
 
 pub struct Scheduler<const N: usize, const WORDS: usize> {
     threads: ThreadMap<N, WORDS>,

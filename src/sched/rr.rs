@@ -23,7 +23,11 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
         }
     }
 
-    pub fn enqueue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N, WORDS>) -> Result<()> {
+    pub fn enqueue(
+        &mut self,
+        uid: thread::UId,
+        storage: &mut super::ThreadMap<N, WORDS>,
+    ) -> Result<()> {
         self.queue
             .push_back(uid, storage)
             .map_err(|_| kerr!(InvalidArgument))
@@ -64,7 +68,11 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
         self.current.map(|id| (id, self.current_left))
     }
 
-    pub fn dequeue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N, WORDS>) -> Result<()> {
+    pub fn dequeue(
+        &mut self,
+        uid: thread::UId,
+        storage: &mut super::ThreadMap<N, WORDS>,
+    ) -> Result<()> {
         self.queue.remove(uid, storage)?;
 
         if self.current == Some(uid) {

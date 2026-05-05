@@ -43,7 +43,7 @@ impl<T, const N: usize, const WORDS: usize> Drop for FixedPoolRef<'_, T, N, WORD
         self.pool.free(self.idx);
     }
 }
-    
+
 pub struct FixedPool<T, const N: usize, const WORDS: usize> {
     free: SpinLocked<BitAlloc<WORDS>>,
     blocks: [UnsafeCell<MaybeUninit<T>>; N],
