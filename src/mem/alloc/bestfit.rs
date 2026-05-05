@@ -757,7 +757,7 @@ mod verification {
                 assert_eq!(allocator.add_range(&range), Ok(()));
             }
 
-            let ptr = allocator.malloc(size, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(size, 1, None).unwrap() };
 
             verify_block(ptr, size, None);
         }
