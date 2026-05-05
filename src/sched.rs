@@ -27,27 +27,25 @@ use crate::{
     },
 };
 
-type ThreadMap<const N: usize, const WORDS: usize> =
-    BitReclaimMap<thread::UId, thread::Thread, N, WORDS>;
-type TaskMap<const N: usize, const WORDS: usize> = BitReclaimMap<task::UId, task::Task, N, WORDS>;
+type ThreadMap<const N: usize> = BitReclaimMap<thread::UId, thread::Thread, N>;
+type TaskMap<const N: usize> = BitReclaimMap<task::UId, task::Task, N>;
 
 const THREAD_COUNT: usize = 32;
-type GlobalScheduler = Scheduler<THREAD_COUNT, { THREAD_COUNT.div_ceil(usize::BITS as usize) }>;
+type GlobalScheduler = Scheduler<THREAD_COUNT>;
 
 static SCHED: SpinLocked<GlobalScheduler> = SpinLocked::new(GlobalScheduler::new());
 
 static DISABLED: AtomicBool = AtomicBool::new(true);
 static NEXT_TICK: AtomicU64 = AtomicU64::new(0);
 
-type WaiterView<'a, const N: usize, const WORDS: usize> =
-    ViewMut<'a, thread::UId, thread::Waiter, ThreadMap<N, WORDS>>;
+type WaiterView<'a, const N: usize> = ViewMut<'a, thread::UId, thread::Waiter, ThreadMap<N>>;
 
-pub struct Scheduler<const N: usize, const WORDS: usize> {
-    threads: ThreadMap<N, WORDS>,
-    tasks: TaskMap<N, WORDS>,
+pub struct Scheduler<const N: usize> {
+    threads: ThreadMap<N>,
+    tasks: TaskMap<N>,
 
-    rt_scheduler: rt::Scheduler<N, WORDS>,
-    rr_scheduler: rr::Scheduler<N, WORDS>,
+    rt_scheduler: rt::Scheduler<N>,
+    rr_scheduler: rr::Scheduler<N>,
 
     wakeup: RbTree<thread::WakupTree, thread::UId>,
 
@@ -57,26 +55,26 @@ pub struct Scheduler<const N: usize, const WORDS: usize> {
 
 // Safety: The scheduler is not Copy or Clone.
 // The scheduler owns all its data exclusively.
-unsafe impl<const N: usize, const WORDS: usize> Send for Scheduler<N, WORDS> {}
+unsafe impl<const N: usize> Send for Scheduler<N> {}
 // Safety: The scheduler does only allow access to its data through &mut self, which is synchronized by the SCHED spinlock.
-unsafe impl<const N: usize, const WORDS: usize> Sync for Scheduler<N, WORDS> {}
+unsafe impl<const N: usize> Sync for Scheduler<N> {}
 
 /// We define dequeue as a macro in order to avoid borrow checker issues.
 macro_rules! dequeue {
     ($self:expr, $uid:expr) => {
-        rt::ServerView::<N, WORDS>::with(&mut $self.threads, |view| {
+        rt::ServerView::<N>::with(&mut $self.threads, |view| {
             $self.rt_scheduler.dequeue($uid, view)
         })
         .or_else(|_| $self.rr_scheduler.dequeue($uid, &mut $self.threads))
         .or_else(|_| {
             $self
                 .wakeup
-                .remove($uid, &mut WaiterView::<N, WORDS>::new(&mut $self.threads))
+                .remove($uid, &mut WaiterView::<N>::new(&mut $self.threads))
         })
     };
 }
 
-impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
+impl<const N: usize> Scheduler<N> {
     const fn new() -> Self {
         Self {
             threads: ThreadMap::new(),
@@ -138,7 +136,7 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
         let thread = self.threads.get(uid).ok_or(kerr!(InvalidArgument))?;
 
         if thread.rt_server().is_some() {
-            let mut view = rt::ServerView::<N, WORDS>::new(&mut self.threads);
+            let mut view = rt::ServerView::<N>::new(&mut self.threads);
             self.rt_scheduler.enqueue(uid, now, &mut view)?;
         } else {
             if self.rr_scheduler.enqueue(uid, &mut self.threads).is_err() {
@@ -155,7 +153,7 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
     fn do_wakeups(&mut self, now: u64) {
         while let Some(uid) = self.wakeup.min() {
             let mut done = false;
-            WaiterView::<N, WORDS>::with(&mut self.threads, |view| {
+            WaiterView::<N>::with(&mut self.threads, |view| {
                 if let Some(waiter) = view.get(uid) {
                     if waiter.until() > now {
                         Self::next_resched(now, waiter.until());
@@ -187,7 +185,7 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
         self.last_tick = now;
 
         if let Some(old) = self.current {
-            let throttle = rt::ServerView::<N, WORDS>::with(&mut self.threads, |view| {
+            let throttle = rt::ServerView::<N>::with(&mut self.threads, |view| {
                 self.rt_scheduler.put(old, dt, view)
             });
 
@@ -204,7 +202,7 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
     }
 
     fn select_next(&mut self) -> (thread::UId, u32) {
-        rt::ServerView::<N, WORDS>::with(&mut self.threads, |view| self.rt_scheduler.pick(view))
+        rt::ServerView::<N>::with(&mut self.threads, |view| self.rt_scheduler.pick(view))
             .or_else(|| self.rr_scheduler.pick(&mut self.threads))
             .unwrap_or((thread::IDLE_THREAD, 1000))
     }
@@ -262,7 +260,7 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
 
         if self
             .wakeup
-            .insert(uid, &mut WaiterView::<N, WORDS>::new(&mut self.threads))
+            .insert(uid, &mut WaiterView::<N>::new(&mut self.threads))
             .is_err()
         {
             // This should not be possible. The thread exists.
@@ -278,7 +276,7 @@ impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
     /// Returns an error if the thread does not exist, or if the thread is not currently sleeping.
     #[allow(dead_code)]
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
-        WaiterView::<N, WORDS>::with(&mut self.threads, |view| {
+        WaiterView::<N>::with(&mut self.threads, |view| {
             self.wakeup.remove(uid, view)?;
             let thread = view.get_mut(uid).unwrap_or_else(|| {
                 // This should not be possible. The thread must exist since it's in the wakeup tree.

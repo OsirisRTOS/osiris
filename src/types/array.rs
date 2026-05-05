@@ -672,16 +672,16 @@ impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
 /// This is an IndexMap that additionally tracks which indices are occupied through a bitset.
 /// WORDS is the number of usize words needed to track N entries, you should set it to WORDS = N.div_ceil(usize::BITS as usize).
 /// Its currently impossible to set this value automatically because of const generic limitations.
-pub struct BitReclaimMap<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize = N> {
+pub struct BitReclaimMap<K: ?Sized + ToIndex, V, const N: usize> {
     map: IndexMap<K, V, N>,
-    free: BitAlloc<WORDS>,
+    free: BitAlloc<N>,
 }
 
-impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> BitReclaimMap<K, V, N, WORDS> {
+impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     pub const fn new() -> Self {
         Self {
             map: IndexMap::new(),
-            free: BitAlloc::from_array([!0usize; WORDS]),
+            free: BitAlloc::from_array([!0usize; N]),
         }
     }
 
@@ -699,7 +699,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> BitReclaimMap<K
     }
 }
 
-impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> BitReclaimMap<K, V, N, WORDS> {
+impl<K: Copy + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     pub fn insert_with(&mut self, f: impl FnOnce(usize) -> Result<(K, V)>) -> Result<K> {
         let idx = self.free.alloc(1).ok_or(kerr!(OutOfMemory))?;
         let (key, value) = f(idx)?;
@@ -708,9 +708,7 @@ impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> BitReclaimMap<K, 
     }
 }
 
-impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> Index<K>
-    for BitReclaimMap<K, V, N, WORDS>
-{
+impl<K: Copy + ToIndex, V, const N: usize> Index<K> for BitReclaimMap<K, V, N> {
     type Output = V;
 
     fn index(&self, index: K) -> &Self::Output {
@@ -718,17 +716,13 @@ impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> Index<K>
     }
 }
 
-impl<K: Copy + ToIndex, V, const N: usize, const WORDS: usize> IndexMut<K>
-    for BitReclaimMap<K, V, N, WORDS>
-{
+impl<K: Copy + ToIndex, V, const N: usize> IndexMut<K> for BitReclaimMap<K, V, N> {
     fn index_mut(&mut self, index: K) -> &mut Self::Output {
         self.get_mut::<K>(index).unwrap()
     }
 }
 
-impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> Get<K>
-    for BitReclaimMap<K, V, N, WORDS>
-{
+impl<K: ?Sized + ToIndex, V, const N: usize> Get<K> for BitReclaimMap<K, V, N> {
     type Output = V;
 
     fn get<Q: Borrow<K>>(&self, index: Q) -> Option<&Self::Output> {
@@ -736,9 +730,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> Get<K>
     }
 }
 
-impl<K: ?Sized + ToIndex, V, const N: usize, const WORDS: usize> GetMut<K>
-    for BitReclaimMap<K, V, N, WORDS>
-{
+impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for BitReclaimMap<K, V, N> {
     fn get_mut<Q: Borrow<K>>(&mut self, index: Q) -> Option<&mut Self::Output> {
         self.map.get_mut(index)
     }

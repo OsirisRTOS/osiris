@@ -15,7 +15,7 @@ pub const PAGE_SIZE: usize = 4096;
 
 const PAGE_CNT: usize = 100; // TODO: This should be determined by the DeviceTree.
 
-type AllocatorType = bitset::Allocator<PAGE_CNT, { PAGE_CNT.div_ceil(usize::BITS as usize) }>;
+type AllocatorType = bitset::Allocator<PAGE_CNT>;
 
 static PFA: SpinLocked<Option<Pin<Box<AllocatorType>>>> = SpinLocked::new(None);
 

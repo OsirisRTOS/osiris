@@ -116,10 +116,10 @@ impl Task {
         })
     }
 
-    pub fn register_thread<const N: usize, const WORDS: usize>(
+    pub fn register_thread<const N: usize>(
         &mut self,
         uid: thread::UId,
-        storage: &mut ThreadMap<N, WORDS>,
+        storage: &mut ThreadMap<N>,
     ) -> Result<()> {
         self.threads.push_back(uid, storage)
     }

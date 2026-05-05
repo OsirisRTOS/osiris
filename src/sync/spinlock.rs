@@ -214,7 +214,7 @@ pub struct RwSpinLocked<T> {
 // because read guards expose `&T`, and `Send` because write guards expose
 // exclusive access from a shared lock reference.
 unsafe impl<T: Send> Send for RwSpinLocked<T> {}
-unsafe impl<T: Sync> Sync for RwSpinLocked<T> {}
+unsafe impl<T: Send + Sync> Sync for RwSpinLocked<T> {}
 
 impl<T> RwSpinLocked<T> {
     /// Creates a new RwSpinLocked.

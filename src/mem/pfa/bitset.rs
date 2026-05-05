@@ -11,33 +11,33 @@ use crate::{
     },
 };
 
-pub struct Allocator<const N: usize, const WORDS: usize> {
+pub struct Allocator<const N: usize> {
     begin: PhysAddr,
-    bitalloc: BitAlloc<WORDS>,
+    bitalloc: BitAlloc<N>,
 }
 
-impl<const N: usize, const WORDS: usize> Allocator<N, WORDS> {
+impl<const WORDS: usize> Allocator<WORDS> {
     pub fn new(begin: PhysAddr) -> Option<Self> {
         if !begin.is_multiple_of(super::PAGE_SIZE) {
             return None;
         }
 
-        if begin > PhysAddr::MAX - (N * super::PAGE_SIZE * usize::BITS as usize) {
+        if begin > PhysAddr::MAX - (WORDS * super::PAGE_SIZE * usize::BITS as usize) {
             return None;
         }
 
         Some(Self {
             begin,
-            bitalloc: BitAlloc::new(N * BitAlloc::<N>::BITS_PER_WORD)?,
+            bitalloc: BitAlloc::new(WORDS * BitAlloc::<WORDS>::BITS_PER_WORD)?,
         })
     }
 }
 
-impl<const N: usize, const WORDS: usize> super::Allocator<N> for Allocator<N, WORDS> {
+impl<const WORDS: usize> super::Allocator<WORDS> for Allocator<WORDS> {
     fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>> {
         |addr: PhysAddr, pcnt: usize| -> Result<Pin<Box<Self>>> {
-            if pcnt > N {
-                todo!("Runtime page frame allocator for more than {} pages", N)
+            if pcnt > WORDS {
+                todo!("Runtime page frame allocator for more than {} pages", WORDS)
             }
 
             if !addr.is_multiple_of(core::mem::align_of::<Self>()) {
