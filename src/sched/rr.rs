@@ -4,7 +4,7 @@ use crate::{
     types::list::List,
 };
 
-pub struct Scheduler<const N: usize> {
+pub struct Scheduler<const N: usize, const WORDS: usize> {
     queue: List<thread::RRList, thread::UId>,
 
     current: Option<thread::UId>,
@@ -12,7 +12,7 @@ pub struct Scheduler<const N: usize> {
     quantum: u32,
 }
 
-impl<const N: usize> Scheduler<N> {
+impl<const N: usize, const WORDS: usize> Scheduler<N, WORDS> {
     pub const fn new() -> Self {
         // TODO: Make quantum configurable.
         Self {
@@ -23,7 +23,7 @@ impl<const N: usize> Scheduler<N> {
         }
     }
 
-    pub fn enqueue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N>) -> Result<()> {
+    pub fn enqueue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N, WORDS>) -> Result<()> {
         self.queue
             .push_back(uid, storage)
             .map_err(|_| kerr!(InvalidArgument))
@@ -37,7 +37,7 @@ impl<const N: usize> Scheduler<N> {
         }
     }
 
-    pub fn pick(&mut self, storage: &mut super::ThreadMap<N>) -> Option<(thread::UId, u32)> {
+    pub fn pick(&mut self, storage: &mut super::ThreadMap<N, WORDS>) -> Option<(thread::UId, u32)> {
         match self.current {
             Some(current) if self.current_left > 0 => return Some((current, self.current_left)),
             Some(current) => {
@@ -64,7 +64,7 @@ impl<const N: usize> Scheduler<N> {
         self.current.map(|id| (id, self.current_left))
     }
 
-    pub fn dequeue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N>) -> Result<()> {
+    pub fn dequeue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N, WORDS>) -> Result<()> {
         self.queue.remove(uid, storage)?;
 
         if self.current == Some(uid) {

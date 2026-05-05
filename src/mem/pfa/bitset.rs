@@ -11,12 +11,12 @@ use crate::{
     },
 };
 
-pub struct Allocator<const N: usize> {
+pub struct Allocator<const N: usize, const WORDS: usize> {
     begin: PhysAddr,
-    bitalloc: BitAlloc<N>,
+    bitalloc: BitAlloc<WORDS>,
 }
 
-impl<const N: usize> Allocator<N> {
+impl<const N: usize, const WORDS: usize> Allocator<N, WORDS> {
     pub fn new(begin: PhysAddr) -> Option<Self> {
         if !begin.is_multiple_of(super::PAGE_SIZE) {
             return None;
@@ -33,7 +33,7 @@ impl<const N: usize> Allocator<N> {
     }
 }
 
-impl<const N: usize> super::Allocator<N> for Allocator<N> {
+impl<const N: usize, const WORDS: usize> super::Allocator<N> for Allocator<N, WORDS> {
     fn initializer() -> unsafe fn(PhysAddr, usize) -> Result<Pin<Box<Self>>> {
         |addr: PhysAddr, pcnt: usize| -> Result<Pin<Box<Self>>> {
             if pcnt > N {

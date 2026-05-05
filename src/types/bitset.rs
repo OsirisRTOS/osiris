@@ -2,11 +2,11 @@
 
 use crate::types::array::Vec;
 
-pub struct BitAlloc<const N: usize> {
-    l1: Vec<usize, N>,
+pub struct BitAlloc<const WORDS: usize> {
+    l1: Vec<usize, WORDS>,
 }
 
-impl<const N: usize> BitAlloc<N> {
+impl<const WORDS: usize> BitAlloc<WORDS> {
     pub const BITS_PER_WORD: usize = usize::BITS as usize;
 
     pub fn new(free_count: usize) -> Option<Self> {
@@ -26,7 +26,7 @@ impl<const N: usize> BitAlloc<N> {
         Some(Self { l1 })
     }
 
-    pub const fn from_array(arr: [usize; N]) -> Self {
+    pub const fn from_array(arr: [usize; WORDS]) -> Self {
         Self {
             l1: Vec::from_array(arr),
         }
@@ -40,7 +40,7 @@ impl<const N: usize> BitAlloc<N> {
         let rem = bit_count.saturating_sub(Self::BITS_PER_WORD);
         let mask = (!0usize).unbounded_shl((Self::BITS_PER_WORD.saturating_sub(bit_count)) as u32);
 
-        for idx in 0..N {
+        for idx in 0..WORDS {
             if self.l1[idx] == 0 {
                 len = 0;
                 continue;

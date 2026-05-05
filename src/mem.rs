@@ -73,7 +73,8 @@ pub fn init_memory() -> vmm::AddressSpace {
 /// Returns a pointer to the allocated memory block if the allocation was successful, or `None` if the allocation failed.
 pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
-    allocator.malloc(size, align, None).ok()
+    // Safety: The global allocator is valid for the lifetime of the program.
+    unsafe { allocator.malloc(size, align, None).ok() }
 }
 
 /// Free a memory block.

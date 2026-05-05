@@ -32,7 +32,7 @@ pub unsafe fn register_irq(
     userdata: Option<usize>,
 ) -> Result<()> {
     if vector >= HANDLERS.len() {
-        Err(kerr!(InvalidArgument, "Invalid IRQ vector {vector}"))?;
+        Err(kerr!(InvalidArgument, "Invalid IRQ vector."))?;
     }
 
     let handler = Handler {
@@ -53,7 +53,7 @@ pub unsafe fn register_irq(
 /// - This function must not be called from an IRQ context.
 pub unsafe fn unregister_irq(vector: usize) -> Result<()> {
     if vector >= HANDLERS.len() {
-        Err(kerr!(InvalidArgument, "Invalid IRQ vector {vector}"))?;
+        Err(kerr!(InvalidArgument, "Invalid IRQ vector."))?;
     }
 
     sync::atomic::irq_free(|| {
@@ -65,13 +65,21 @@ pub unsafe fn unregister_irq(vector: usize) -> Result<()> {
 
 #[unsafe(no_mangle)]
 extern "C" fn kernel_irq_handler(ctx: *mut u8, vector: usize) {
+    if vector >= HANDLERS.len() {
+        warn!("Invalid IRQ vector {}", vector);
+        return;
+    }
+
     // It is forbidden to hold a HANDLERS write_lock in an irq context.
     let handler = HANDLERS[vector].read_lock();
 
+    if handler.is_empty() {
+        warn!("Unhandled IRQ {}", vector);
+        return;
+    }
+
     for i in 0..handler.len() {
-        match handler.at(i) {
-            Some(handler) => (handler.func)(ctx, vector, handler.userdata),
-            None => warn!("Unhandled IRQ {}", vector),
-        }
+        let handler = handler[i];
+        (handler.func)(ctx, vector, handler.userdata)
     }
 }

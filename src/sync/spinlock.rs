@@ -213,7 +213,8 @@ pub struct RwSpinLocked<T> {
 // Safety: access to `value` is synchronized by `lock`. `T` must be `Sync`
 // because read guards expose `&T`, and `Send` because write guards expose
 // exclusive access from a shared lock reference.
-unsafe impl<T: Send + Sync> Sync for RwSpinLocked<T> {}
+unsafe impl<T: Send> Send for RwSpinLocked<T> {}
+unsafe impl<T: Sync> Sync for RwSpinLocked<T> {}
 
 impl<T> RwSpinLocked<T> {
     /// Creates a new RwSpinLocked.
@@ -251,7 +252,10 @@ pub struct SpinLocked<T> {
     value: UnsafeCell<T>,
 }
 
-unsafe impl<T> Sync for SpinLocked<T> {}
+// Safety: access to `value` is synchronized by `lock`. `T` must be `Sync`
+// because guards expose `&T`, and `Send` because guards expose exclusive access from a shared lock reference.
+unsafe impl<T: Send> Send for SpinLocked<T> {}
+unsafe impl<T: Sync> Sync for SpinLocked<T> {}
 
 /// Test
 impl<T> SpinLocked<T> {

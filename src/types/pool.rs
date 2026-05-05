@@ -12,13 +12,13 @@ use core::{
 
 use crate::{sync::spinlock::SpinLocked, types::bitset::BitAlloc};
 
-pub struct FixedPoolRef<'a, T, const N: usize> {
+pub struct FixedPoolRef<'a, T, const N: usize, const WORDS: usize> {
     idx: usize,
-    pool: &'a FixedPool<T, N>,
+    pool: &'a FixedPool<T, N, WORDS>,
     _marker: PhantomData<T>,
 }
 
-impl<'a, T, const N: usize> Deref for FixedPoolRef<'a, T, N> {
+impl<'a, T, const N: usize, const WORDS: usize> Deref for FixedPoolRef<'a, T, N, WORDS> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -28,7 +28,7 @@ impl<'a, T, const N: usize> Deref for FixedPoolRef<'a, T, N> {
     }
 }
 
-impl<'a, T, const N: usize> DerefMut for FixedPoolRef<'a, T, N> {
+impl<'a, T, const N: usize, const WORDS: usize> DerefMut for FixedPoolRef<'a, T, N, WORDS> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // Safety: ptr does always point to a valid block in the pool.
         // Only one Ref can exist for a block at a time, so there are no mutable references to the same block.
@@ -36,31 +36,31 @@ impl<'a, T, const N: usize> DerefMut for FixedPoolRef<'a, T, N> {
     }
 }
 
-impl<T, const N: usize> Drop for FixedPoolRef<'_, T, N> {
+impl<T, const N: usize, const WORDS: usize> Drop for FixedPoolRef<'_, T, N, WORDS> {
     fn drop(&mut self) {
         // Safety: ptr does always point to a valid block in the pool.
         unsafe { ptr::drop_in_place(self.pool.access(self.idx)) };
         self.pool.free(self.idx);
     }
 }
-
-pub struct FixedPool<T, const N: usize> {
-    free: SpinLocked<BitAlloc<N>>,
+    
+pub struct FixedPool<T, const N: usize, const WORDS: usize> {
+    free: SpinLocked<BitAlloc<WORDS>>,
     blocks: [UnsafeCell<MaybeUninit<T>>; N],
 }
 
-impl<T, const N: usize> FixedPool<T, N> {
+impl<T, const N: usize, const WORDS: usize> FixedPool<T, N, WORDS> {
     pub const fn new() -> Self {
         Self {
-            free: SpinLocked::new(BitAlloc::from_array([!0usize; N])),
+            free: SpinLocked::new(BitAlloc::from_array([!0usize; WORDS])),
             blocks: [const { UnsafeCell::new(MaybeUninit::uninit()) }; N],
         }
     }
 
-    pub fn alloc(&self, new: T) -> Option<FixedPoolRef<'_, T, N>> {
+    pub fn alloc(&self, new: T) -> Option<FixedPoolRef<'_, T, N, WORDS>> {
         // Safety: Alloc ensures that the index cannot be allocated until the next free.
         // A free can only happen when the Ref is dropped, as the function is not publicly accessible.
-        // This gurantees that only one Ref can exist for a block at a time.
+        // This guarantees that only one Ref can exist for a block at a time.
         let idx = self.free.lock().alloc(1);
         idx.map(|idx| {
             let ptr = self.blocks[idx].get();

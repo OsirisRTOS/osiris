@@ -38,7 +38,7 @@ impl vmm::AddressSpacelike for AddressSpace {
         let req = region.start.and_then(|virt| self.virt_to_phys(virt));
         // TODO: per page align
         let align = core::mem::align_of::<u128>();
-        let start = self.allocator.malloc::<u8>(region.len(), align, req)?;
+        let start = unsafe { self.allocator.malloc::<u8>(region.len(), align, req)? };
 
         match region.backing {
             vmm::Backing::Anon(phys) => {
