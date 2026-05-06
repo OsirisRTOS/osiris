@@ -173,7 +173,7 @@ fn extract_binaries(
                 if entry.file_type().is_dir() {
                     let binary_path = entry.path().join(&bin_target.name);
 
-                    if binary_path.exists() {
+                    if binary_path.exists() && binary_path.is_file(){
                         binaries.push(binary_path.into());
                     }
                 }
