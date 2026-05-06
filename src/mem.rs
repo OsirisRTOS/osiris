@@ -20,7 +20,7 @@ unsafe extern "C" {
 }
 
 /// The global memory allocator.
-static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
+pub(crate) static GLOBAL_ALLOCATOR: SpinLocked<alloc::bestfit::BestFitAllocator> =
     SpinLocked::new(alloc::bestfit::BestFitAllocator::new());
 
 /// Initialize the memory allocator.

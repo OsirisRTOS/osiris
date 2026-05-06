@@ -189,7 +189,7 @@ pub struct Vec<T, const N: usize> {
 }
 
 #[allow(dead_code)]
-impl<T: Clone + Copy, const N: usize> Vec<T, N> {
+impl<T, const N: usize> Vec<T, N> {
     /// Create a new Vec.
     ///
     /// Returns a new Vec.
@@ -226,6 +226,33 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
     }
 
+    unsafe fn move_from_slice_to_uninit(dst: &mut [MaybeUninit<T>], src: &[MaybeUninit<T>]) {
+        assert_eq!(dst.len(), src.len());
+
+        unsafe {
+            for i in 0..dst.len() {
+                dst[i].write(src[i].as_ptr().read());
+            }
+        }
+    }
+
+    unsafe fn move_within_to_uninit(
+        slice: &mut [MaybeUninit<T>],
+        src_index: usize,
+        dst_index: usize,
+        count: usize,
+    ) {
+        assert!(src_index + count <= slice.len());
+        assert!(dst_index + count <= slice.len());
+
+        unsafe {
+            for i in 0..count {
+                let value = slice[src_index + i].as_ptr().read();
+                slice[dst_index + i].write(value);
+            }
+        }
+    }
+
     /// Reserve additional space in the Vec.
     ///
     /// `additional` - The additional space to reserve.
@@ -246,8 +273,15 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         // Check that the new extra storage has the requested length.
         bug_on!(new_extra.len() != grow);
 
-        // Copy the old extra storage into the new one.
-        new_extra[..len_extra].copy_from_slice(&self.extra);
+        let len_initialized_extra = self.len.saturating_sub(N);
+
+        // Move the old extra storage into the new one.
+        unsafe {
+            Self::move_from_slice_to_uninit(
+                &mut new_extra[..len_initialized_extra],
+                &self.extra[..len_initialized_extra],
+            );
+        }
 
         // Replace the old extra storage with the new one. The old one will be dropped.
         self.extra = new_extra;
@@ -272,9 +306,14 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         // Check that the new extra storage has the requested length.
         bug_on!(new_extra.len() != new_out_of_line_cap);
 
-        let curr_out_of_line_size = self.extra.len();
-        // Copy the old extra storage into the new one.
-        new_extra[..curr_out_of_line_size].copy_from_slice(&self.extra);
+        let curr_out_of_line_size = self.len.saturating_sub(N);
+        // Move the old extra storage into the new one.
+        unsafe {
+            Self::move_from_slice_to_uninit(
+                &mut new_extra[..curr_out_of_line_size],
+                &self.extra[..curr_out_of_line_size],
+            );
+        }
 
         // Replace the old extra storage with the new one. The old one will be dropped.
         self.extra = new_extra;
@@ -287,18 +326,23 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     /// `value` - The value to initialize the elements in the Vec with.
     ///
     /// Returns the new Vec or `Err(KernelError::OutOfMemory)` if the allocation failed.
-    pub fn new_init(length: usize, value: T) -> Result<Self> {
+    pub fn new_init(length: usize, value: T) -> Result<Self>
+    where
+        T: Clone,
+    {
         let mut vec = Self::new();
 
         // Check if we can fit all elements in the inline storage.
         if length <= N {
             // Initialize all elements in the inline storage.
             for i in 0..length {
-                vec.data[i].write(value);
+                vec.data[i].write(value.clone());
             }
         } else {
             // Initialize all elements in the inline storage.
-            vec.data.fill(MaybeUninit::new(value));
+            for elem in &mut vec.data {
+                elem.write(value.clone());
+            }
 
             // Check if we need to allocate extra storage.
             if length - N > 0 {
@@ -307,7 +351,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
 
                 // Initialize all the required elements in the extra storage.
                 for i in N..length {
-                    extra[i - N].write(value);
+                    extra[i - N].write(value.clone());
                 }
 
                 // Set the extra storage in the Vec.
@@ -315,6 +359,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
             }
         }
 
+        vec.len = length;
         Ok(vec)
     }
 
@@ -346,8 +391,15 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
 
                 bug_on!(new_extra.len() != grow);
 
-                // Copy the old extra storage into the new one.
-                new_extra[..len_extra].copy_from_slice(&self.extra);
+                let len_initialized_extra = self.len - N;
+
+                // Move the old extra storage into the new one.
+                unsafe {
+                    Self::move_from_slice_to_uninit(
+                        &mut new_extra[..len_initialized_extra],
+                        &self.extra[..len_initialized_extra],
+                    );
+                }
 
                 // Replace the old extra storage with the new one. The old one will be dropped.
                 self.extra = new_extra;
@@ -380,7 +432,7 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
         }
 
         // Get the value at the given index.
-        let value = self.at(index).cloned();
+        let value = unsafe { self.at_mut_unchecked(index).read() };
 
         // Check if we need to move inline storage elements.
         if index < N {
@@ -388,16 +440,21 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
             let end = core::cmp::min(self.len, N);
 
             // Safety: index is less than N and min too.
-            self.data.copy_within(index + 1..end, index);
+            unsafe {
+                Self::move_within_to_uninit(&mut self.data, index + 1, index, end - index - 1);
+            }
 
             // Check if we need to move the first extra storage element into the inline storage.
-            if let Some(value) = self.at(N) {
-                self.data[end - 1].write(*value);
+            if self.len() > N {
+                let value = unsafe { self.extra[0].as_ptr().read() };
+                self.data[end - 1].write(value);
             }
 
             // Move the elements in the extra storage.
             if self.len() > N {
-                self.extra.copy_within(1..self.len - N, 0);
+                unsafe {
+                    Self::move_within_to_uninit(&mut self.extra, 1, 0, self.len - N - 1);
+                }
             }
         } else {
             // We only need to move the elements in the extra storage.
@@ -406,11 +463,13 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
             let end = self.len - N;
 
             // Safety: index is less than N and min too.
-            self.extra.copy_within(index + 1..end, index);
+            unsafe {
+                Self::move_within_to_uninit(&mut self.extra, index + 1, index, end - index - 1);
+            }
         }
 
         self.len -= 1;
-        value
+        Some(value)
     }
 
     /// Get the length of the Vec.
@@ -595,24 +654,26 @@ impl<T, const N: usize> Drop for Vec<T, N> {
 
 impl<T, const N: usize> Clone for Vec<T, N>
 where
-    T: Clone + Copy,
+    T: Clone,
 {
     fn clone(&self) -> Self {
         let mut new_vec = Self::new();
         let min = core::cmp::min(self.len, N);
 
+        bug_on!(new_vec.reserve_total_capacity(self.len).is_err());
+
         // Clone the elements in the inline storage.
         for i in 0..min {
             // Safety: the elements until self.len are initialized.
             let value = unsafe { self.data[i].assume_init_ref() };
-            new_vec.data[i].write(*value);
+            new_vec.data[i].write(value.clone());
         }
 
         // Clone the elements in the extra storage.
         for i in 0..self.len - min {
             // Safety: the elements until self.len - N are initialized.
             let value = unsafe { self.extra[i].assume_init_ref() };
-            new_vec.extra[i].write(*value);
+            new_vec.extra[i].write(value.clone());
         }
 
         new_vec.len = self.len;
@@ -620,7 +681,7 @@ where
     }
 }
 
-impl<T: Clone + Copy, const N: usize> Index<usize> for Vec<T, N> {
+impl<T, const N: usize> Index<usize> for Vec<T, N> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -628,13 +689,13 @@ impl<T: Clone + Copy, const N: usize> Index<usize> for Vec<T, N> {
     }
 }
 
-impl<T: Clone + Copy, const N: usize> IndexMut<usize> for Vec<T, N> {
+impl<T, const N: usize> IndexMut<usize> for Vec<T, N> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         self.at_mut(index).unwrap()
     }
 }
 
-impl<T: Clone + Copy, const N: usize> Get<usize> for Vec<T, N> {
+impl<T, const N: usize> Get<usize> for Vec<T, N> {
     type Output = T;
 
     fn get<Q: Borrow<usize>>(&self, index: Q) -> Option<&Self::Output> {
@@ -642,7 +703,7 @@ impl<T: Clone + Copy, const N: usize> Get<usize> for Vec<T, N> {
     }
 }
 
-impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
+impl<T, const N: usize> GetMut<usize> for Vec<T, N> {
     fn get_mut<Q: Borrow<usize>>(&mut self, index: Q) -> Option<&mut Self::Output> {
         self.at_mut(*index.borrow())
     }
@@ -760,6 +821,62 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for BitReclaimMap<K, V, N
 #[cfg(test)]
 mod tests {
     use super::Vec;
+    use crate::hal::mem::PhysAddr;
+    use crate::mem::GLOBAL_ALLOCATOR;
+    use core::ops::Range;
+    use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+    fn alloc_range(length: usize) -> Range<PhysAddr> {
+        let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
+        let ptr = unsafe { std::alloc::alloc(alloc_range) };
+        PhysAddr::new(ptr as usize)..PhysAddr::new(ptr as usize + length)
+    }
+
+    fn setup_memory(mem_size: usize) {
+        unsafe {
+            GLOBAL_ALLOCATOR
+                .lock()
+                .add_range(&alloc_range(mem_size))
+                .unwrap()
+        };
+    }
+
+    #[derive(Debug)]
+    struct Tracker<'a> {
+        id: usize,
+        drops: &'a AtomicUsize,
+        drop_mask: &'a AtomicU64,
+    }
+
+    impl<'a> Tracker<'a> {
+        fn new(id: usize, drops: &'a AtomicUsize, drop_mask: &'a AtomicU64) -> Self {
+            Self {
+                id,
+                drops,
+                drop_mask,
+            }
+        }
+    }
+
+    impl Drop for Tracker<'_> {
+        fn drop(&mut self) {
+            let bit = 1u64 << self.id;
+            let old_mask = self.drop_mask.fetch_or(bit, Ordering::SeqCst);
+            assert_eq!(old_mask & bit, 0, "value {} was dropped twice", self.id);
+            self.drops.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct NonCopy {
+        value: usize,
+    }
+
+    impl Clone for NonCopy {
+        fn clone(&self) -> Self {
+            Self { value: self.value }
+        }
+    }
 
     #[test]
     fn no_length_underflow() {
@@ -786,5 +903,248 @@ mod tests {
             vec.push(i).unwrap();
         }
         drop(vec);
+    }
+
+    #[test]
+    fn push_and_index_non_copy_inline() {
+        let mut vec = Vec::<NonCopy, 4>::new();
+
+        for i in 0..4 {
+            vec.push(NonCopy { value: i }).unwrap();
+        }
+
+        assert_eq!(vec.len(), 4);
+        for i in 0..4 {
+            assert_eq!(vec[i].value, i);
+        }
+    }
+
+    #[test]
+    fn push_grows_and_keeps_non_copy_values() {
+        setup_memory(4096);
+        let mut vec = Vec::<NonCopy, 2>::new();
+
+        for i in 0..8 {
+            vec.push(NonCopy { value: i }).unwrap();
+        }
+
+        assert_eq!(vec.len(), 8);
+        assert!(vec.capacity() >= 8);
+        for i in 0..8 {
+            assert_eq!(vec.at(i).unwrap().value, i);
+        }
+    }
+
+    #[test]
+    fn reserve_moves_only_live_extra_values() {
+        setup_memory(4096);
+        let drops = AtomicUsize::new(0);
+        let drop_mask = AtomicU64::new(0);
+        let mut vec = Vec::<Tracker<'_>, 2>::new();
+
+        for i in 0..4 {
+            vec.push(Tracker::new(i, &drops, &drop_mask)).unwrap();
+        }
+
+        vec.reserve(10).unwrap();
+
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        assert_eq!(vec.len(), 4);
+        for i in 0..4 {
+            assert_eq!(vec.at(i).unwrap().id, i);
+        }
+
+        drop(vec);
+        assert_eq!(drops.load(Ordering::SeqCst), 4);
+        assert_eq!(drop_mask.load(Ordering::SeqCst), 0b1111);
+    }
+
+    #[test]
+    fn reserve_total_capacity_moves_non_copy_values() {
+        setup_memory(4096);
+        let mut vec = Vec::<NonCopy, 2>::new();
+
+        for i in 0..5 {
+            vec.push(NonCopy { value: i }).unwrap();
+        }
+
+        vec.reserve_total_capacity(16).unwrap();
+
+        assert!(vec.capacity() >= 16);
+        assert_eq!(vec.len(), 5);
+        for i in 0..5 {
+            assert_eq!(vec.at(i).unwrap().value, i);
+        }
+    }
+
+    #[test]
+    fn remove_from_inline_shifts_inline_values() {
+        let mut vec = Vec::<NonCopy, 5>::new();
+        for i in 0..5 {
+            vec.push(NonCopy { value: i }).unwrap();
+        }
+
+        let removed = vec.remove(1).unwrap();
+
+        assert_eq!(removed.value, 1);
+        assert_eq!(vec.len(), 4);
+        assert_eq!(vec.at(0).unwrap().value, 0);
+        assert_eq!(vec.at(1).unwrap().value, 2);
+        assert_eq!(vec.at(2).unwrap().value, 3);
+        assert_eq!(vec.at(3).unwrap().value, 4);
+    }
+
+    #[test]
+    fn remove_from_inline_pulls_first_extra_value_inline() {
+        setup_memory(4096);
+        let mut vec = Vec::<NonCopy, 3>::new();
+        for i in 0..7 {
+            vec.push(NonCopy { value: i }).unwrap();
+        }
+
+        let removed = vec.remove(1).unwrap();
+
+        assert_eq!(removed.value, 1);
+        assert_eq!(vec.len(), 6);
+        for (idx, expected) in [0, 2, 3, 4, 5, 6].iter().copied().enumerate() {
+            assert_eq!(vec.at(idx).unwrap().value, expected);
+        }
+    }
+
+    #[test]
+    fn remove_from_extra_shifts_extra_values() {
+        setup_memory(4096);
+        let mut vec = Vec::<NonCopy, 3>::new();
+        for i in 0..8 {
+            vec.push(NonCopy { value: i }).unwrap();
+        }
+
+        let removed = vec.remove(5).unwrap();
+
+        assert_eq!(removed.value, 5);
+        assert_eq!(vec.len(), 7);
+        for (idx, expected) in [0, 1, 2, 3, 4, 6, 7].iter().copied().enumerate() {
+            assert_eq!(vec.at(idx).unwrap().value, expected);
+        }
+    }
+
+    #[test]
+    fn remove_last_extra_does_not_shift_or_drop_extra_values() {
+        setup_memory(4096);
+        let drops = AtomicUsize::new(0);
+        let drop_mask = AtomicU64::new(0);
+        let mut vec = Vec::<Tracker<'_>, 2>::new();
+
+        for i in 0..5 {
+            vec.push(Tracker::new(i, &drops, &drop_mask)).unwrap();
+        }
+
+        let removed = vec.remove(4).unwrap();
+
+        assert_eq!(removed.id, 4);
+        assert_eq!(vec.len(), 4);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        drop(removed);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        drop(vec);
+        assert_eq!(drops.load(Ordering::SeqCst), 5);
+        assert_eq!(drop_mask.load(Ordering::SeqCst), 0b1_1111);
+    }
+
+    #[test]
+    fn pop_moves_value_out_without_copy() {
+        let drops = AtomicUsize::new(0);
+        let drop_mask = AtomicU64::new(0);
+        let mut vec = Vec::<Tracker<'_>, 4>::new();
+
+        for i in 0..3 {
+            vec.push(Tracker::new(i, &drops, &drop_mask)).unwrap();
+        }
+
+        let popped = vec.pop().unwrap();
+
+        assert_eq!(popped.id, 2);
+        assert_eq!(vec.len(), 2);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+        drop(popped);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        drop(vec);
+        assert_eq!(drops.load(Ordering::SeqCst), 3);
+        assert_eq!(drop_mask.load(Ordering::SeqCst), 0b111);
+    }
+
+    #[test]
+    fn clear_drops_each_live_value_once() {
+        setup_memory(4096);
+        let drops = AtomicUsize::new(0);
+        let drop_mask = AtomicU64::new(0);
+        let mut vec = Vec::<Tracker<'_>, 2>::new();
+
+        for i in 0..6 {
+            vec.push(Tracker::new(i, &drops, &drop_mask)).unwrap();
+        }
+
+        vec.clear();
+
+        assert_eq!(vec.len(), 0);
+        assert_eq!(drops.load(Ordering::SeqCst), 6);
+        assert_eq!(drop_mask.load(Ordering::SeqCst), 0b11_1111);
+        drop(vec);
+        assert_eq!(drops.load(Ordering::SeqCst), 6);
+    }
+
+    #[test]
+    fn remove_then_drop_drops_every_value_once() {
+        setup_memory(4096);
+        let drops = AtomicUsize::new(0);
+        let drop_mask = AtomicU64::new(0);
+        let mut vec = Vec::<Tracker<'_>, 3>::new();
+
+        for i in 0..7 {
+            vec.push(Tracker::new(i, &drops, &drop_mask)).unwrap();
+        }
+
+        let removed_inline = vec.remove(1).unwrap();
+        let removed_extra = vec.remove(4).unwrap();
+
+        assert_eq!(removed_inline.id, 1);
+        assert_eq!(removed_extra.id, 5);
+        assert_eq!(drops.load(Ordering::SeqCst), 0);
+
+        drop(removed_inline);
+        drop(removed_extra);
+        assert_eq!(drops.load(Ordering::SeqCst), 2);
+
+        drop(vec);
+        assert_eq!(drops.load(Ordering::SeqCst), 7);
+        assert_eq!(drop_mask.load(Ordering::SeqCst), 0b111_1111);
+    }
+
+    #[test]
+    fn clone_works_for_non_copy_values() {
+        setup_memory(4096);
+        let mut vec = Vec::<NonCopy, 2>::new();
+        for i in 0..5 {
+            vec.push(NonCopy { value: i }).unwrap();
+        }
+
+        let clone = vec.clone();
+
+        assert_eq!(clone.len(), 5);
+        for i in 0..5 {
+            assert_eq!(clone.at(i).unwrap().value, i);
+            assert_eq!(vec.at(i).unwrap().value, i);
+        }
+    }
+
+    #[test]
+    fn new_init_sets_length_and_initializes_values() {
+        setup_memory(4096);
+        let vec = Vec::<NonCopy, 2>::new_init(5, NonCopy { value: 42 }).unwrap();
+
+        assert_eq!(vec.len(), 5);
+        for i in 0..5 {
+            assert_eq!(vec.at(i).unwrap().value, 42);
+        }
     }
 }
