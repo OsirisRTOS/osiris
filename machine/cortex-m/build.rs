@@ -252,27 +252,28 @@ fn workspace_dir() -> Option<PathBuf> {
 
 mod vector_table {
     pub fn generate() -> String {
-        let entries: Vec<_> = (0..240)
-            .map(|i| quote::format_ident!("__irq_{i}_handler"))
-            .collect();
+        const LINES: usize = 240;
+        let mut refs = Vec::new();
+
+        for _ in 0..LINES {
+            refs.push(quote::format_ident!("irq_trampoline"));
+        }
 
         quote::quote! {
             unsafe extern "C" {
-                #(
-                    fn #entries();
-                )*
+                fn irq_trampoline();
             }
 
             #[repr(C)]
             struct ExternalVectorTable {
-                entries: [unsafe extern "C" fn(); 240],
+                entries: [unsafe extern "C" fn(); #LINES],
             }
 
             #[unsafe(link_section = ".ivt.ext")]
             #[used]
             static EXTERNAL_VECTOR_TABLE: ExternalVectorTable = ExternalVectorTable {
                 entries: [
-                    #(#entries),*
+                    #(#refs),*
                 ],
             };
         }

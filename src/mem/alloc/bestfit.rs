@@ -22,6 +22,13 @@ pub struct BestFitAllocator {
     head: Option<NonNull<u8>>,
 }
 
+// Safety: BestFitAllocator is not Copy or Clone.
+// BestFitAllocator owns all its data exclusively.
+// The user must ensure that the returned pointers by malloc do not outlive the allocator.
+unsafe impl Send for BestFitAllocator {}
+// Safety: BestFitAllocator does only allow access to its data through &mut self.
+unsafe impl Sync for BestFitAllocator {}
+
 /// Implementation of the BestFitAllocator.
 impl BestFitAllocator {
     pub const MIN_RANGE_SIZE: usize = size_of::<BestFitMeta>() + Self::align_up() + 1;
@@ -198,7 +205,11 @@ impl super::Allocator for BestFitAllocator {
     /// `align` - The alignment of the block.
     ///
     /// Returns the user pointer to the block if successful, otherwise an error.
-    fn malloc<T>(
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the returned pointer is not used after the allocator is dropped.
+    unsafe fn malloc<T>(
         &mut self,
         size: usize,
         align: usize,
@@ -407,7 +418,7 @@ mod tests {
             allocator.add_range(&range).unwrap();
         }
 
-        let ptr = allocator.malloc(128, 1, None).unwrap();
+        let ptr = unsafe { allocator.malloc(128, 1, None).unwrap() };
 
         verify_block(ptr, 128, None);
     }
@@ -422,7 +433,7 @@ mod tests {
         }
 
         let request = range.start + 128;
-        let ptr = allocator.malloc::<u8>(128, 1, Some(request)).unwrap();
+        let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)).unwrap() };
 
         // Check that the returned pointer contains the requested address.
         let meta = unsafe {
@@ -443,7 +454,7 @@ mod tests {
         }
 
         let request = range.start + 4096;
-        let ptr = allocator.malloc::<u8>(128, 1, Some(request));
+        let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
 
         assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
@@ -458,7 +469,7 @@ mod tests {
         }
 
         let request = range.start + 127;
-        let ptr = allocator.malloc::<u8>(128, 8, Some(request));
+        let ptr = unsafe { allocator.malloc::<u8>(128, 8, Some(request)) };
 
         assert!(ptr.is_err_and(|e| e.kind == Kind::InvalidAlign));
     }
@@ -473,10 +484,10 @@ mod tests {
         }
 
         let request = range.start + 128;
-        let ptr = allocator.malloc::<u8>(128, 1, Some(request)).unwrap();
+        let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)).unwrap() };
         verify_block(ptr, 128, None);
 
-        let ptr = allocator.malloc::<u8>(128, 1, Some(request));
+        let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
         assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
 
@@ -490,7 +501,7 @@ mod tests {
         }
 
         let request = range.end + 128;
-        let ptr = allocator.malloc::<u8>(128, 1, Some(request));
+        let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
 
         assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
@@ -508,7 +519,7 @@ mod tests {
 
         let mut ptrs = Vec::new();
         for _ in 0..CNT {
-            let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
             verify_block(ptr, SIZE, None);
             ptrs.push((ptr, SIZE));
         }
@@ -530,7 +541,7 @@ mod tests {
 
         let mut ptrs = Vec::new();
         for _ in 0..CNT {
-            let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
             verify_block(ptr, SIZE, None);
             ptrs.push((ptr, SIZE));
         }
@@ -552,12 +563,12 @@ mod tests {
 
         let mut ptrs = Vec::new();
         for _ in 0..CNT - 1 {
-            let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
             verify_block(ptr, SIZE, None);
             ptrs.push(ptr);
         }
 
-        let ptr = allocator.malloc::<u8>(SIZE, 1, None);
+        let ptr = unsafe { allocator.malloc::<u8>(SIZE, 1, None) };
         assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
     }
 
@@ -571,14 +582,14 @@ mod tests {
             allocator.add_range(&range).unwrap();
         }
 
-        let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+        let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
         verify_block(ptr, SIZE, None);
 
         unsafe {
             allocator.free(ptr, SIZE);
         }
 
-        let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+        let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
         verify_block(ptr, SIZE, None);
     }
 
@@ -599,7 +610,7 @@ mod tests {
 
         let mut ptrs = Vec::new();
         for _ in 0..CNT {
-            let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
             verify_block(ptr, SIZE, None);
             ptrs.push((ptr, SIZE));
         }
@@ -626,10 +637,10 @@ mod tests {
 
         let mut ptrs = Vec::new();
 
-        let ptr = allocator.malloc::<u8>(SIZE, 1, None).unwrap();
+        let ptr = unsafe { allocator.malloc::<u8>(SIZE, 1, None).unwrap() };
 
         for _ in 0..CNT - 1 {
-            let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
             verify_block(ptr, SIZE, None);
             ptrs.push((ptr, SIZE));
         }
@@ -638,7 +649,7 @@ mod tests {
             allocator.free(ptr, SIZE);
         }
 
-        let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+        let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
         ptrs.push((ptr, SIZE));
 
         verify_ptrs_not_overlaping(ptrs.as_slice());
@@ -656,15 +667,13 @@ mod tests {
             allocator.add_range(&range).unwrap();
         }
 
-        let ptr1: core::ptr::NonNull<u8> = allocator.malloc(SIZE, 1, None).unwrap();
+        let ptr1: core::ptr::NonNull<u8> = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
 
         unsafe {
             allocator.free(ptr1, SIZE);
         }
 
-        let ptr2: core::ptr::NonNull<u8> = allocator
-            .malloc(SIZE, 1, None)
-            .expect("second malloc should succeed via fallback path");
+        let ptr2: core::ptr::NonNull<u8> = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
 
         unsafe {
             allocator.free(ptr2, SIZE);
@@ -691,12 +700,12 @@ mod tests {
         let mut ptrs = Vec::new();
 
         for _ in 0..CNT {
-            let ptr = allocator.malloc(SIZE, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(SIZE, 1, None).unwrap() };
             verify_block(ptr, SIZE, None);
             ptrs.push((ptr, SIZE));
         }
 
-        let ptr = allocator.malloc::<u8>(SIZE, 1, None);
+        let ptr = unsafe { allocator.malloc::<u8>(SIZE, 1, None) };
         assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
 
         verify_ptrs_not_overlaping(ptrs.as_slice());
@@ -748,7 +757,7 @@ mod verification {
                 assert_eq!(allocator.add_range(&range), Ok(()));
             }
 
-            let ptr = allocator.malloc(size, 1, None).unwrap();
+            let ptr = unsafe { allocator.malloc(size, 1, None).unwrap() };
 
             verify_block(ptr, size, None);
         }

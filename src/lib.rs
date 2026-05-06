@@ -9,6 +9,7 @@ mod macros;
 mod error;
 mod faults;
 mod idle;
+mod irq;
 mod mem;
 mod print;
 mod types;

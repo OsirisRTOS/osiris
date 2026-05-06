@@ -27,8 +27,8 @@ bootstrap:
     it lt
     strlt r3, [r1], #4
     blt 2b
-    @ Call the pre_init function.
+    @ Call kernel_init to start the kernel.
     bl kernel_init
-    @ If main returns, loop forever.
+    @ If kernel_init returns, loop forever.
 hang:
     b hang

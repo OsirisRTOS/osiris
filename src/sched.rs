@@ -30,7 +30,8 @@ use crate::{
 type ThreadMap<const N: usize> = BitReclaimMap<thread::UId, thread::Thread, N>;
 type TaskMap<const N: usize> = BitReclaimMap<task::UId, task::Task, N>;
 
-type GlobalScheduler = Scheduler<32>;
+const THREAD_COUNT: usize = 32;
+type GlobalScheduler = Scheduler<THREAD_COUNT>;
 
 static SCHED: SpinLocked<GlobalScheduler> = SpinLocked::new(GlobalScheduler::new());
 
@@ -51,6 +52,12 @@ pub struct Scheduler<const N: usize> {
     current: Option<thread::UId>,
     last_tick: u64,
 }
+
+// Safety: The scheduler is not Copy or Clone.
+// The scheduler owns all its data exclusively.
+unsafe impl<const N: usize> Send for Scheduler<N> {}
+// Safety: The scheduler does only allow access to its data through &mut self, which is synchronized by the SCHED spinlock.
+unsafe impl<const N: usize> Sync for Scheduler<N> {}
 
 /// We define dequeue as a macro in order to avoid borrow checker issues.
 macro_rules! dequeue {

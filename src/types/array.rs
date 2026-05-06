@@ -562,8 +562,9 @@ impl<T: Clone + Copy, const N: usize> Vec<T, N> {
     }
 }
 
-impl<T, const N: usize> Drop for Vec<T, N> {
-    fn drop(&mut self) {
+impl<T, const N: usize> Vec<T, N> {
+    /// Clear the Vec, dropping all elements.
+    pub fn clear(&mut self) {
         let min = core::cmp::min(self.len, N);
 
         // Drop all elements in the inline storage.
@@ -581,6 +582,14 @@ impl<T, const N: usize> Drop for Vec<T, N> {
                 elem.assume_init_drop();
             }
         }
+
+        self.len = 0;
+    }
+}
+
+impl<T, const N: usize> Drop for Vec<T, N> {
+    fn drop(&mut self) {
+        self.clear();
     }
 }
 
@@ -661,6 +670,8 @@ impl<T: Clone + Copy, const N: usize> GetMut<usize> for Vec<T, N> {
 }
 
 /// This is an IndexMap that additionally tracks which indices are occupied through a bitset.
+/// WORDS is the number of usize words needed to track N entries, you should set it to WORDS = N.div_ceil(usize::BITS as usize).
+/// Its currently impossible to set this value automatically because of const generic limitations.
 pub struct BitReclaimMap<K: ?Sized + ToIndex, V, const N: usize> {
     map: IndexMap<K, V, N>,
     free: BitAlloc<N>,

@@ -79,17 +79,16 @@ macro_rules! kerr {
     ($kind:ident) => {
         $crate::error::Error::new($crate::error::Kind::$kind)
     };
-    ($kind:expr, $msg:expr) => {
-        use $crate::error::Error;
+    ($kind:ident, $msg:expr) => {{
         #[cfg(feature = "error-msg")]
         {
-            Error::new($crate::error::Kind::$kind).with_msg($msg)
+            $crate::error::Error::new($crate::error::Kind::$kind).with_msg($msg)
         }
         #[cfg(not(feature = "error-msg"))]
         {
-            Error::new($crate::error::Kind::$kind)
+            $crate::error::Error::new($crate::error::Kind::$kind)
         }
-    };
+    }};
 }
 
 #[proc_macros::fmt]
