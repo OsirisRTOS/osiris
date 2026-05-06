@@ -14,16 +14,18 @@ static void enable_faults(void) {
   __DSB();
 }
 
-static void init_systick(void) {
-  HAL_SYSTICK_Config(SystemCoreClock / 1000); // Configure SysTick to interrupt every 1 ms
+static int init_systick(void) {
+  if (HAL_SYSTICK_Config(SystemCoreClock / 1000)) // Configure SysTick to interrupt every 1 ms
+    return -1;
   HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+  return 0;
 }
 
 unsigned long long systick_freq(void) {
   return 1000;
 }
 
-void init_hal(void) {
+int init_hal(void) {
 #if OSIRIS_TUNING_ENABLEFPU
   init_fpu();
 #endif
@@ -31,8 +33,17 @@ void init_hal(void) {
 
   enable_faults();
 
-  init_clock_cfg();
-  init_systick();
+  int ret = init_clock_cfg();
+  if (ret != 0) {
+    return ret;
+  }
+
+  ret = init_systick();
+  if (ret != 0) {
+    return ret;
+  }
+
+  return 0;
 }
 
 void HAL_MspInit(void) {

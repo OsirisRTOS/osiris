@@ -2,7 +2,7 @@
 
 // lib.c
 unsigned long long systick_freq(void);
-void init_hal(void);
+int init_hal(void);
 
 // uart.c
 int init_debug_uart(void);
@@ -23,3 +23,8 @@ void SystemClock_Config(void);
 
 unsigned long long monotonic_now(void);
 unsigned long long monotonic_freq(void);
+unsigned long long rtc_raw(void);
+int set_rtc_raw(unsigned long long time);
+
+unsigned long rtc_backup_register(unsigned char index);
+void set_rtc_backup_register(unsigned char index, unsigned long value);

@@ -35,7 +35,10 @@ pub struct ArmMachine;
 impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
-            bindings::init_hal();
+            let ret = bindings::init_hal();
+            if ret != 0 {
+                panic!("init_hal failed: {}", ret);
+            }
             bindings::init_debug_uart();
             bindings::dwt_init();
         }
@@ -73,6 +76,22 @@ impl hal_api::Machinelike for ArmMachine {
 
     fn monotonic_freq() -> u64 {
         unsafe { bindings::monotonic_freq() }
+    }
+
+    fn rtc_raw() -> u64 {
+        unsafe { bindings::rtc_raw() }
+    }
+
+    fn set_rtc_raw(time: u64) -> i32 {
+        unsafe { bindings::set_rtc_raw(time) }
+    }
+
+    fn rtc_backup_register(index: u8) -> u32 {
+        unsafe { bindings::rtc_backup_register(index) }
+    }
+
+    fn set_rtc_backup_register(index: u8, value: u32) {
+        unsafe { bindings::set_rtc_backup_register(index, value) }
     }
 
     fn systick_freq() -> u64 {
