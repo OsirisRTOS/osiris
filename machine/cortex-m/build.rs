@@ -253,35 +253,16 @@ fn workspace_dir() -> Option<PathBuf> {
 mod vector_table {
     pub fn generate() -> String {
         const LINES: usize = 240;
+        let mut refs = Vec::new();
 
-        let refs: Vec<_> = (0..LINES)
-            .map(|i| quote::format_ident!("__irq_{i}_handler"))
-            .collect();
-
-        let defs: Vec<_> = refs
-            .iter()
-            .enumerate()
-            .map(|(i, entry)| {
-                quote::quote! {
-                    #[unsafe(no_mangle)]
-                    #[unsafe(naked)]
-                    unsafe extern "C" fn #entry() {
-                       core::arch::naked_asm!(
-                            "tst lr, #4",
-                            "ite eq",
-                            "mrseq r0, msp",
-                            "mrsne r0, psp",
-                            "mov r1, {vector}",
-                            "b kernel_irq_handler",
-                            vector = const #i,
-                       );
-                    }
-                }
-            })
-            .collect();
+        for _ in 0..LINES {
+            refs.push(quote::format_ident!("irq_trampoline"));
+        }
 
         quote::quote! {
-            #(#defs)*
+            unsafe extern "C" {
+                fn irq_trampoline();
+            }
 
             #[repr(C)]
             struct ExternalVectorTable {

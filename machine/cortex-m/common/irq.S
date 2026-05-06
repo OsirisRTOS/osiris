@@ -77,6 +77,18 @@ svc_hndlr:
     b _syscall_hndlr
 
 .thumb_func
+.global irq_trampoline
+irq_trampoline:
+    @ Check which stack we need to use.
+    tst lr, #4
+    ite eq
+    mrseq r0, msp
+    mrsne r0, psp
+    
+    mrs r1, IPSR
+    b kernel_irq_handler
+
+.thumb_func
 .global hard_fault_hndlr
 hard_fault_hndlr:
     @ Check which stack we need to use.
