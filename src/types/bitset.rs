@@ -121,8 +121,13 @@ impl<const N: usize> BitAlloc<N> {
                 }
 
                 // Mark the remaining bits in the last word as used.
-                self.l1[idx] &= !((!0usize)
-                    .unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
+                // Guard against `len % BITS_PER_WORD == 0`, which means the run ended
+                // exactly on a word boundary — there is no trailing partial word, and
+                // unguarded `self.l1[idx]` would index one past the last word.
+                if len % Self::BITS_PER_WORD != 0 {
+                    self.l1[idx] &= !((!0usize)
+                        .unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
+                }
                 return Some(start);
             }
         }
@@ -172,11 +177,10 @@ mod tests {
         assert!(result.is_some());
     }
 
+    // -------- alloc on word-boundary-aligned full ranges --------
+
     #[test]
     fn alloc_full_two_words() {
-        // Allocate exactly 2*BITS_PER_WORD bits on a 2-word bitset where all bits are free.
-        // The marking-loop accesses l1[N] (out of bounds) when len % BITS_PER_WORD == 0
-        // after the middle-words pass, so this panics on the unfixed implementation.
         let mut alloc = BitAlloc::<2>::new(2 * BitAlloc::<2>::BITS_PER_WORD).unwrap();
         let r = alloc.alloc(2 * BitAlloc::<2>::BITS_PER_WORD);
         assert_eq!(r, Some(0));
@@ -186,8 +190,6 @@ mod tests {
 
     #[test]
     fn alloc_full_three_words() {
-        // Same shape as `alloc_full_two_words` but with 3 words. Reachable from
-        // PFA when allocating all available pages on a multi-word configuration.
         let mut alloc = BitAlloc::<3>::new(3 * BitAlloc::<3>::BITS_PER_WORD).unwrap();
         let r = alloc.alloc(3 * BitAlloc::<3>::BITS_PER_WORD);
         assert_eq!(r, Some(0));

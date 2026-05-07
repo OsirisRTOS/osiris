@@ -138,6 +138,13 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
             return (None, None);
         }
 
+        if idx1 >= N {
+            return (None, if idx2 < N { self.data[idx2].as_mut() } else { None });
+        }
+        if idx2 >= N {
+            return (self.data[idx1].as_mut(), None);
+        }
+
         let (left, right) = self.data.split_at_mut(idx1.max(idx2));
 
         if idx1 < idx2 {
@@ -170,13 +177,21 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
             return (None, None, None);
         }
 
-        let ptr1 = &mut self.data[idx1] as *mut Option<V>;
-        let ptr2 = &mut self.data[idx2] as *mut Option<V>;
-        let ptr3 = &mut self.data[idx3] as *mut Option<V>;
+        let base = self.data.as_mut_ptr();
+        let ptr1 = if idx1 < N { Some(unsafe { base.add(idx1) }) } else { None };
+        let ptr2 = if idx2 < N { Some(unsafe { base.add(idx2) }) } else { None };
+        let ptr3 = if idx3 < N { Some(unsafe { base.add(idx3) }) } else { None };
 
-        // Safety: the elements at index1, index2 and index3 are nowhere else borrowed mutably by function contract.
-        // And they are disjoint because of the check above.
-        unsafe { ((*ptr1).as_mut(), (*ptr2).as_mut(), (*ptr3).as_mut()) }
+        // Safety: each pointer is only constructed when its index is < N, so it stays inside
+        // self.data. The three indices are pairwise distinct (check above), so the resulting
+        // references are disjoint.
+        unsafe {
+            (
+                ptr1.and_then(|p| (*p).as_mut()),
+                ptr2.and_then(|p| (*p).as_mut()),
+                ptr3.and_then(|p| (*p).as_mut()),
+            )
+        }
     }
 }
 
@@ -546,12 +561,15 @@ impl<T, const N: usize> Vec<T, N> {
             return (None, None);
         }
 
-        let ptr1 = self.at_mut_unchecked(index1);
-        let ptr2 = self.at_mut_unchecked(index2);
+        let in1 = index1 < self.len;
+        let in2 = index2 < self.len;
+        let ptr1 = if in1 { Some(self.at_mut_unchecked(index1)) } else { None };
+        let ptr2 = if in2 { Some(self.at_mut_unchecked(index2)) } else { None };
 
-        // Safety: the elements at index1 and index2 are nowhere else borrowed mutably by function contract.
-        // And they are disjoint because of the check above.
-        unsafe { (Some(&mut *ptr1), Some(&mut *ptr2)) }
+        // Safety: each pointer is only constructed when the corresponding index is < self.len,
+        // so it points to an initialized slot. The two indices are pairwise distinct (check
+        // above), so the resulting references are disjoint.
+        unsafe { (ptr1.map(|p| &mut *p), ptr2.map(|p| &mut *p)) }
     }
 
     /// Get disjoint mutable references to the values at the given indices.
@@ -572,13 +590,23 @@ impl<T, const N: usize> Vec<T, N> {
             return (None, None, None);
         }
 
-        let ptr1 = self.at_mut_unchecked(index1);
-        let ptr2 = self.at_mut_unchecked(index2);
-        let ptr3 = self.at_mut_unchecked(index3);
+        let in1 = index1 < self.len;
+        let in2 = index2 < self.len;
+        let in3 = index3 < self.len;
+        let ptr1 = if in1 { Some(self.at_mut_unchecked(index1)) } else { None };
+        let ptr2 = if in2 { Some(self.at_mut_unchecked(index2)) } else { None };
+        let ptr3 = if in3 { Some(self.at_mut_unchecked(index3)) } else { None };
 
-        // Safety: the elements at index1, index2 and index3 are nowhere else borrowed mutably by function contract.
-        // And they are disjoint because of the check above.
-        unsafe { (Some(&mut *ptr1), Some(&mut *ptr2), Some(&mut *ptr3)) }
+        // Safety: each pointer is only constructed when the corresponding index is < self.len,
+        // so it points to an initialized slot. The three indices are pairwise distinct (check
+        // above), so the resulting references are disjoint.
+        unsafe {
+            (
+                ptr1.map(|p| &mut *p),
+                ptr2.map(|p| &mut *p),
+                ptr3.map(|p| &mut *p),
+            )
+        }
     }
 
     /// Swap the values at the given indices.
@@ -763,8 +791,19 @@ impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
 impl<K: Copy + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     pub fn insert_with(&mut self, f: impl FnOnce(usize) -> Result<(K, V)>) -> Result<K> {
         let idx = self.free.alloc(1).ok_or(kerr!(ENOMEM))?;
-        let (key, value) = f(idx)?;
-        self.map.raw_insert(idx, value)?;
+        // The closure is user-supplied and may return an error; release the bit so a
+        // sustained run of closure failures cannot exhaust the allocator.
+        let (key, value) = match f(idx) {
+            Ok(kv) => kv,
+            Err(e) => {
+                self.free.free(idx, 1);
+                return Err(e);
+            }
+        };
+        if let Err(e) = self.map.raw_insert(idx, value) {
+            self.free.free(idx, 1);
+            return Err(e);
+        }
         Ok(key)
     }
 }
@@ -1152,12 +1191,8 @@ mod tests {
 
     #[test]
     fn at2_mut_out_of_bounds_returns_none() {
-        // The doc-comment promises Some(...)/Some(...) only for in-bounds disjoint indices.
-        // Without bounds-checking, at2_mut returns Some(&mut <uninit>) for any index in
-        // [len, capacity), which is UB (constructing &mut T over uninitialized memory).
         let mut vec = Vec::<usize, 4>::new();
         vec.push(7).unwrap();
-        // len=1, so index 2 is out of bounds.
         let (a, b) = vec.at2_mut(0, 2);
         assert!(a.is_some(), "index 0 is in-bounds");
         assert!(
@@ -1172,7 +1207,6 @@ mod tests {
         let mut vec = Vec::<usize, 4>::new();
         vec.push(7).unwrap();
         vec.push(8).unwrap();
-        // len=2, so index 3 is out of bounds.
         let (a, b, c) = vec.at3_mut(0, 1, 3);
         assert!(a.is_some());
         assert!(b.is_some());
@@ -1183,15 +1217,13 @@ mod tests {
         );
     }
 
-    // -------- IndexMap get2_mut / get3_mut OOB tests --------
+    // -------- IndexMap::get2_mut / get3_mut bounds tests --------
 
     use super::IndexMap;
     use crate::types::traits::GetMut;
 
     #[test]
-    fn indexmap_get2_mut_oob_does_not_panic() {
-        // Inconsistent with the rest of Get/GetMut (which return None for OOB):
-        // get2_mut panics inside split_at_mut when an index is past N.
+    fn indexmap_get2_mut_out_of_bounds_returns_none() {
         let mut m: IndexMap<usize, u32, 4> = IndexMap::new();
         m.raw_insert(0, 10).unwrap();
         let (a, b) = m.get2_mut(0usize, 10usize);
@@ -1200,8 +1232,7 @@ mod tests {
     }
 
     #[test]
-    fn indexmap_get3_mut_oob_does_not_panic() {
-        // Same shape as get2_mut: get3_mut panics on direct array indexing for OOB indices.
+    fn indexmap_get3_mut_out_of_bounds_returns_none() {
         let mut m: IndexMap<usize, u32, 4> = IndexMap::new();
         m.raw_insert(0, 10).unwrap();
         let (a, b, c) = m.get3_mut(0usize, 10usize, 11usize);
@@ -1210,16 +1241,12 @@ mod tests {
         assert!(c.is_none());
     }
 
-    // -------- BitReclaimMap bit-leak via insert_with closure error --------
+    // -------- BitReclaimMap insert_with bit-leak test --------
 
     use super::BitReclaimMap;
 
     #[test]
     fn bitreclaim_insert_with_failed_closure_does_not_leak() {
-        // insert_with allocates a BitAlloc bit, calls the user closure, then raw_inserts
-        // into the IndexMap. If the closure returns Err, the allocated bit is never freed
-        // — sustained closure failures exhaust the allocator and break subsequent inserts
-        // even though no slot is in use.
         use crate::error::Result as KResult;
         let mut m: BitReclaimMap<usize, u32, 2> = BitReclaimMap::new();
         for _ in 0..10 {
@@ -1227,7 +1254,6 @@ mod tests {
                 m.insert_with(|_idx| -> KResult<(usize, u32)> { Err(kerr!(OutOfMemory)) });
             assert!(r.is_err());
         }
-        // After 10 failed closures, both slots should still be available.
         let id0 = m.insert(10).unwrap();
         let id1 = m.insert(20).unwrap();
         assert!(id0 < 2);

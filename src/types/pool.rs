@@ -61,16 +61,22 @@ impl<T, const N: usize, const WORDS: usize> FixedPool<T, N, WORDS> {
         // Safety: Alloc ensures that the index cannot be allocated until the next free.
         // A free can only happen when the Ref is dropped, as the function is not publicly accessible.
         // This guarantees that only one Ref can exist for a block at a time.
-        let idx = self.free.lock().alloc(1);
-        idx.map(|idx| {
-            let ptr = self.blocks[idx].get();
-            // Safety: A block can only be allocated once.
-            unsafe { ptr.write(MaybeUninit::new(new)) };
-            FixedPoolRef {
-                idx,
-                pool: self,
-                _marker: PhantomData,
-            }
+        let mut alloc = self.free.lock();
+        let idx = alloc.alloc(1)?;
+        // BitAlloc<WORDS> exposes WORDS * BITS_PER_WORD bits, which can exceed N.
+        // Release any out-of-range index so the pool reports exhaustion instead of panicking.
+        if idx >= N {
+            alloc.free(idx, 1);
+            return None;
+        }
+        drop(alloc);
+        let ptr = self.blocks[idx].get();
+        // Safety: A block can only be allocated once.
+        unsafe { ptr.write(MaybeUninit::new(new)) };
+        Some(FixedPoolRef {
+            idx,
+            pool: self,
+            _marker: PhantomData,
         })
     }
 
@@ -217,20 +223,15 @@ impl<T: Default> DerefMut for Owned<T> {
 mod tests {
     use super::*;
 
+    // -------- FixedPool exhaustion under WORDS * BITS_PER_WORD > N --------
+
     #[test]
     fn fixed_pool_alloc_beyond_n_returns_none() {
-        // BitAlloc<WORDS> tracks WORDS*BITS_PER_WORD allocatable bits, but
-        // FixedPool<T, N, WORDS>::blocks only has N slots. The const generics
-        // `N` and `WORDS` are independent — a user picking WORDS*BITS_PER_WORD > N
-        // (e.g. WORDS=1 and N=4 here) will see the (N+1)-th alloc panic from
-        // `self.blocks[idx]` indexing past the end. Allocator API consumers
-        // expect None on exhaustion, not a panic.
         let pool: FixedPool<u32, 4, 1> = FixedPool::new();
         let _r0 = pool.alloc(0).unwrap();
         let _r1 = pool.alloc(1).unwrap();
         let _r2 = pool.alloc(2).unwrap();
         let _r3 = pool.alloc(3).unwrap();
-        // The 5th alloc must return None, not panic on `blocks[4]` OOB.
         assert!(pool.alloc(4).is_none());
     }
 }
