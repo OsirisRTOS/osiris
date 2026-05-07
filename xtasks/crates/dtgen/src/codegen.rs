@@ -905,7 +905,7 @@ mod spi {
 
     /// Decodes pinctrl phandles to extract port, line, and alternate function for SPI pins.
     fn decode_pinctrl<'a>(dt: &'a DeviceTree, pinctrl: &[u32]) -> Vec<(&'a str, BusPin)> {
-        /// Parses a node name like "spi1-sck" to extract the SPI signal role (sck, miso, mosi).
+        /// Parses a node name like "spi1_sck_pa5" to extract the SPI signal role (sck, miso, mosi).
         fn parse_spi_role(name: &str) -> Option<&'static str> {
             let mut parts = name.split('_');
             let periph = parts.next()?;
