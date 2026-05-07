@@ -814,7 +814,12 @@ impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     #[allow(dead_code)]
     pub fn insert(&mut self, value: V) -> Result<usize> {
         let idx = self.free.alloc(1).ok_or(kerr!(ENOMEM))?;
-        self.map.raw_insert(idx, value)?;
+        if let Err(e) = self.map.raw_insert(idx, value) {
+            // BitAlloc<N> exposes more bits than IndexMap has slots; release any index
+            // that raw_insert rejects so a leaked bit can't accumulate across failures.
+            self.free.free(idx, 1);
+            return Err(e);
+        }
         Ok(idx)
     }
 
@@ -1281,6 +1286,23 @@ mod tests {
     // -------- BitReclaimMap insert_with bit-leak test --------
 
     use super::BitReclaimMap;
+
+    #[test]
+    fn bitreclaim_insert_failure_does_not_leak() {
+        let mut m: BitReclaimMap<usize, u32, 2> = BitReclaimMap::new();
+        m.insert(10).unwrap();
+        m.insert(20).unwrap();
+        // Third insert allocates bit 2 then fails (raw_insert rejects idx >= N).
+        assert!(m.insert(30).is_err());
+        // Probe BitAlloc directly: bit 2 must be free again.
+        let next_free = m.free.alloc(1);
+        assert_eq!(
+            next_free,
+            Some(2),
+            "expected bit 2 to be free after failed insert, but BitAlloc returned {:?}",
+            next_free
+        );
+    }
 
     #[test]
     fn bitreclaim_insert_with_failed_closure_does_not_leak() {
