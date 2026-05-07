@@ -2,7 +2,10 @@ use core::result::Result::Ok;
 pub use hal_api::*;
 
 pub mod asm;
+pub mod device_tree;
+pub mod i2c;
 pub mod sched;
+pub mod spi;
 
 pub type Machine = StubMachine;
 pub type Stack = sched::StubStack;

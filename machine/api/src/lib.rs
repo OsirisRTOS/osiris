@@ -12,6 +12,8 @@ pub enum Error {
     OutOfMemory(usize),
     OutOfBoundsPtr(usize, Range<usize>),
     InvalidAddress(usize),
+    InvalidArgument,
+    NotFound,
 }
 
 pub enum Fault {
@@ -34,6 +36,8 @@ impl Display for Error {
                 )
             }
             Error::InvalidAddress(addr) => write!(f, "Invalid address {:p}", *addr as *const u8),
+            Error::InvalidArgument => write!(f, "Invalid argument"),
+            Error::NotFound => write!(f, "Not found"),
         }
     }
 }

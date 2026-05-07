@@ -5,8 +5,10 @@ pub use hal_api::*;
 pub mod asm;
 pub mod debug;
 pub mod excep;
+pub mod i2c;
 pub mod panic;
 pub mod sched;
+pub mod spi;
 
 mod crit;
 mod print;
@@ -26,6 +28,7 @@ mod bindings {
 unsafe extern "C" {}
 
 include!(concat!(env!("OUT_DIR"), "/vector_table.rs"));
+include!(concat!(env!("OUT_DIR"), "/device_tree.rs"));
 
 pub type Machine = ArmMachine;
 pub type Stack = sched::ArmStack;
