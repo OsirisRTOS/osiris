@@ -369,25 +369,25 @@ impl<T, const N: usize> Vec<T, N> {
             // Initialize all elements in the inline storage.
             for i in 0..length {
                 vec.data[i].write(value.clone());
+                // Bump len after each write so a panicking T::clone leaves Drop able
+                // to clean up the slots that were already initialized.
+                vec.len = i + 1;
             }
         } else {
-            // Initialize all elements in the inline storage.
+            // Allocate the extra storage first and install it on `vec` so any later
+            // failure (clone panic) leaves Drop with a consistent (len, extra) view,
+            // and so an OOM here cannot leak inline clones (none have been written yet).
+            let extra_len = length - N;
+            vec.extra = Box::new_slice_uninit(extra_len)?;
+
             for elem in &mut vec.data {
                 elem.write(value.clone());
+                vec.len += 1;
             }
 
-            // Check if we need to allocate extra storage.
-            if length - N > 0 {
-                // Allocate extra storage for the remaining elements.
-                let mut extra = Box::new_slice_uninit(length - N)?;
-
-                // Initialize all the required elements in the extra storage.
-                for i in N..length {
-                    extra[i - N].write(value.clone());
-                }
-
-                // Set the extra storage in the Vec.
-                vec.extra = extra;
+            for i in 0..extra_len {
+                vec.extra[i].write(value.clone());
+                vec.len += 1;
             }
         }
 
@@ -1227,6 +1227,41 @@ mod tests {
         for i in 0..5 {
             assert_eq!(vec.at(i).unwrap().value, 42);
         }
+    }
+
+    #[test]
+    fn new_init_oom_does_not_leak() {
+        struct Counted<'a> {
+            drops: &'a AtomicUsize,
+            clones: &'a AtomicUsize,
+        }
+        impl Clone for Counted<'_> {
+            fn clone(&self) -> Self {
+                self.clones.fetch_add(1, Ordering::SeqCst);
+                Counted { drops: self.drops, clones: self.clones }
+            }
+        }
+        impl Drop for Counted<'_> {
+            fn drop(&mut self) { self.drops.fetch_add(1, Ordering::SeqCst); }
+        }
+
+        setup_memory(4096);
+        let drops = AtomicUsize::new(0);
+        let clones = AtomicUsize::new(0);
+        let r = Vec::<Counted, 2>::new_init(
+            1_000_000_000,
+            Counted { drops: &drops, clones: &clones },
+        );
+        assert!(r.is_err());
+        let n_clones = clones.load(Ordering::SeqCst);
+        let n_drops = drops.load(Ordering::SeqCst);
+        assert_eq!(
+            n_drops,
+            n_clones + 1,
+            "leaked clones (clones={}, drops={})",
+            n_clones,
+            n_drops,
+        );
     }
 
     // -------- Vec::at2_mut / at3_mut bounds tests --------
