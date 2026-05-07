@@ -212,3 +212,25 @@ impl<T: Default> DerefMut for Owned<T> {
         unsafe { &mut *self.ptr }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_pool_alloc_beyond_n_returns_none() {
+        // BitAlloc<WORDS> tracks WORDS*BITS_PER_WORD allocatable bits, but
+        // FixedPool<T, N, WORDS>::blocks only has N slots. The const generics
+        // `N` and `WORDS` are independent — a user picking WORDS*BITS_PER_WORD > N
+        // (e.g. WORDS=1 and N=4 here) will see the (N+1)-th alloc panic from
+        // `self.blocks[idx]` indexing past the end. Allocator API consumers
+        // expect None on exhaustion, not a panic.
+        let pool: FixedPool<u32, 4, 1> = FixedPool::new();
+        let _r0 = pool.alloc(0).unwrap();
+        let _r1 = pool.alloc(1).unwrap();
+        let _r2 = pool.alloc(2).unwrap();
+        let _r3 = pool.alloc(3).unwrap();
+        // The 5th alloc must return None, not panic on `blocks[4]` OOB.
+        assert!(pool.alloc(4).is_none());
+    }
+}
