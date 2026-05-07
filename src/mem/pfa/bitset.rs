@@ -53,12 +53,7 @@ impl<const WORDS: usize> super::Allocator<WORDS> for Allocator<WORDS> {
                 PhysAddr::new((begin.as_usize() + super::PAGE_SIZE - 1) & !(super::PAGE_SIZE - 1))
             };
             // TODO: Subtract the needed pages from the available
-            unsafe {
-                core::ptr::write(
-                    ptr.as_ptr(),
-                    Self::new(begin).ok_or(kerr!(EINVAL))?,
-                )
-            };
+            unsafe { core::ptr::write(ptr.as_ptr(), Self::new(begin).ok_or(kerr!(EINVAL))?) };
 
             // Safety: Ptr is properly aligned and non-null. The validity of the memory at that address is valid by the call contract.
             Ok(Pin::new(unsafe { boxed::Box::from_raw(ptr) }))

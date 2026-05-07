@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
+use core::fmt;
 use core::{fmt::Display, ops::Range};
-
 pub mod mem;
 pub mod stack;
 
@@ -600,13 +600,19 @@ impl From<PosixError> for i32 {
 
 impl fmt::Display for PosixError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({}): {}", self.name(), *self as i32, self.description())
+        write!(
+            f,
+            "{} ({}): {}",
+            self.name(),
+            *self as i32,
+            self.description()
+        )
     }
 }
 
 
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
-pub enum Error {
+pub enum NotError {
     #[default]
     Generic,
     OutOfMemory(usize),
@@ -638,7 +644,7 @@ impl Display for NotError {
     }
 }
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, PosixError>;
 
 pub trait Machinelike {
     fn init();
