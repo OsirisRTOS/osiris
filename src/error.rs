@@ -16,7 +16,7 @@ pub(crate) use core::convert::{identity as likely, identity as unlikely};
 pub(crate) use core::hint::{likely, unlikely};
 
 pub type Result<T> = core::result::Result<T, Error>;
-
+pub use hal_api::PosixError;
 /// This is a macro that is used to panic when a bug is detected.
 /// It is similar to the BUG() macro in the Linux kernel. Link: [https://www.kernel.org/]()
 #[macro_export]
@@ -77,21 +77,29 @@ macro_rules! warn_on {
 }
 
 macro_rules! kerr {
-    ($kind:ident) => {
-        $crate::error::Error::new($crate::error::Kind::$kind)
+    ($posix:ident) => {
+        $crate::error::Error::new($crate::error::PosixError::$posix)
     };
+<<<<<<< HEAD
     ($kind:ident, $fmt:literal $($arg:tt)*) => {{
         #[cfg(feature = "error-msg")]
         {
             $crate::error::Error::new($crate::error::Kind::$kind).with_msg(format_args!($fmt $($arg)*))
+=======
+    ($posix:ident, $msg:expr) => {{
+        #[cfg(feature = "error-msg")]
+        {
+            $crate::error::Error::new($crate::error::PosixError::$posix).with_msg($msg)
+>>>>>>> 2ee8ebd (Changed error handling to use Posix errors)
         }
         #[cfg(not(feature = "error-msg"))]
         {
-            $crate::error::Error::new($crate::error::Kind::$kind)
+            $crate::error::Error::new($crate::error::PosixError::$posix)
         }
     }};
 }
 
+<<<<<<< HEAD
 #[proc_macros::fmt]
 #[allow(dead_code)]
 #[derive(Clone, PartialEq, Eq)]
@@ -120,8 +128,10 @@ impl Display for Kind {
 }
 
 #[derive(Clone, Eq)]
+=======
+>>>>>>> 2ee8ebd (Changed error handling to use Posix errors)
 pub struct Error {
-    pub kind: Kind,
+    pub kind: PosixError,
     #[cfg(feature = "error-msg")]
     msg: Option<Msg>,
 }
@@ -167,7 +177,7 @@ impl Write for Msg {
 }
 
 impl Error {
-    pub fn new(kind: Kind) -> Self {
+    pub fn new(kind: PosixError) -> Self {
         #[cfg(feature = "error-msg")]
         {
             Self { kind, msg: None }
@@ -216,9 +226,9 @@ impl Display for Error {
     }
 }
 
-impl From<hal::Error> for Error {
-    fn from(e: hal::Error) -> Self {
-        Self::new(Kind::Hal(e))
+impl From<PosixError> for Error {
+    fn from(e: PosixError) -> Self {
+        Self::new(e)
     }
 }
 

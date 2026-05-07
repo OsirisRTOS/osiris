@@ -113,12 +113,12 @@ impl ArmStack {
         let needed_size = FRAME_WORDS * WORD;
 
         if !self.does_fit(needed_size) {
-            return Err(hal_api::Error::OutOfMemory(needed_size));
+            return Err(hal_api::PosixError::ENOMEM);
         }
 
         // We push an odd number of words, so if the stack is already call-aligned (DOUBLEWORD), we need to add padding.
         if !Self::is_call_aligned(self.sp) {
-            self.sp = self.sp.checked_add(1).ok_or(hal_api::Error::default())?;
+            self.sp = self.sp.checked_add(1).ok_or(hal_api::PosixError::EINVAL)?;
         }
 
         // Pushes a function context onto the stack, which will be executed when the IRQ returns.
@@ -191,7 +191,7 @@ impl hal_api::stack::Stacklike for ArmStack {
 
         // We expect a PhysAddr, which can be converted to a ptr on nommu.
         let top = NonNull::new(top.as_mut_ptr::<u32>())
-            .ok_or(hal_api::Error::InvalidAddress(top.as_usize()))?;
+            .ok_or(hal_api::PosixError::EINVAL)?;
 
         let mut stack = Self {
             top,
@@ -208,13 +208,7 @@ impl hal_api::stack::Stacklike for ArmStack {
             return Ok(StackPtr { offset });
         }
 
-        Err(hal_api::Error::OutOfBoundsPtr(
-            ptr as usize,
-            Range {
-                start: self.top.as_ptr() as usize - self.size.get(),
-                end: self.top.as_ptr() as usize,
-            },
-        ))
+        Err(hal_api::PosixError::EINVAL)
     }
 
     fn set_sp(&mut self, sp: StackPtr) {

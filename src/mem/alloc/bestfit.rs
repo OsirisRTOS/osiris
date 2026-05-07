@@ -56,11 +56,11 @@ impl BestFitAllocator {
 
         // Check if the pointer is 128bit aligned.
         if !ptr.is_multiple_of(align_of::<u128>()) {
-            return Err(kerr!(InvalidArgument));
+            return Err(kerr!(EINVAL));
         }
 
         if range.end.diff(range.start) < Self::MIN_RANGE_SIZE {
-            return Err(kerr!(InvalidArgument));
+            return Err(kerr!(EINVAL));
         }
 
         debug_assert!(range.end > range.start);
@@ -104,7 +104,7 @@ impl BestFitAllocator {
         size: usize,
         requested: Option<PhysAddr>,
     ) -> Result<(NonNull<u8>, Option<NonNull<u8>>)> {
-        let mut best_fit = Err(kerr!(OutOfMemory));
+        let mut best_fit = Err(kerr!(ENOMEM));
         let mut best_fit_size = usize::MAX;
 
         let mut current = self.head;
@@ -217,24 +217,24 @@ impl super::Allocator for BestFitAllocator {
     ) -> Result<NonNull<T>> {
         // Check if the alignment is valid.
         if align == 0 || align > align_of::<u128>() {
-            return Err(kerr!(InvalidAlign));
+            return Err(kerr!(EINVAL));
         }
 
         if let Some(request) = request {
             if !request.is_multiple_of(align) {
-                return Err(kerr!(InvalidAlign));
+                return Err(kerr!(EINVAL));
             }
         }
 
         // Check if the size is valid.
         if size == 0 {
-            return Err(kerr!(InvalidArgument));
+            return Err(kerr!(EINVAL));
         }
 
         // For some cfg this warning is correct. But for others its not.
         #[allow(clippy::absurd_extreme_comparisons)]
         if size >= super::MAX_ADDR {
-            return Err(kerr!(InvalidArgument));
+            return Err(kerr!(EINVAL));
         }
 
         // Align the size.
@@ -456,7 +456,7 @@ mod tests {
         let request = range.start + 4096;
         let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
 
-        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
     }
 
     #[test]
@@ -471,7 +471,7 @@ mod tests {
         let request = range.start + 127;
         let ptr = unsafe { allocator.malloc::<u8>(128, 8, Some(request)) };
 
-        assert!(ptr.is_err_and(|e| e.kind == Kind::InvalidAlign));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::EINVAL));
     }
 
     #[test]
@@ -488,7 +488,7 @@ mod tests {
         verify_block(ptr, 128, None);
 
         let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
-        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
     }
 
     #[test]
@@ -503,7 +503,7 @@ mod tests {
         let request = range.end + 128;
         let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
 
-        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
     }
 
     #[test]
@@ -569,7 +569,7 @@ mod tests {
         }
 
         let ptr = unsafe { allocator.malloc::<u8>(SIZE, 1, None) };
-        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
     }
 
     #[test]
@@ -706,7 +706,7 @@ mod tests {
         }
 
         let ptr = unsafe { allocator.malloc::<u8>(SIZE, 1, None) };
-        assert!(ptr.is_err_and(|e| e.kind == Kind::OutOfMemory));
+        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
 
         verify_ptrs_not_overlaping(ptrs.as_slice());
     }

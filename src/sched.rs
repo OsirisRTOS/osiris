@@ -133,7 +133,7 @@ impl<const N: usize> Scheduler<N> {
     ///
     /// Returns an error if the thread does not exist.
     pub fn enqueue(&mut self, now: u64, uid: thread::UId) -> Result<()> {
-        let thread = self.threads.get(uid).ok_or(kerr!(InvalidArgument))?;
+        let thread = self.threads.get(uid).ok_or(kerr!(EINVAL))?;
 
         if thread.rt_server().is_some() {
             let mut view = rt::ServerView::<N>::new(&mut self.threads);
@@ -244,7 +244,7 @@ impl<const N: usize> Scheduler<N> {
         if until <= now {
             return Ok(());
         }
-        let uid = self.current.ok_or(kerr!(InvalidArgument))?;
+        let uid = self.current.ok_or(kerr!(EINVAL))?;
 
         if let Some(thread) = self.threads.get_mut(uid) {
             thread.set_waiter(Some(Waiter::new(until, uid)));
@@ -309,7 +309,7 @@ impl<const N: usize> Scheduler<N> {
     ///
     /// If the task does not exist, an error will be returned.
     pub fn kill_by_task(&mut self, uid: task::UId) -> Result<()> {
-        let task = self.tasks.get_mut(uid).ok_or(kerr!(InvalidArgument))?;
+        let task = self.tasks.get_mut(uid).ok_or(kerr!(EINVAL))?;
 
         while let Some(id) = task.threads().head() {
             dequeue!(self, id)?;
@@ -330,7 +330,7 @@ impl<const N: usize> Scheduler<N> {
             }
         }
 
-        self.tasks.remove(&uid).ok_or(kerr!(InvalidArgument))?;
+        self.tasks.remove(&uid).ok_or(kerr!(EINVAL))?;
         Ok(())
     }
 
@@ -341,9 +341,9 @@ impl<const N: usize> Scheduler<N> {
     ) -> Result<thread::UId> {
         let task = match task {
             Some(t) => t,
-            None => self.current.ok_or(kerr!(InvalidArgument))?.owner(),
+            None => self.current.ok_or(kerr!(EINVAL))?.owner(),
         };
-        let task = self.tasks.get_mut(task).ok_or(kerr!(InvalidArgument))?;
+        let task = self.tasks.get_mut(task).ok_or(kerr!(EINVAL))?;
 
         self.threads
             .insert_with(|idx| {
@@ -364,16 +364,16 @@ impl<const N: usize> Scheduler<N> {
     ///
     /// If the thread does not exist, or if `uid` is None and there is no current thread, an error will be returned.
     pub fn kill_by_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
-        let uid = uid.unwrap_or(self.current.ok_or(kerr!(InvalidArgument))?);
+        let uid = uid.unwrap_or(self.current.ok_or(kerr!(EINVAL))?);
         self.dequeue(uid)?;
 
         self.tasks
             .get_mut(uid.tid().owner())
-            .ok_or(kerr!(InvalidArgument))?
+            .ok_or(kerr!(EINVAL))?
             .threads_mut()
             .remove(uid, &mut self.threads)?;
 
-        self.threads.remove(&uid).ok_or(kerr!(InvalidArgument))?;
+        self.threads.remove(&uid).ok_or(kerr!(EINVAL))?;
 
         if Some(uid) == self.current {
             self.current = None;

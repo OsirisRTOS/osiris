@@ -41,10 +41,10 @@ impl<const WORDS: usize> super::Allocator<WORDS> for Allocator<WORDS> {
             }
 
             if !addr.is_multiple_of(core::mem::align_of::<Self>()) {
-                return Err(kerr!(InvalidArgument));
+                return Err(kerr!(EINVAL));
             }
 
-            let ptr = NonNull::new(addr.as_mut_ptr::<Self>()).ok_or(kerr!(InvalidArgument))?;
+            let ptr = NonNull::new(addr.as_mut_ptr::<Self>()).ok_or(kerr!(EINVAL))?;
             // Align this up to PAGE_SIZE
             let begin = addr + size_of::<Self>();
             let begin = if begin.is_multiple_of(super::PAGE_SIZE) {
@@ -56,7 +56,7 @@ impl<const WORDS: usize> super::Allocator<WORDS> for Allocator<WORDS> {
             unsafe {
                 core::ptr::write(
                     ptr.as_ptr(),
-                    Self::new(begin).ok_or(kerr!(InvalidArgument))?,
+                    Self::new(begin).ok_or(kerr!(EINVAL))?,
                 )
             };
 

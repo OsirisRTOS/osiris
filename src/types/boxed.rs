@@ -41,7 +41,7 @@ impl<T> Box<[T]> {
                 ptr: unsafe { NonNull::new_unchecked(ptr) },
             })
         } else {
-            Err(kerr!(OutOfMemory))
+            Err(kerr!(ENOMEM))
         }
     }
 
@@ -70,7 +70,7 @@ impl<T> Box<[T]> {
                 ptr: unsafe { NonNull::new_unchecked(ptr) },
             })
         } else {
-            Err(kerr!(OutOfMemory))
+            Err(kerr!(ENOMEM))
         }
     }
 }
