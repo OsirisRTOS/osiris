@@ -1147,4 +1147,89 @@ mod tests {
             assert_eq!(vec.at(i).unwrap().value, 42);
         }
     }
+
+    // -------- Vec::at2_mut / at3_mut bounds tests --------
+
+    #[test]
+    fn at2_mut_out_of_bounds_returns_none() {
+        // The doc-comment promises Some(...)/Some(...) only for in-bounds disjoint indices.
+        // Without bounds-checking, at2_mut returns Some(&mut <uninit>) for any index in
+        // [len, capacity), which is UB (constructing &mut T over uninitialized memory).
+        let mut vec = Vec::<usize, 4>::new();
+        vec.push(7).unwrap();
+        // len=1, so index 2 is out of bounds.
+        let (a, b) = vec.at2_mut(0, 2);
+        assert!(a.is_some(), "index 0 is in-bounds");
+        assert!(
+            b.is_none(),
+            "index 2 should be out-of-bounds (len=1) and return None"
+        );
+    }
+
+    #[test]
+    fn at3_mut_out_of_bounds_returns_none() {
+        let mut vec = Vec::<usize, 4>::new();
+        vec.push(7).unwrap();
+        vec.push(8).unwrap();
+        // len=2, so index 3 is out of bounds.
+        let (a, b, c) = vec.at3_mut(0, 1, 3);
+        assert!(a.is_some());
+        assert!(b.is_some());
+        assert!(
+            c.is_none(),
+            "index 3 should be out-of-bounds (len=2) and return None"
+        );
+    }
+
+    // -------- IndexMap get2_mut / get3_mut OOB tests --------
+
+    use super::IndexMap;
+    use crate::types::traits::GetMut;
+
+    #[test]
+    fn indexmap_get2_mut_oob_does_not_panic() {
+        // Inconsistent with the rest of Get/GetMut (which return None for OOB):
+        // get2_mut panics inside split_at_mut when an index is past N.
+        let mut m: IndexMap<usize, u32, 4> = IndexMap::new();
+        m.raw_insert(0, 10).unwrap();
+        let (a, b) = m.get2_mut(0usize, 10usize);
+        assert!(a.is_some());
+        assert!(b.is_none());
+    }
+
+    #[test]
+    fn indexmap_get3_mut_oob_does_not_panic() {
+        // Same shape as get2_mut: get3_mut panics on direct array indexing for OOB indices.
+        let mut m: IndexMap<usize, u32, 4> = IndexMap::new();
+        m.raw_insert(0, 10).unwrap();
+        let (a, b, c) = m.get3_mut(0usize, 10usize, 11usize);
+        assert!(a.is_some());
+        assert!(b.is_none());
+        assert!(c.is_none());
+    }
+
+    // -------- BitReclaimMap bit-leak via insert_with closure error --------
+
+    use super::BitReclaimMap;
+
+    #[test]
+    fn bitreclaim_insert_with_failed_closure_does_not_leak() {
+        // insert_with allocates a BitAlloc bit, calls the user closure, then raw_inserts
+        // into the IndexMap. If the closure returns Err, the allocated bit is never freed
+        // — sustained closure failures exhaust the allocator and break subsequent inserts
+        // even though no slot is in use.
+        use crate::error::Result as KResult;
+        let mut m: BitReclaimMap<usize, u32, 2> = BitReclaimMap::new();
+        for _ in 0..10 {
+            let r: KResult<usize> =
+                m.insert_with(|_idx| -> KResult<(usize, u32)> { Err(kerr!(OutOfMemory)) });
+            assert!(r.is_err());
+        }
+        // After 10 failed closures, both slots should still be available.
+        let id0 = m.insert(10).unwrap();
+        let id1 = m.insert(20).unwrap();
+        assert!(id0 < 2);
+        assert!(id1 < 2);
+        assert_ne!(id0, id1);
+    }
 }
