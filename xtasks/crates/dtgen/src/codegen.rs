@@ -415,11 +415,11 @@ macro_rules! match_compatible {
     }};
 }
 
-/// Returns true if the "status" prop is set to okay.
+/// Returns true if the "status" prop is absent or set to okay.
 fn is_enabled(node: &crate::ir::Node) -> bool {
     match node.extra.get("status") {
         Some(PropValue::Str(s)) => s == "okay",
-        _ => false,
+        _ => true,
     }
 }
 
@@ -640,8 +640,8 @@ mod i2c {
                     });
 
                 let enable = match child.extra.get("enable-gpios") {
-                    Some(PropValue::U32Array(v)) if v.len() >= 3 => v,
-                    _ => &Vec::new(),
+                    Some(PropValue::U32Array(v)) if v.len() >= 3 => v.as_slice(),
+                    _ => &[],
                 };
                 let enable = super::decode_gpio_pins(dt, enable);
                 if enable.len() > 1 {
@@ -988,10 +988,7 @@ mod spi {
                     .reg
                     .and_then(|(base, _)| usize::try_from(base).ok())
                     .unwrap_or_else(|| {
-                        panic!(
-                            "Invalid GPIO controller phandle for CS in SPI device node {}",
-                            node.name
-                        );
+                        panic!("Invalid GPIO controller phandle for CS: {}", node.name);
                     });
                 DevPin {
                     port,
@@ -1100,8 +1097,8 @@ mod spi {
                 };
 
                 let enable = match child.extra.get("enable-gpios") {
-                    Some(PropValue::U32Array(v)) if v.len() >= 3 => v,
-                    _ => &Vec::new(), // Optional - device may have no enable GPIOs
+                    Some(PropValue::U32Array(v)) if v.len() >= 3 => v.as_slice(),
+                    _ => &[], // Optional - device may have no enable GPIOs
                 };
                 // TODO: Only one enable pin for now.
                 let enable = decode_dev_pins(dt, enable);
