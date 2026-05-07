@@ -1238,11 +1238,16 @@ mod tests {
         impl Clone for Counted<'_> {
             fn clone(&self) -> Self {
                 self.clones.fetch_add(1, Ordering::SeqCst);
-                Counted { drops: self.drops, clones: self.clones }
+                Counted {
+                    drops: self.drops,
+                    clones: self.clones,
+                }
             }
         }
         impl Drop for Counted<'_> {
-            fn drop(&mut self) { self.drops.fetch_add(1, Ordering::SeqCst); }
+            fn drop(&mut self) {
+                self.drops.fetch_add(1, Ordering::SeqCst);
+            }
         }
 
         setup_memory(4096);
@@ -1250,7 +1255,10 @@ mod tests {
         let clones = AtomicUsize::new(0);
         let r = Vec::<Counted, 2>::new_init(
             1_000_000_000,
-            Counted { drops: &drops, clones: &clones },
+            Counted {
+                drops: &drops,
+                clones: &clones,
+            },
         );
         assert!(r.is_err());
         let n_clones = clones.load(Ordering::SeqCst);
