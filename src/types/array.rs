@@ -1272,8 +1272,6 @@ mod tests {
         );
     }
 
-    // -------- Vec::at2_mut / at3_mut bounds tests --------
-
     #[test]
     fn at2_mut_out_of_bounds_returns_none() {
         let mut vec = Vec::<usize, 4>::new();
@@ -1302,8 +1300,6 @@ mod tests {
         );
     }
 
-    // -------- IndexMap::get2_mut / get3_mut bounds tests --------
-
     use super::IndexMap;
     use crate::types::traits::GetMut;
 
@@ -1325,8 +1321,6 @@ mod tests {
         assert!(b.is_none());
         assert!(c.is_none());
     }
-
-    // -------- BitReclaimMap insert_with bit-leak test --------
 
     use super::BitReclaimMap;
 

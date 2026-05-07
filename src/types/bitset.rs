@@ -177,8 +177,6 @@ mod tests {
         assert!(result.is_some());
     }
 
-    // -------- alloc on word-boundary-aligned full ranges --------
-
     #[test]
     fn alloc_full_two_words() {
         let mut alloc = BitAlloc::<2>::new(2 * BitAlloc::<2>::BITS_PER_WORD).unwrap();

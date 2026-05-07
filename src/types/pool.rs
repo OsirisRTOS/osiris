@@ -223,8 +223,6 @@ impl<T: Default> DerefMut for Owned<T> {
 mod tests {
     use super::*;
 
-    // -------- FixedPool exhaustion under WORDS * BITS_PER_WORD > N --------
-
     #[test]
     fn fixed_pool_alloc_beyond_n_returns_none() {
         let pool: FixedPool<u32, 4, 1> = FixedPool::new();
