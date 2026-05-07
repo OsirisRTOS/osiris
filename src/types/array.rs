@@ -1162,7 +1162,8 @@ mod tests {
         assert!(a.is_some(), "index 0 is in-bounds");
         assert!(
             b.is_none(),
-            "index 2 should be out-of-bounds (len=1) and return None"
+            "index 2 should be out-of-bounds (len=1) and return None, but got {:?}",
+            b
         );
     }
 
@@ -1177,7 +1178,8 @@ mod tests {
         assert!(b.is_some());
         assert!(
             c.is_none(),
-            "index 3 should be out-of-bounds (len=2) and return None"
+            "index 3 should be out-of-bounds (len=2) and return None, but got {:?}",
+            c
         );
     }
 
