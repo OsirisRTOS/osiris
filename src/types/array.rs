@@ -139,7 +139,14 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
         }
 
         if idx1 >= N {
-            return (None, if idx2 < N { self.data[idx2].as_mut() } else { None });
+            return (
+                None,
+                if idx2 < N {
+                    self.data[idx2].as_mut()
+                } else {
+                    None
+                },
+            );
         }
         if idx2 >= N {
             return (self.data[idx1].as_mut(), None);
@@ -177,9 +184,21 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
             return (None, None, None);
         }
 
-        let ptr1 = if idx1 < N { Some(&mut self.data[idx1] as *mut Option<V>) } else { None };
-        let ptr2 = if idx2 < N { Some(&mut self.data[idx2] as *mut Option<V>) } else { None };
-        let ptr3 = if idx3 < N { Some(&mut self.data[idx3] as *mut Option<V>) } else { None };
+        let ptr1 = if idx1 < N {
+            Some(&mut self.data[idx1] as *mut Option<V>)
+        } else {
+            None
+        };
+        let ptr2 = if idx2 < N {
+            Some(&mut self.data[idx2] as *mut Option<V>)
+        } else {
+            None
+        };
+        let ptr3 = if idx3 < N {
+            Some(&mut self.data[idx3] as *mut Option<V>)
+        } else {
+            None
+        };
 
         // Safety: each pointer comes from an in-bounds slot in self.data, and the three indices
         // are pairwise distinct (check above), so the resulting references are disjoint.
@@ -561,8 +580,16 @@ impl<T, const N: usize> Vec<T, N> {
 
         let in1 = index1 < self.len;
         let in2 = index2 < self.len;
-        let ptr1 = if in1 { Some(self.at_mut_unchecked(index1)) } else { None };
-        let ptr2 = if in2 { Some(self.at_mut_unchecked(index2)) } else { None };
+        let ptr1 = if in1 {
+            Some(self.at_mut_unchecked(index1))
+        } else {
+            None
+        };
+        let ptr2 = if in2 {
+            Some(self.at_mut_unchecked(index2))
+        } else {
+            None
+        };
 
         // Safety: each pointer is only constructed when the corresponding index is < self.len,
         // so it points to an initialized slot. The two indices are pairwise distinct (check
@@ -591,9 +618,21 @@ impl<T, const N: usize> Vec<T, N> {
         let in1 = index1 < self.len;
         let in2 = index2 < self.len;
         let in3 = index3 < self.len;
-        let ptr1 = if in1 { Some(self.at_mut_unchecked(index1)) } else { None };
-        let ptr2 = if in2 { Some(self.at_mut_unchecked(index2)) } else { None };
-        let ptr3 = if in3 { Some(self.at_mut_unchecked(index3)) } else { None };
+        let ptr1 = if in1 {
+            Some(self.at_mut_unchecked(index1))
+        } else {
+            None
+        };
+        let ptr2 = if in2 {
+            Some(self.at_mut_unchecked(index2))
+        } else {
+            None
+        };
+        let ptr3 = if in3 {
+            Some(self.at_mut_unchecked(index3))
+        } else {
+            None
+        };
 
         // Safety: each pointer is only constructed when the corresponding index is < self.len,
         // so it points to an initialized slot. The three indices are pairwise distinct (check
