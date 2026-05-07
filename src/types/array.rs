@@ -177,14 +177,12 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
             return (None, None, None);
         }
 
-        let base = self.data.as_mut_ptr();
-        let ptr1 = if idx1 < N { Some(unsafe { base.add(idx1) }) } else { None };
-        let ptr2 = if idx2 < N { Some(unsafe { base.add(idx2) }) } else { None };
-        let ptr3 = if idx3 < N { Some(unsafe { base.add(idx3) }) } else { None };
+        let ptr1 = if idx1 < N { Some(&mut self.data[idx1] as *mut Option<V>) } else { None };
+        let ptr2 = if idx2 < N { Some(&mut self.data[idx2] as *mut Option<V>) } else { None };
+        let ptr3 = if idx3 < N { Some(&mut self.data[idx3] as *mut Option<V>) } else { None };
 
-        // Safety: each pointer is only constructed when its index is < N, so it stays inside
-        // self.data. The three indices are pairwise distinct (check above), so the resulting
-        // references are disjoint.
+        // Safety: each pointer comes from an in-bounds slot in self.data, and the three indices
+        // are pairwise distinct (check above), so the resulting references are disjoint.
         unsafe {
             (
                 ptr1.and_then(|p| (*p).as_mut()),
