@@ -610,38 +610,11 @@ impl fmt::Display for PosixError {
     }
 }
 
-
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
-pub enum NotError {
-    #[default]
-    Generic,
-    OutOfMemory(usize),
-    OutOfBoundsPtr(usize, Range<usize>),
-    InvalidAddress(usize),
-}
-
 pub enum Fault {
     Hard,
     MemManage,
     Bus,
     Usage,
-}
-
-impl Display for NotError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            NotError::Generic => write!(f, "Generic"),
-            NotError::OutOfMemory(size) => write!(f, "Out of memory (requested {size} bytes)"),
-            NotError::OutOfBoundsPtr(ptr, range) => {
-                write!(
-                    f,
-                    "Pointer {:p} out of bounds (expected in {:p}..{:p})",
-                    *ptr as *const u8, range.start as *const u8, range.end as *const u8
-                )
-            }
-            NotError::InvalidAddress(addr) => write!(f, "Invalid address {:p}", *addr as *const u8),
-        }
-    }
 }
 
 pub type Result<T> = core::result::Result<T, PosixError>;

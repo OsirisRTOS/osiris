@@ -366,7 +366,7 @@ impl super::Allocator for BestFitAllocator {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Kind;
+    use hal_api::PosixError;
     use crate::mem::align_up;
 
     use super::super::*;
@@ -456,7 +456,7 @@ mod tests {
         let request = range.start + 4096;
         let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
 
-        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
+        assert!(ptr.is_err_and(|e| e.kind == PosixError::ENOMEM));
     }
 
     #[test]
@@ -471,7 +471,7 @@ mod tests {
         let request = range.start + 127;
         let ptr = unsafe { allocator.malloc::<u8>(128, 8, Some(request)) };
 
-        assert!(ptr.is_err_and(|e| e.kind == Kind::EINVAL));
+        assert!(ptr.is_err_and(|e| e.kind == PosixError::EINVAL));
     }
 
     #[test]
@@ -488,7 +488,7 @@ mod tests {
         verify_block(ptr, 128, None);
 
         let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
-        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
+        assert!(ptr.is_err_and(|e| e.kind == PosixError::ENOMEM));
     }
 
     #[test]
@@ -503,7 +503,7 @@ mod tests {
         let request = range.end + 128;
         let ptr = unsafe { allocator.malloc::<u8>(128, 1, Some(request)) };
 
-        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
+        assert!(ptr.is_err_and(|e| e.kind == PosixError::ENOMEM));
     }
 
     #[test]
@@ -569,7 +569,7 @@ mod tests {
         }
 
         let ptr = unsafe { allocator.malloc::<u8>(SIZE, 1, None) };
-        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
+        assert!(ptr.is_err_and(|e| e.kind == PosixError::ENOMEM));
     }
 
     #[test]
@@ -706,7 +706,7 @@ mod tests {
         }
 
         let ptr = unsafe { allocator.malloc::<u8>(SIZE, 1, None) };
-        assert!(ptr.is_err_and(|e| e.kind == Kind::ENOMEM));
+        assert!(ptr.is_err_and(|e| e.kind == PosixError::ENOMEM));
 
         verify_ptrs_not_overlaping(ptrs.as_slice());
     }
