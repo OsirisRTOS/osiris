@@ -253,9 +253,9 @@ int spi_transfer(void *bus, const spi_device_cfg_t *dev_cfg, const struct spi_tr
 
     struct spi_bus *spi_bus = (struct spi_bus*)bus;
     uint32_t hz = spi_bus_clock_hz((SPI_TypeDef *)dev_cfg->instance);
-    uint32_t time_seconds = (transfer->word_count * dev_cfg->bits_per_word) / hz;
-    // time_seconds * 1000 + margin
-    uint32_t timeout_ms = time_seconds * 1000U + 100U;
+    uint32_t time_ms = (transfer->word_count * dev_cfg->bits_per_word * 1000) / hz;
+    // time_ms * margin
+    uint32_t timeout_ms = time_ms + 100U;
 
     HAL_StatusTypeDef res = HAL_SPI_TransmitReceive(
         &spi_bus->hspi,
