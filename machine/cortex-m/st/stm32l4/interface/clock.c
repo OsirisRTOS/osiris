@@ -1,8 +1,9 @@
 #include "lib.h"
+#include <stdatomic.h>
 #include <stm32l4xx_hal.h>
 
 static volatile uint64_t monotonic_hi = 0;
-static uint64_t tick = 0;
+static volatile uint32_t tick = 0;
 
 static void init_monotonic_timer(void)
 {
@@ -151,9 +152,12 @@ void delay_us(uint32_t delay_us)
     }
 }
 
+// Use like: (uint32_t)(HAL_GetTick() - start) >= Timeout
+// Not: HAL_GetTick() > start + Timeout
+// The first version handles wrapping on overflow correctly, while the second does not.
 uint32_t HAL_GetTick(void)
 {
-    return (uint32_t)tick;
+    return tick;
 }
 
 void do_tick(void)

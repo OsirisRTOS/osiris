@@ -22,7 +22,10 @@ pub fn mono_freq() -> u64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn systick_hndlr() {
     let tick = TICKS.fetch_add(1, sync::atomic::Ordering::Release) + 1;
-    hal::Machine::do_tick();
+
+    sync::atomic::irq_free(|| {
+        hal::Machine::do_tick();
+    });
 
     if sched::needs_reschedule(tick) {
         sched::reschedule();
