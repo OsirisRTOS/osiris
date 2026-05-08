@@ -479,9 +479,9 @@ pub fn reschedule() {
 /// the common case (the consumer races us to register before
 /// sleeping) and the consumer's bounded sleep loop covers it.
 ///
-/// Exported as a C-FFI symbol so consumers that run in interrupt
-/// context (libcsp's queue wakeup, CAN driver wake hooks) can avoid
-/// the SVC path, which would HardFault from handler mode on Cortex-M.
+/// Exported as a C-FFI symbol so ISR-context consumers can wake a
+/// parked thread without going through SVC, which HardFaults from
+/// handler mode on Cortex-M.
 #[unsafe(no_mangle)]
 pub extern "C" fn kick_thread(uid: u32) {
     with(|sched| {

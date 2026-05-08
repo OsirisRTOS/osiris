@@ -205,13 +205,13 @@ int can_receive(const can_bus_cfg_t *cfg, can_frame_t *out);
 int can_configure_filter(const can_bus_cfg_t *cfg, const can_filter_t *filter);
 int can_disable_filter(const can_bus_cfg_t *cfg, uint8_t bank);
 /* Returns CAN_ESR (error status register) read directly from hardware.
-   See STM32L4 RM0432 §44.9.8:
+   Layout (RM0432 §55.9 CAN_ESR):
      [31:24] REC, [23:16] TEC, [6:4] LEC, [2] BOFF, [1] EPVF, [0] EWGF */
 uint32_t can_last_error(const can_bus_cfg_t *cfg);
 
 /* Abort all three TX mailboxes. Call after detecting bus-off so a
    SCHEDULED un-ACKable frame doesn't re-flood the bus once ABOM=1
-   finishes the 128*11-bit recovery (RM0432 §44.7.6). */
+   finishes the 128*11-bit recovery (RM0432 §55.7.6). */
 int can_recover(const can_bus_cfg_t *cfg);
 
 /* Install (or clear, with handler=NULL) the per-slot ISR-context

@@ -37,18 +37,12 @@ pub fn init_memory() -> vmm::AddressSpace {
 
     // TODO: Configure via env / DT.
     //
-    // Layout: address space holds `total_pgs` pages. The first
-    // `heap_pgs` are mapped with zeroed backing and become the kernel
-    // heap (libcsp's 64×256-byte buffer pool needs ~16 KB; we want
-    // headroom for transient `Box`/`Vec` allocs). The remaining pages
-    // are reserved for thread stacks (`OSIRIS_STACKPAGES=4` ⇒ 16 KB
-    // each, idle + init + router + can-rx + up to 4 slow-worker
-    // children = 8 stacks max).
-    //
-    // The allocator's range is the heap region only — handing it
-    // unmapped pages would let it return addresses that fault on
-    // first dereference. Stack pages get their own backing on each
-    // `task::allocate_stack` call.
+    // Address space holds `total_pgs` pages. The first `heap_pgs` are
+    // mapped with zeroed backing and become the kernel heap; the rest
+    // are reserved for thread stacks, each backed on demand by
+    // `task::allocate_stack`. The allocator only ever sees the heap
+    // region — handing it unmapped pages would let it return addresses
+    // that fault on first dereference.
     let total_pgs = 64;
     let heap_pgs = 8; // 32 KB heap
 

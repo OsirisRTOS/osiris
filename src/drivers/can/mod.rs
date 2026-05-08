@@ -124,7 +124,7 @@ impl Device {
 
     /// Install (or clear, with `None`) an ISR-context callback that fires
     /// after every successful RX ring push. Independent of the waiter
-    /// list; useful for non-thread consumers (e.g. CSP queue producers).
+    /// list; useful for non-thread consumers.
     pub fn set_rx_callback(&self, cb: Option<wait::RxCallback>) {
         wait::set_rx_callback(self.slot(), cb);
     }

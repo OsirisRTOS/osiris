@@ -194,8 +194,9 @@ int can_init(const can_bus_cfg_t *cfg)
     h->Init.TimeSeg1 = ts1;
     h->Init.TimeSeg2 = ts2;
     h->Init.AutoBusOff = ENABLE;
-    /* AutoRetransmission ENABLE: libcsp's CAN transport has no per-frame
-       retry; the peripheral has to retry NAKed frames itself. */
+    /* NART=0: HW retransmits NAKed/error frames until success or arbitration
+       loss (RM0432 §55.9.2 CAN_MCR.NART). Required when no upper-layer
+       per-frame retry exists. */
     h->Init.AutoRetransmission = ENABLE;
     h->Init.TimeTriggeredMode = DISABLE;
     h->Init.AutoWakeUp = DISABLE;
@@ -441,9 +442,10 @@ void can_isr(uint8_t index)
     }
 }
 
-/* 32-bit IDMASK encoding (RM0432 §44.7.4 Fig. 521): bits [31..3] hold the
-   ID, bit [2] is IDE. Extended IDs use 29 bits ⇒ <<3; standard IDs use 11
-   bits ⇒ <<21. Setting IDE in the mask rejects the wrong frame kind. */
+/* 32-bit IDMASK encoding (RM0432 §55.7.4): bits [31..3] hold the ID
+   (STID[10:0] at [31:21], EXID[28:0] at [31:3]), bit [2] is IDE.
+   Extended IDs land at <<3, standard at <<21. Setting IDE in the mask
+   rejects the wrong frame kind. */
 static void encode_filter(const can_filter_t *f, uint32_t *id_reg, uint32_t *mask_reg)
 {
     if (f->extended)
@@ -519,7 +521,7 @@ uint32_t can_last_error(const can_bus_cfg_t *cfg)
         return 0;
     }
     /* Read ESR directly — HAL_CAN_GetError only latches with error IRQs on,
-       and we only enable CAN_IT_RX_FIFO0_MSG_PENDING. See RM0432 §44.9.8. */
+       and we only enable CAN_IT_RX_FIFO0_MSG_PENDING. See RM0432 §55.9 (CAN_ESR). */
     CAN_TypeDef *inst = s_handles[cfg->index].Instance;
     if (inst == NULL)
     {
@@ -541,7 +543,7 @@ int can_recover(const can_bus_cfg_t *cfg)
     }
 
     /* TSR.ABRQ writes; safe in bus-off. ABOM=1 handles the 128*11-bit
-       protocol recovery (RM0432 §44.7.6) — we just drop the SCHEDULED
+       protocol recovery (RM0432 §55.7.6) — we just drop the SCHEDULED
        frames so they don't re-fire the moment hardware comes back. */
     __disable_irq();
     HAL_CAN_AbortTxRequest(h, CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
