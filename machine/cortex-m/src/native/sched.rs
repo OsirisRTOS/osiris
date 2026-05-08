@@ -99,7 +99,8 @@ impl ArmStack {
 
     fn push_irq_ret_fn(
         &mut self,
-        f: extern "C" fn(),
+        f: extern "C" fn(*mut c_void),
+        ctx: *mut c_void,
         fin: Option<extern "C" fn() -> !>,
     ) -> Result<()> {
         const FRAME_WORDS: usize = 18;
@@ -130,7 +131,7 @@ impl ArmStack {
         // R3 (argument to the function - 0)
         // R2 (argument to the function - 0)
         // R1 (argument to the function - 0)
-        // R0 (argument to the function - 0)
+        // R0 (argument to the function - ctx ptr)
         // LR (EXEC_RETURN)
         // R12 (dummy for alignment)
         // R11 - R4 (scratch - 0)
@@ -144,10 +145,13 @@ impl ArmStack {
             let finalizer = fin.unwrap_or(default_finalizer);
             Self::push(&mut write_index, finalizer as usize as u32 | 1);
 
-            // R12 - R0
-            for _ in 0..5 {
+            // R12, R3, R2, R1
+            for _ in 0..4 {
                 Self::push(&mut write_index, 0);
             }
+            // R0 = ctx pointer (delivered to the entry function as its
+            // first argument per AAPCS).
+            Self::push(&mut write_index, ctx as usize as u32);
 
             // Tells the hw to return to thread mode and use the PSP after the exception.
             Self::push(&mut write_index, EXEC_RETURN_THREAD_PSP);
@@ -186,6 +190,7 @@ impl hal_api::stack::Stacklike for ArmStack {
             top,
             size,
             entry,
+            ctx,
             fin,
         } = desc;
 
@@ -199,7 +204,7 @@ impl hal_api::stack::Stacklike for ArmStack {
             size,
         };
 
-        stack.push_irq_ret_fn(entry, fin)?;
+        stack.push_irq_ret_fn(entry, ctx, fin)?;
         Ok(stack)
     }
 

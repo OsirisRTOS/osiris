@@ -35,17 +35,31 @@ pub fn init_memory() -> vmm::AddressSpace {
         panic!("failed to initialize PFA. Error: {e}");
     }
 
-    // TODO: Configure.
-    let pgs = 10;
+    // TODO: Configure via env / DT.
+    //
+    // Layout: address space holds `total_pgs` pages. The first
+    // `heap_pgs` are mapped with zeroed backing and become the kernel
+    // heap (libcsp's 64×256-byte buffer pool needs ~16 KB; we want
+    // headroom for transient `Box`/`Vec` allocs). The remaining pages
+    // are reserved for thread stacks (`OSIRIS_STACKPAGES=4` ⇒ 16 KB
+    // each, idle + init + router + can-rx + up to 4 slow-worker
+    // children = 8 stacks max).
+    //
+    // The allocator's range is the heap region only — handing it
+    // unmapped pages would let it return addresses that fault on
+    // first dereference. Stack pages get their own backing on each
+    // `task::allocate_stack` call.
+    let total_pgs = 64;
+    let heap_pgs = 8; // 32 KB heap
 
-    let mut kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
+    let mut kaddr_space = vmm::AddressSpace::new(total_pgs).unwrap_or_else(|e| {
         panic!("failed to create kernel address space. Error: {e}");
     });
 
     let begin = kaddr_space
         .map(Region::new(
             None,
-            2 * PAGE_SIZE,
+            heap_pgs * PAGE_SIZE,
             Backing::Zeroed,
             Perms::all(),
         ))
@@ -56,7 +70,7 @@ pub fn init_memory() -> vmm::AddressSpace {
     {
         let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-        let range = begin..(begin + pgs * PAGE_SIZE);
+        let range = begin..(begin + heap_pgs * PAGE_SIZE);
         if let Err(e) = unsafe { allocator.add_range(&range) } {
             panic!("failed to add range to allocator. Error: {e}");
         }

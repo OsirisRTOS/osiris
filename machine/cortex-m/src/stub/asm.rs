@@ -33,6 +33,14 @@ pub fn are_interrupts_enabled() -> bool {
 #[inline(always)]
 pub fn enable_irq_restr(_state: usize) {}
 
+#[inline(always)]
+pub fn disable_pendsv_save() -> usize {
+    0
+}
+
+#[inline(always)]
+pub fn enable_pendsv_restr(_state: usize) {}
+
 #[macro_export]
 macro_rules! __macro_startup_trampoline {
     () => {{

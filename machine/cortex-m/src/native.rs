@@ -3,12 +3,14 @@ use core::ffi::c_char;
 pub use hal_api::*;
 
 pub mod asm;
+pub mod can;
 pub mod debug;
 pub mod excep;
 pub mod i2c;
 pub mod panic;
 pub mod sched;
 pub mod spi;
+pub mod system;
 
 mod crit;
 mod print;
@@ -45,14 +47,28 @@ impl hal_api::Machinelike for ArmMachine {
     }
 
     fn print(s: &str) -> Result<()> {
-        let state = asm::disable_irq_save();
+        // Mask PendSV/SysTick only (BASEPRI=0xF0). The polled UART runs
+        // at 115200 baud — ~87 µs per character, ~13 ms for a 150-char
+        // diag line. Blocking *all* IRQs for that long with `cpsid i`
+        // overruns the bxCAN HW FIFO at 1 Mbit/s (6 frames across both
+        // FIFOs ≈ 720 µs of headroom). Masking only PendSV keeps two
+        // threads from interleaving their output mid-string, while
+        // letting CAN at priority 5 preempt and drain the FIFO during
+        // the print.
+        //
+        // ISR-context callers (e.g. `warn!` from `kernel_irq_handler`)
+        // can still interleave with an in-progress thread print —
+        // cosmetic, not a correctness issue, and warn-from-ISR is rare.
+        let state = asm::disable_pendsv_save();
 
-        if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0)
-        {
-            asm::enable_irq_restr(state);
+        let ok =
+            unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0;
+
+        asm::enable_pendsv_restr(state);
+
+        if ok {
             Ok(())
         } else {
-            asm::enable_irq_restr(state);
             Err(hal_api::Error::default())
         }
     }

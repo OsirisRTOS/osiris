@@ -30,7 +30,7 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
 }
 
 #[syscall_handler(num = 3)]
-fn spawn_thread(func_ptr: usize, attrs: *const RtAttrs) -> c_int {
+fn spawn_thread(func_ptr: usize, ctx: usize, attrs: *const RtAttrs) -> c_int {
     sched::with(|sched| {
         let attrs = if attrs.is_null() {
             None
@@ -40,6 +40,7 @@ fn spawn_thread(func_ptr: usize, attrs: *const RtAttrs) -> c_int {
 
         let attrs = sched::thread::Attributes {
             entry: unsafe { core::mem::transmute(func_ptr) },
+            ctx: ctx as *mut core::ffi::c_void,
             fin: None,
             attrs,
         };
@@ -69,4 +70,13 @@ fn exit(_code: usize) -> c_int {
 fn kick_thread(_uid: usize) -> c_int {
     // TODO: Implement a way to retrieve the thread UID from the usize uid.
     0
+}
+
+/// Return the raw `UId::as_usize()` of the calling thread, or 0 if no
+/// thread is current (impossible in normal operation). Consumers use
+/// this to register themselves on a queue's waiter slot before going
+/// to sleep, so a producer-side `kick_thread` can wake them.
+#[syscall_handler(num = 6)]
+fn current_id() -> c_int {
+    sched::with(|sched| sched.current_uid().unwrap_or(0) as c_int)
 }

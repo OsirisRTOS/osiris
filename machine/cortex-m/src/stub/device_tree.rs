@@ -49,3 +49,42 @@ pub fn spi_device_by_compatible(
 ) -> Option<&'static SpiDeviceRegistryEntry> {
     None
 }
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct CanPin {
+    pub port: usize,
+    pub line: u8,
+    pub af: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct CanIrq {
+    pub irqn: u8,
+    pub priority: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct CanRegistryEntry {
+    pub node: usize,
+    pub instance: usize,
+    pub bitrate_hz: u32,
+    pub mode: u8,
+    pub auto_retransmit: u8,
+    pub tx_timeout_iters: u32,
+    pub rx: CanPin,
+    pub tx: CanPin,
+    pub rx0_irq: CanIrq,
+    pub rx1_irq: CanIrq,
+    pub index: u8,
+    pub tx_open_drain: u8,
+    pub compatible: &'static str,
+}
+
+pub const CAN_REGISTRY: &[CanRegistryEntry] = &[];
+
+pub fn can_by_compatible(_compatible: &str, _ord: usize) -> Option<&'static CanRegistryEntry> {
+    None
+}
