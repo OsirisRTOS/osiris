@@ -55,6 +55,7 @@ pub trait Machinelike {
     fn monotonic_freq() -> u64;
     // Returns the frequency of the machine's systick timer in Hz.
     fn systick_freq() -> u64;
+    fn do_tick();
 
     type ExcepBacktrace: Display;
     type ExcepStackFrame: Display;

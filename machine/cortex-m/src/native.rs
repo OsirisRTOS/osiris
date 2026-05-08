@@ -82,6 +82,12 @@ impl hal_api::Machinelike for ArmMachine {
         unsafe { bindings::systick_freq() }
     }
 
+    fn do_tick() {
+        unsafe {
+            bindings::do_tick();
+        }
+    }
+
     type ExcepBacktrace = excep::ExcepBacktrace;
     type ExcepStackFrame = excep::ExcepStackFrame;
 

@@ -44,6 +44,10 @@ impl hal_api::Machinelike for StubMachine {
         0
     }
 
+    fn do_tick() {
+        // No ticking in testing.
+    }
+
     type ExcepBacktrace = String;
     type ExcepStackFrame = String;
 

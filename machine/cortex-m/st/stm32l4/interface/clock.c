@@ -2,6 +2,7 @@
 #include <stm32l4xx_hal.h>
 
 static volatile uint64_t monotonic_hi = 0;
+static uint64_t tick = 0;
 
 static void init_monotonic_timer(void)
 {
@@ -148,4 +149,14 @@ void delay_us(uint32_t delay_us)
     uint64_t start = monotonic_now();
     while ((monotonic_now() - start) < ticks) {
     }
+}
+
+uint32_t HAL_GetTick(void)
+{
+    return (uint32_t)tick;
+}
+
+void do_tick(void)
+{
+    tick++;
 }
