@@ -3,8 +3,9 @@
 
 use crate::hal;
 use crate::hal::mem::PhysAddr;
-use core::fmt::Debug;
-use core::fmt::Display;
+#[cfg(feature = "error-msg")]
+use core::fmt::{self, Write};
+use core::fmt::{Debug, Display};
 
 /// These two definitions are copied from https://github.com/rust-lang/hashbrown
 #[cfg(not(feature = "nightly"))]
@@ -79,10 +80,10 @@ macro_rules! kerr {
     ($kind:ident) => {
         $crate::error::Error::new($crate::error::Kind::$kind)
     };
-    ($kind:ident, $msg:expr) => {{
+    ($kind:ident, $fmt:literal $($arg:tt)*) => {{
         #[cfg(feature = "error-msg")]
         {
-            $crate::error::Error::new($crate::error::Kind::$kind).with_msg($msg)
+            $crate::error::Error::new($crate::error::Kind::$kind).with_msg(format_args!($fmt $($arg)*))
         }
         #[cfg(not(feature = "error-msg"))]
         {
@@ -118,10 +119,51 @@ impl Display for Kind {
     }
 }
 
+#[derive(Clone, Eq)]
 pub struct Error {
     pub kind: Kind,
     #[cfg(feature = "error-msg")]
-    msg: Option<&'static str>,
+    msg: Option<Msg>,
+}
+
+#[cfg(feature = "error-msg")]
+struct Msg {
+    buf: [u8; 128],
+    len: usize,
+}
+
+#[cfg(feature = "error-msg")]
+impl Msg {
+    fn new(args: fmt::Arguments<'_>) -> Self {
+        let mut msg = Self {
+            buf: [0; 128],
+            len: 0,
+        };
+        let _ = msg.write_fmt(args);
+        msg
+    }
+
+    fn as_str(&self) -> &str {
+        // Safety: `Msg` is only written through `fmt::Write::write_str`, which
+        // copies from valid UTF-8 string slices and only truncates at char boundaries.
+        unsafe { core::str::from_utf8_unchecked(&self.buf[..self.len]) }
+    }
+}
+
+#[cfg(feature = "error-msg")]
+impl Write for Msg {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let remaining = self.buf.len() - self.len;
+        let mut write_len = remaining.min(s.len());
+
+        while !s.is_char_boundary(write_len) {
+            write_len -= 1;
+        }
+
+        self.buf[self.len..self.len + write_len].copy_from_slice(&s.as_bytes()[..write_len]);
+        self.len += write_len;
+        Ok(())
+    }
 }
 
 impl Error {
@@ -137,8 +179,8 @@ impl Error {
     }
 
     #[cfg(feature = "error-msg")]
-    pub fn with_msg(mut self, msg: &'static str) -> Self {
-        self.msg = Some(msg);
+    pub fn with_msg(mut self, msg: fmt::Arguments<'_>) -> Self {
+        self.msg = Some(Msg::new(msg));
         self
     }
 }
@@ -147,8 +189,8 @@ impl Debug for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         #[cfg(feature = "error-msg")]
         {
-            match self.msg {
-                Some(msg) => write!(f, "{}: {}", self.kind, msg),
+            match &self.msg {
+                Some(msg) => write!(f, "{}: {}", self.kind, msg.as_str()),
                 None => write!(f, "{}", self.kind),
             }
         }
@@ -167,8 +209,8 @@ impl Display for Error {
 
     #[cfg(feature = "error-msg")]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self.msg {
-            Some(msg) => write!(f, "{}: {}", self.kind, msg),
+        match &self.msg {
+            Some(msg) => write!(f, "{}: {}", self.kind, msg.as_str()),
             None => write!(f, "{}", self.kind),
         }
     }
@@ -183,5 +225,25 @@ impl From<hal::Error> for Error {
 impl PartialEq for Error {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
+    }
+}
+
+#[cfg(all(test, feature = "error-msg"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kerr_formats_captured_message() {
+        let compatible = "sensor";
+        let ordinal = 2usize;
+        let err = kerr!(
+            NotFound,
+            "i2c device not found: compatible={compatible}, ordinal={ordinal}"
+        );
+
+        assert_eq!(
+            format!("{err}"),
+            "Not found: i2c device not found: compatible=sensor, ordinal=2"
+        );
     }
 }

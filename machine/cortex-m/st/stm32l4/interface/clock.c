@@ -128,3 +128,24 @@ unsigned long long monotonic_freq(void)
 {
     return 1000000ULL;
 }
+
+void delay_us(uint32_t delay_us)
+{
+    if (delay_us == 0U) {
+        return;
+    }
+
+    uint64_t freq = monotonic_freq();
+    if (freq == 0U) {
+        return;
+    }
+
+    uint64_t ticks = (((uint64_t)delay_us * freq) + 999999ULL) / 1000000ULL;
+    if (ticks == 0U) {
+        ticks = 1U;
+    }
+
+    uint64_t start = monotonic_now();
+    while ((monotonic_now() - start) < ticks) {
+    }
+}

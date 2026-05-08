@@ -185,7 +185,6 @@ fn generate_bindings(out: &Path, hal: &Path) -> Result<()> {
 
     bindgen.write_to_file(out.join("bindings.rs"))?;
 
-    println!("cargo::rerun-if-changed={}", hal.display());
     Ok(())
 }
 
@@ -339,8 +338,10 @@ fn main() {
 
             // Build the HAL library
             let mut libhal_config = cmake::Config::new(&hal);
+            println!("cargo::rerun-if-changed={}", hal.display());
             libhal_config.generator("Ninja");
             libhal_config.define("OUT_DIR", &out);
+            libhal_config.cflag(format!("-I{}", out.display()));
 
             for (vendor, name) in hal_builder::dt::soc(&dt) {
                 if vendor == "st" {
@@ -363,8 +364,10 @@ fn main() {
 
             // Build the common library
             let mut common_config = cmake::Config::new("common");
+            println!("cargo::rerun-if-changed=common");
             common_config.generator("Ninja");
             common_config.always_configure(true);
+            common_config.cflag(format!("-I{}", out.display()));
             forward_env_vars(&mut common_config);
             fail_on_error(forward_fpu_config(&mut common_config));
             let common = common_config.build();
@@ -373,7 +376,6 @@ fn main() {
             let common_cc = build_dir.join("compile_commands.json");
             let common_cc = fs::read_to_string(common_cc).unwrap_or_default();
 
-            println!("cargo::rerun-if-changed=common");
             println!("cargo::rustc-link-search=native={}", common.display());
 
             // Merge and export compile_commands.json for IDE integration

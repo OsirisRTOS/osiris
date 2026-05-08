@@ -4,6 +4,7 @@ use crate::hal;
 
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
+use core::ops::Deref;
 use core::sync::atomic::AtomicU8;
 use core::sync::atomic::Ordering;
 
@@ -101,7 +102,42 @@ impl<T> OnceCell<T> {
     where
         F: FnOnce() -> T,
     {
-        self.set_or_get(f())
+        self.get_or_init(f)
+    }
+
+    /// Returns the value, initializing it with `f` if needed.
+    pub fn get_or_init<F>(&self, f: F) -> &T
+    where
+        F: FnOnce() -> T,
+    {
+        if let Some(value) = self.get() {
+            return value;
+        }
+
+        if self.init.step(Ready::NOT_READY) {
+            // Safety: We are now in the IN_TRANSIT state, so we are the only ones that can write to the value.
+            unsafe {
+                self.value.get().write(MaybeUninit::new(f()));
+            }
+
+            if self.init.step(Ready::IN_TRANSIT) {
+                // Safety: We are now in the READY state, so no writes can happen to the value.
+                return unsafe { self.get_unchecked() };
+            }
+
+            // By contract, only the thread that started the initialization process can finish it.
+            unreachable!();
+        }
+
+        // If we reach this point, initialization is already in progress.
+        while !self.init.is() {
+            hal::asm::nop!();
+        }
+
+        // Safety:
+        // 1. By contract, is the value initialized if init.is() returns true.
+        // 2. No writes are allowed to the value after the initialization process is finished.
+        unsafe { self.get_unchecked() }
     }
 
     /// Sets the value if it is not already initialized, returns a reference to the value if it was not set previously.
@@ -138,5 +174,96 @@ impl<T> OnceCell<T> {
     /// Postconditions: The value is returned.
     unsafe fn get_unchecked(&self) -> &T {
         unsafe { (*self.value.get()).assume_init_ref() }
+    }
+}
+
+/// A lazily initialized value.
+pub struct LazyLock<T, F = fn() -> T> {
+    cell: OnceCell<T>,
+    init: UnsafeCell<Option<F>>,
+}
+
+// Safety:
+// 1. `cell` synchronizes initialization and only exposes shared references once ready.
+// 2. `init` is taken only by the thread that transitions `cell` into initialization.
+unsafe impl<T: Sync, F: Send> Sync for LazyLock<T, F> {}
+unsafe impl<T: Send, F: Send> Send for LazyLock<T, F> {}
+
+impl<T, F> LazyLock<T, F> {
+    /// Creates a new LazyLock.
+    pub const fn new(f: F) -> Self {
+        Self {
+            cell: OnceCell::new(),
+            init: UnsafeCell::new(Some(f)),
+        }
+    }
+}
+
+impl<T, F> LazyLock<T, F>
+where
+    F: FnOnce() -> T,
+{
+    /// Returns the lazily initialized value.
+    pub fn force(this: &Self) -> &T {
+        this.cell.get_or_init(|| {
+            // Safety:
+            // 1. `get_or_init` calls this closure only for the thread that won initialization.
+            // 2. No other thread can access `init` after initialization starts.
+            let init = unsafe {
+                (*this.init.get())
+                    .take()
+                    .expect("LazyLock initializer missing")
+            };
+            init()
+        })
+    }
+}
+
+impl<T, F> Deref for LazyLock<T, F>
+where
+    F: FnOnce() -> T,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        Self::force(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn once_cell_get_or_init_initializes_once() {
+        let cell = OnceCell::new();
+        let mut calls = 0usize;
+
+        assert_eq!(
+            *cell.get_or_init(|| {
+                calls += 1;
+                7
+            }),
+            7
+        );
+
+        assert_eq!(*cell.get_or_init(|| 11), 7);
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn once_cell_do_or_get_does_not_call_initializer_when_ready() {
+        let cell = OnceCell::new();
+
+        assert_eq!(*cell.set_or_get(7), 7);
+        assert_eq!(*cell.do_or_get(|| panic!("initializer should not run")), 7);
+    }
+
+    #[test]
+    fn lazy_lock_initializes_on_first_access() {
+        let value = LazyLock::new(|| 7usize);
+
+        assert_eq!(*value, 7);
+        assert_eq!(*LazyLock::force(&value), 7);
     }
 }

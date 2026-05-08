@@ -20,6 +20,8 @@ mod sync;
 mod syscalls;
 mod time;
 
+// Public, for now.
+pub mod drivers;
 pub mod uapi;
 
 pub use hal_cortex_m::*;
@@ -41,11 +43,12 @@ pub unsafe extern "C" fn kernel_init() -> ! {
 
     print::print_header();
 
-    error!("Hello World!");
-
     // Initialize the memory allocator.
     let kaddr_space = mem::init_memory();
     kprintln!("Memory initialized.");
+
+    drivers::init();
+    kprintln!("Drivers initialized.");
 
     sched::init(kaddr_space);
     kprintln!("Scheduler initialized.");
