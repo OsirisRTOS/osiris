@@ -640,6 +640,7 @@ pub trait Machinelike {
     fn get_fault_status(fault: Fault) -> Self::FaultStatus;
 
     fn panic_handler(info: &core::panic::PanicInfo) -> !;
+    fn do_tick();
 }
 
 pub trait Schedable {

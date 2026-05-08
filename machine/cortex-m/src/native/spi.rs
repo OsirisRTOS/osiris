@@ -2,7 +2,7 @@ use core::cell::Cell;
 use core::ffi::c_void;
 use core::marker::PhantomData;
 
-use hal_api::{Error, Result};
+use hal_api::{PosixError, Result};
 
 use super::bindings;
 use super::device_tree;
@@ -83,7 +83,7 @@ pub fn init(cfg: &'static device_tree::SpiBusRegistryEntry) -> Result<Bus> {
     let instance = unsafe { bindings::spi_init(&cfg) };
 
     if instance.is_null() {
-        Err(Error::Generic)
+        Err(PosixError::EINVAL)
     } else {
         Ok(Bus {
             instance,
@@ -94,7 +94,7 @@ pub fn init(cfg: &'static device_tree::SpiBusRegistryEntry) -> Result<Bus> {
 
 pub fn transfer_words<W>(dev: &Device, tx: &[W], rx: &mut [W]) -> Result<()> {
     if tx.len() != rx.len() || tx.is_empty() {
-        return Err(Error::Generic);
+        return Err(PosixError::EINVAL);
     }
 
     let transfer = bindings::spi_transfer {
@@ -113,13 +113,13 @@ pub fn transfer_words<W>(dev: &Device, tx: &[W], rx: &mut [W]) -> Result<()> {
     if rc == 0 {
         Ok(())
     } else {
-        Err(Error::Generic)
+        Err(PosixError::EINVAL)
     }
 }
 
 pub fn deinit(bus: &Bus) -> Result<()> {
     let rc = unsafe { bindings::spi_deinit(bus.instance) };
-    if rc == 0 { Ok(()) } else { Err(Error::Generic) }
+    if rc == 0 { Ok(()) } else { Err(PosixError::EINVAL) }
 }
 
 pub fn init_device(
@@ -130,7 +130,7 @@ pub fn init_device(
     let cfg = cfg_from_dev(cfg, freq);
     let rc = unsafe { bindings::spi_init_device(&cfg) };
     if rc != 0 {
-        return Err(Error::Generic);
+        return Err(PosixError::EINVAL);
     }
 
     Ok(Device {

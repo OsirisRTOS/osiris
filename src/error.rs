@@ -80,17 +80,10 @@ macro_rules! kerr {
     ($posix:ident) => {
         $crate::error::Error::new($crate::error::PosixError::$posix)
     };
-<<<<<<< HEAD
-    ($kind:ident, $fmt:literal $($arg:tt)*) => {{
-        #[cfg(feature = "error-msg")]
-        {
-            $crate::error::Error::new($crate::error::Kind::$kind).with_msg(format_args!($fmt $($arg)*))
-=======
     ($posix:ident, $msg:expr) => {{
         #[cfg(feature = "error-msg")]
         {
             $crate::error::Error::new($crate::error::PosixError::$posix).with_msg($msg)
->>>>>>> 2ee8ebd (Changed error handling to use Posix errors)
         }
         #[cfg(not(feature = "error-msg"))]
         {
@@ -99,37 +92,7 @@ macro_rules! kerr {
     }};
 }
 
-<<<<<<< HEAD
-#[proc_macros::fmt]
-#[allow(dead_code)]
-#[derive(Clone, PartialEq, Eq)]
-pub enum Kind {
-    InvalidAlign,
-    OutOfMemory,
-    InvalidSize,
-    InvalidAddress(PhysAddr),
-    InvalidArgument,
-    NotFound,
-    Hal(hal::Error),
-}
-
-impl Display for Kind {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Kind::InvalidAlign => write!(f, "Invalid alignment"),
-            Kind::OutOfMemory => write!(f, "Out of memory"),
-            Kind::InvalidSize => write!(f, "Invalid size"),
-            Kind::InvalidAddress(addr) => write!(f, "Invalid address: {addr:#x}"),
-            Kind::InvalidArgument => write!(f, "Invalid argument"),
-            Kind::NotFound => write!(f, "Not found"),
-            Kind::Hal(e) => write!(f, "HAL error: {e:?}"),
-        }
-    }
-}
-
 #[derive(Clone, Eq)]
-=======
->>>>>>> 2ee8ebd (Changed error handling to use Posix errors)
 pub struct Error {
     pub kind: PosixError,
     #[cfg(feature = "error-msg")]
