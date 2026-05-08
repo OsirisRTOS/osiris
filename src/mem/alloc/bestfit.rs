@@ -366,8 +366,8 @@ impl super::Allocator for BestFitAllocator {
 
 #[cfg(test)]
 mod tests {
-    use hal_api::PosixError;
     use crate::mem::align_up;
+    use hal_api::PosixError;
 
     use super::super::*;
     use super::*;
