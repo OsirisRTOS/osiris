@@ -53,7 +53,7 @@ impl hal_api::Machinelike for ArmMachine {
             Ok(())
         } else {
             asm::enable_irq_restr(state);
-            Err(hal_api::Error::default())
+            Err(hal_api::PosixError::EIO)
         }
     }
 

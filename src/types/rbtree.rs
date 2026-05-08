@@ -68,7 +68,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
     {
         let already_linked = {
-            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let node = storage.get(id).ok_or(kerr!(ENOENT))?;
             let links = node.links();
             self.root == Some(id)
                 || links.parent.is_some()
@@ -83,7 +83,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         let mut last = None;
 
         {
-            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let node = storage.get(id).ok_or(kerr!(ENOENT))?;
             let mut current = self.root;
 
             while let Some(current_id) = current {
@@ -102,7 +102,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         }
 
         {
-            let node = storage.get_mut(id).ok_or(kerr!(NotFound))?.links_mut();
+            let node = storage.get_mut(id).ok_or(kerr!(ENOENT))?.links_mut();
             node.parent = last;
             node.left = None;
             node.right = None;
@@ -123,7 +123,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         }
 
         if let Some(min_id) = self.min {
-            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let node = storage.get(id).ok_or(kerr!(ENOENT))?;
             let min_node = storage.get(min_id).unwrap_or_else(|| {
                 bug!("node linked from tree does not exist in storage.");
             });
@@ -142,7 +142,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
     {
         let (node_left, node_right, node_parent, node_is_red, linked) = {
-            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let node = storage.get(id).ok_or(kerr!(ENOENT))?;
             let links = node.links();
             (
                 links.left,
@@ -157,7 +157,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         };
 
         if !linked {
-            return Err(kerr!(NotFound));
+            return Err(kerr!(ENOENT));
         }
 
         let mut succ_was_red = node_is_red;
@@ -307,7 +307,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
                     let parent = storage
                         .get(id)
                         .and_then(|n| n.links().parent)
-                        .ok_or(kerr!(NotFound))?;
+                        .ok_or(kerr!(ENOENT))?;
                     let grandparent = storage
                         .get(parent)
                         .and_then(|n| n.links().parent)
@@ -356,7 +356,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
                     let parent = storage
                         .get(id)
                         .and_then(|n| n.links().parent)
-                        .ok_or(kerr!(NotFound))?;
+                        .ok_or(kerr!(ENOENT))?;
                     let grandparent = storage
                         .get(parent)
                         .and_then(|n| n.links().parent)
@@ -423,7 +423,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
                         sib.links_mut().color = Color::Black;
                         par.links_mut().color = Color::Red;
                     } else {
-                        return Err(kerr!(NotFound));
+                        return Err(kerr!(ENOENT));
                     }
                     self.rotate_left(parent_id, sibling_id, storage)?;
                     sibling_opt = storage.get(parent_id).and_then(|n| n.links().right);
@@ -588,7 +588,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
     {
         loop {
-            let left = storage.get(id).ok_or(kerr!(NotFound))?.links().left;
+            let left = storage.get(id).ok_or(kerr!(ENOENT))?.links().left;
             match left {
                 Some(left_id) => id = left_id,
                 None => return Ok(id),
@@ -643,7 +643,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
     {
         if pivot == left {
-            return Err(kerr!(NotFound));
+            return Err(kerr!(ENOENT));
         }
 
         let (right, parent) =
@@ -703,7 +703,7 @@ impl<Tag, T: Copy + PartialEq> RbTree<Tag, T> {
         <S as Get<T>>::Output: Linkable<Tag, T> + Compare<Tag, T>,
     {
         if pivot == right {
-            return Err(kerr!(NotFound));
+            return Err(kerr!(ENOENT));
         }
 
         let (left, parent) =

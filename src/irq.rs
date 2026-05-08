@@ -32,7 +32,7 @@ pub unsafe fn register_irq(
     userdata: Option<usize>,
 ) -> Result<()> {
     if vector >= HANDLERS.len() {
-        Err(kerr!(InvalidArgument, "Invalid IRQ vector."))?;
+        Err(kerr!(EINVAL, "Invalid IRQ vector."))?;
     }
 
     let handler = Handler {
@@ -53,7 +53,7 @@ pub unsafe fn register_irq(
 /// - This function must not be called from an IRQ context.
 pub unsafe fn unregister_irq(vector: usize) -> Result<()> {
     if vector >= HANDLERS.len() {
-        Err(kerr!(InvalidArgument, "Invalid IRQ vector."))?;
+        Err(kerr!(EINVAL, "Invalid IRQ vector."))?;
     }
 
     sync::atomic::irq_free(|| {

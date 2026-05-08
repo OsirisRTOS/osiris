@@ -2,7 +2,8 @@ use core::cell::Cell;
 use core::ffi::c_void;
 use core::marker::PhantomData;
 
-use hal_api::{Error, Result};
+
+use hal_api::{PosixError, Result};
 
 use super::bindings;
 use super::device_tree;
@@ -64,7 +65,7 @@ pub fn init(cfg: &'static device_tree::I2cBusRegistryEntry) -> Result<Bus> {
     let handle = unsafe { bindings::i2c_init(&cfg as *const bindings::i2c_bus_cfg_t) };
 
     if handle.is_null() {
-        Err(Error::Generic)
+        Err(PosixError::EINVAL)
     } else {
         Ok(Bus {
             handle,
@@ -75,7 +76,7 @@ pub fn init(cfg: &'static device_tree::I2cBusRegistryEntry) -> Result<Bus> {
 
 pub fn write(dev: &Device, tx: &[u8]) -> Result<()> {
     if tx.is_empty() {
-        return Err(Error::Generic);
+        return Err(PosixError::EINVAL);
     }
 
     let mut transfer = bindings::i2c_transfer {
@@ -95,13 +96,13 @@ pub fn write(dev: &Device, tx: &[u8]) -> Result<()> {
     if rc == tx.len() as i32 {
         Ok(())
     } else {
-        Err(Error::Generic)
+        Err(PosixError::EINVAL)
     }
 }
 
 pub fn read(dev: &Device, rx: &mut [u8]) -> Result<()> {
     if rx.is_empty() {
-        return Err(Error::Generic);
+        return Err(PosixError::EINVAL);
     }
 
     let mut transfer = bindings::i2c_transfer {
@@ -121,13 +122,13 @@ pub fn read(dev: &Device, rx: &mut [u8]) -> Result<()> {
     if rc == rx.len() as i32 {
         Ok(())
     } else {
-        Err(Error::Generic)
+        Err(PosixError::EINVAL)
     }
 }
 
 pub fn write_read(dev: &Device, tx: &[u8], rx: &mut [u8]) -> Result<()> {
     if tx.is_empty() || rx.is_empty() {
-        return Err(Error::Generic);
+        return Err(PosixError::EINVAL);
     }
 
     let transfer = bindings::i2c_transfer {
@@ -147,13 +148,13 @@ pub fn write_read(dev: &Device, tx: &[u8], rx: &mut [u8]) -> Result<()> {
     if rc == rx.len() as i32 {
         Ok(())
     } else {
-        Err(Error::Generic)
+        Err(PosixError::EINVAL)
     }
 }
 
 pub fn deinit(bus: &Bus) -> Result<()> {
     let rc = unsafe { bindings::i2c_deinit(bus.handle) };
-    if rc == 0 { Ok(()) } else { Err(Error::Generic) }
+    if rc == 0 { Ok(()) } else { Err(PosixError::EINVAL) }
 }
 
 pub fn init_device(
@@ -163,7 +164,7 @@ pub fn init_device(
     let cfg = cfg_from_dev(cfg)?;
     let rc = unsafe { bindings::i2c_init_device(&cfg) };
     if rc != 0 {
-        return Err(Error::Generic);
+        return Err(PosixError::EINVAL);
     }
 
     Ok(Device {

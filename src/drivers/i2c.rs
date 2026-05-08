@@ -43,7 +43,7 @@ impl Device {
             Some(cfg) => cfg,
             None => {
                 return Err(kerr!(
-                    NotFound,
+                    ENODEV,
                     "i2c device not found: compatible={compatible}, ordinal={ordinal}"
                 ));
             }
@@ -58,7 +58,7 @@ impl Device {
             }
         }
 
-        Err(kerr!(InvalidArgument))
+        Err(kerr!(EINVAL))
     }
 
     pub fn write(&self, tx: &[u8]) -> Result<()> {

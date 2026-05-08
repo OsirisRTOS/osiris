@@ -52,7 +52,7 @@ impl Device {
             Some(cfg) => cfg,
             None => {
                 return Err(kerr!(
-                    NotFound,
+                    ENODEV,
                     "spi device not found: compatible={compatible}, ordinal={ordinal}"
                 ));
             }
@@ -67,7 +67,7 @@ impl Device {
             }
         }
 
-        Err(kerr!(InvalidArgument))
+        Err(kerr!(EINVAL))
     }
 
     pub fn transfer_u8(&self, tx: &[u8], rx: &mut [u8]) -> Result<()> {

@@ -75,7 +75,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
             Some(old_head) => {
                 let (new_node, old_head_node) = storage.get2_mut(id, old_head);
                 let (new_node, old_head_node) = (
-                    new_node.ok_or(kerr!(NotFound))?,
+                    new_node.ok_or(kerr!(ENOENT))?,
                     old_head_node.unwrap_or_else(|| {
                         bug!("node linked from list does not exist in storage.");
                     }),
@@ -87,7 +87,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
                 old_head_node.links_mut().prev = Some(id);
             }
             None => {
-                let new_node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
+                let new_node = storage.get_mut(id).ok_or(kerr!(ENOENT))?;
                 new_node.links_mut().prev = None;
                 new_node.links_mut().next = None;
                 self.tail = Some(id);
@@ -112,7 +112,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
             Some(old_tail) => {
                 let (new_node, old_tail_node) = storage.get2_mut(id, old_tail);
                 let (new_node, old_tail_node) = (
-                    new_node.ok_or(kerr!(NotFound))?,
+                    new_node.ok_or(kerr!(ENOENT))?,
                     old_tail_node.unwrap_or_else(|| {
                         bug!("node linked from list does not exist in storage.");
                     }),
@@ -124,7 +124,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
                 old_tail_node.links_mut().next = Some(id);
             }
             None => {
-                let new_node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
+                let new_node = storage.get_mut(id).ok_or(kerr!(ENOENT))?;
                 new_node.links_mut().next = None;
                 new_node.links_mut().prev = None;
                 self.head = Some(id);
@@ -166,7 +166,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
         let (prev, next, linked) = {
-            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let node = storage.get(id).ok_or(kerr!(ENOENT))?;
             let links = node.links();
             let linked = self.head == Some(id)
                 || self.tail == Some(id)
@@ -176,7 +176,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         };
 
         if !linked {
-            return Err(kerr!(NotFound));
+            return Err(kerr!(ENOENT));
         }
 
         if let Some(prev_id) = prev {
@@ -197,7 +197,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
             self.tail = prev;
         }
 
-        let node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
+        let node = storage.get_mut(id).ok_or(kerr!(ENOENT))?;
         node.links_mut().prev = None;
         node.links_mut().next = None;
 
@@ -211,7 +211,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         <S as Get<T>>::Output: Linkable<Tag, T>,
     {
         let linked = {
-            let node = storage.get(id).ok_or(kerr!(NotFound))?;
+            let node = storage.get(id).ok_or(kerr!(ENOENT))?;
             let links = node.links();
             self.head == Some(id)
                 || self.tail == Some(id)
@@ -222,7 +222,7 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
         if linked {
             self.remove(id, storage)?;
         } else {
-            let node = storage.get_mut(id).ok_or(kerr!(NotFound))?;
+            let node = storage.get_mut(id).ok_or(kerr!(ENOENT))?;
             node.links_mut().prev = None;
             node.links_mut().next = None;
         }
