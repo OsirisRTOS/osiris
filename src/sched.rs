@@ -456,8 +456,7 @@ pub fn reschedule() {
 
 /// Wake a thread by raw `uid`. C-FFI so ISR-context callers can use it
 /// without SVC (handler-mode SVC HardFaults on Cortex-M). Errors are
-/// swallowed: not-yet-sleeping is normal (consumer's bounded sleep
-/// covers it).
+/// swallowed: not-yet-sleeping is normal.
 #[unsafe(no_mangle)]
 pub extern "C" fn kick_thread(uid: u32) {
     with(|sched| {

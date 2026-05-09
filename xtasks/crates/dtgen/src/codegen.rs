@@ -1401,11 +1401,6 @@ mod can {
         node: usize,
         instance: usize,
         bitrate_hz: u32,
-        /// 0 = Normal, 1 = Loopback. From DT `mode` string property.
-        mode: u8,
-        /// 0 = one-shot, 1 = retransmit (DT boolean `auto-retransmit`).
-        auto_retransmit: u8,
-        tx_timeout_iters: u32,
         rx: Pin,
         tx: Pin,
         rx0_irq: Irq,
@@ -1560,26 +1555,6 @@ mod can {
                 ),
             };
 
-            let mode = match node.extra.get("mode") {
-                Some(PropValue::Str(s)) => match s.as_str() {
-                    "normal" => 0u8,
-                    "loopback" => 1u8,
-                    other => panic!("CAN node {} has unknown mode {:?}", node.name, other),
-                },
-                _ => 0u8,
-            };
-
-            let auto_retransmit = if node.extra.contains_key("auto-retransmit") {
-                1
-            } else {
-                0
-            };
-
-            let tx_timeout_iters = match node.extra.get("tx-timeout-iters") {
-                Some(PropValue::U32(v)) => *v,
-                _ => 80_000,
-            };
-
             let tx_open_drain = if node.extra.contains_key("drive-open-drain") {
                 1
             } else {
@@ -1606,9 +1581,6 @@ mod can {
                 node: idx,
                 instance,
                 bitrate_hz,
-                mode,
-                auto_retransmit,
-                tx_timeout_iters,
                 rx,
                 tx,
                 rx0_irq,
@@ -1630,9 +1602,6 @@ mod can {
             let node = b.node;
             let instance = b.instance;
             let bitrate_hz = b.bitrate_hz;
-            let mode = b.mode;
-            let auto_retransmit = b.auto_retransmit;
-            let tx_timeout_iters = b.tx_timeout_iters;
             let index = b.index;
             let tx_open_drain = b.tx_open_drain;
             let compatible = b.compatible.as_str();
@@ -1662,9 +1631,6 @@ mod can {
                     node: #node,
                     instance: #instance,
                     bitrate_hz: #bitrate_hz,
-                    mode: #mode,
-                    auto_retransmit: #auto_retransmit,
-                    tx_timeout_iters: #tx_timeout_iters,
                     rx: #rx,
                     tx: #tx,
                     rx0_irq: #rx0_irq,
@@ -1698,11 +1664,6 @@ mod can {
                 pub node: usize,
                 pub instance: usize,
                 pub bitrate_hz: u32,
-                /// 0 = Normal, 1 = Loopback.
-                pub mode: u8,
-                /// 1 = retransmit, 0 = one-shot.
-                pub auto_retransmit: u8,
-                pub tx_timeout_iters: u32,
                 pub rx: CanPin,
                 pub tx: CanPin,
                 pub rx0_irq: CanIrq,

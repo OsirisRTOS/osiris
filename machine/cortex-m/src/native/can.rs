@@ -1,7 +1,5 @@
 //! ST bxCAN HAL bridge — thin Rust wrappers over `interface/can.c`.
 
-use core::num::NonZeroU32;
-
 use super::bindings;
 use super::device_tree;
 
@@ -46,12 +44,11 @@ pub struct Frame {
     pub is_extended: bool,
 }
 
-/// `Loopback` short-circuits TX→RX inside the peripheral; no transceiver
-/// or bus needed. For diagnostics.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mode {
     #[default]
     Normal,
+    /// Internal TX→RX short-circuit; no bus needed.
     Loopback,
 }
 
@@ -88,20 +85,11 @@ impl Device {
     }
 }
 
-fn cfg_from_dev(dev: &Device) -> bindings::can_bus_cfg_t {
-    cfg_from_dev_full(dev, dev.0.bitrate_hz, Mode::Normal, 0)
-}
-
-fn cfg_from_dev_full(
-    dev: &Device,
-    bitrate_hz: u32,
-    mode: Mode,
-    tx_timeout_iters: u32,
-) -> bindings::can_bus_cfg_t {
+fn init_cfg(dev: &Device, mode: Mode) -> bindings::can_bus_cfg_t {
     let e = dev.0;
     bindings::can_bus_cfg_t {
         instance: e.instance,
-        bitrate_hz,
+        bitrate_hz: e.bitrate_hz,
         rx: bindings::can_pin_cfg_t {
             port: e.rx.port,
             pin: e.rx.line,
@@ -121,8 +109,7 @@ fn cfg_from_dev_full(
         index: e.index,
         mode: mode as u8,
         tx_open_drain: e.tx_open_drain,
-        auto_retransmit: e.auto_retransmit,
-        tx_timeout_iters,
+        reserved: 0,
     }
 }
 
@@ -150,30 +137,27 @@ pub fn get(compatible: &str, ordinal: usize) -> Result<Device> {
     Ok(Device(entry))
 }
 
-pub fn init(dev: &Device, bitrate_hz: NonZeroU32, mode: Mode) -> Result<()> {
-    let cfg = cfg_from_dev_full(dev, bitrate_hz.get(), mode, 0);
+pub fn init(dev: &Device, mode: Mode) -> Result<()> {
+    let cfg = init_cfg(dev, mode);
     let rc = unsafe { bindings::can_init(&cfg) };
     if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
 }
 
 pub fn deinit(dev: &Device) -> Result<()> {
-    let cfg = cfg_from_dev(dev);
-    let rc = unsafe { bindings::can_deinit(&cfg) };
+    let rc = unsafe { bindings::can_deinit(dev.0.index) };
     if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
 }
 
-pub fn transmit(dev: &Device, frame: &Frame, tx_timeout_iters: NonZeroU32) -> Result<()> {
+pub fn transmit(dev: &Device, frame: &Frame) -> Result<()> {
     if frame.len > 8 {
         return Err(Error::InvalidArgument);
     }
-    let cfg = cfg_from_dev_full(dev, dev.0.bitrate_hz, Mode::Normal, tx_timeout_iters.get());
     let cframe = frame_to_c(frame);
-    let rc = unsafe { bindings::can_transmit(&cfg, &cframe) };
+    let rc = unsafe { bindings::can_transmit(dev.0.index, &cframe) };
     if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
 }
 
 pub fn receive(dev: &Device, out: &mut Frame) -> Result<bool> {
-    let cfg = cfg_from_dev(dev);
     let mut cframe = bindings::can_frame_t {
         id: 0,
         data: [0u8; 8],
@@ -181,7 +165,7 @@ pub fn receive(dev: &Device, out: &mut Frame) -> Result<bool> {
         is_extended: 0,
         reserved: 0,
     };
-    let rc = unsafe { bindings::can_receive(&cfg, &mut cframe) };
+    let rc = unsafe { bindings::can_receive(dev.0.index, &mut cframe) };
     match rc {
         0 => Ok(false),
         1 => {
@@ -219,7 +203,6 @@ fn validate_filter(filter: &Filter) -> Result<()> {
 
 pub fn configure_filter(dev: &Device, filter: &Filter) -> Result<()> {
     validate_filter(filter)?;
-    let cfg = cfg_from_dev(dev);
     let c = bindings::can_filter_t {
         id: filter.id,
         mask: filter.mask,
@@ -228,7 +211,7 @@ pub fn configure_filter(dev: &Device, filter: &Filter) -> Result<()> {
         fifo: filter.fifo,
         reserved: 0,
     };
-    let rc = unsafe { bindings::can_configure_filter(&cfg, &c) };
+    let rc = unsafe { bindings::can_configure_filter(dev.0.index, &c) };
     if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
 }
 
@@ -263,8 +246,7 @@ pub fn register_irq_handler(
 }
 
 fn last_error(dev: &Device) -> u32 {
-    let cfg = cfg_from_dev(dev);
-    unsafe { bindings::can_last_error(&cfg) }
+    unsafe { bindings::can_last_error(dev.0.index) }
 }
 
 fn decode_bus_status(esr: u32) -> BusStatus {
@@ -287,8 +269,7 @@ pub fn bus_status(dev: &Device) -> BusStatus {
 }
 
 pub fn recover(dev: &Device) -> Result<()> {
-    let cfg = cfg_from_dev(dev);
-    let rc = unsafe { bindings::can_recover(&cfg) };
+    let rc = unsafe { bindings::can_recover(dev.0.index) };
     if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
 }
 
@@ -313,7 +294,6 @@ pub fn dispatch_isr(slot: u8) {
 }
 
 pub fn diag(dev: &Device) -> Diag {
-    let cfg = cfg_from_dev(dev);
     let mut raw = bindings::can_diag_t {
         esr: 0,
         tsr: 0,
@@ -328,7 +308,7 @@ pub fn diag(dev: &Device) -> Diag {
         rx_drops: 0,
         rx_hw_ovr: 0,
     };
-    unsafe { bindings::can_diag(&cfg, &mut raw) };
+    unsafe { bindings::can_diag(dev.0.index, &mut raw) };
     Diag {
         esr: raw.esr,
         tsr: raw.tsr,

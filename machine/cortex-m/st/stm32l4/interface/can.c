@@ -22,6 +22,7 @@
 #define CAN_ERR_TX_TIMEOUT  (-10)
 
 #define CAN_RX_BUF_SIZE 128
+#define CAN_TX_TIMEOUT_ITERS 1000u
 
 typedef struct
 {
@@ -33,6 +34,12 @@ typedef struct
 
 static CAN_HandleTypeDef s_handles[CAN_SLOT_COUNT];
 static can_rx_buf_t s_rx[CAN_SLOT_COUNT];
+
+static struct
+{
+    uint8_t rx0_irqn;
+    uint8_t rx1_irqn;
+} s_irqn[CAN_SLOT_COUNT];
 
 static uint32_t s_tx_attempts[CAN_SLOT_COUNT];
 static uint32_t s_tx_hal_fails[CAN_SLOT_COUNT];
@@ -159,6 +166,9 @@ int can_init(const can_bus_cfg_t *cfg)
     rx->tail = 0;
     rx->count = 0;
 
+    s_irqn[cfg->index].rx0_irqn = cfg->rx0_irqn;
+    s_irqn[cfg->index].rx1_irqn = cfg->rx1_irqn;
+
     can_msp_init(cfg);
 
     uint32_t prescaler = 0;
@@ -178,13 +188,10 @@ int can_init(const can_bus_cfg_t *cfg)
     h->Init.TimeSeg1 = ts1;
     h->Init.TimeSeg2 = ts2;
     h->Init.AutoBusOff = ENABLE;
-    /* NART=0: HW retransmits until ACK or arbitration loss. No upper-layer
-       per-frame retry exists, so this must stay on. */
     h->Init.AutoRetransmission = ENABLE;
     h->Init.TimeTriggeredMode = DISABLE;
     h->Init.AutoWakeUp = DISABLE;
-    /* RFLM=1 keeps the oldest 3 frames on FIFO overflow; FOVR is set so
-       the ISR can count drops via s_rx_hw_ovr. */
+    /* RFLM=1: keep the oldest 3 frames on overflow; FOVR counts drops. */
     h->Init.ReceiveFifoLocked = ENABLE;
     h->Init.TransmitFifoPriority = ENABLE;
 
@@ -208,18 +215,18 @@ int can_init(const can_bus_cfg_t *cfg)
     return 0;
 }
 
-int can_deinit(const can_bus_cfg_t *cfg)
+int can_deinit(uint8_t slot)
 {
-    if (cfg == NULL || cfg->index >= CAN_SLOT_COUNT)
+    if (slot >= CAN_SLOT_COUNT)
     {
         return CAN_ERR_INVALID_ARG;
     }
 
-    HAL_NVIC_DisableIRQ((IRQn_Type)cfg->rx0_irqn);
-    HAL_NVIC_DisableIRQ((IRQn_Type)cfg->rx1_irqn);
-    HAL_CAN_DeInit(&s_handles[cfg->index]);
+    HAL_NVIC_DisableIRQ((IRQn_Type)s_irqn[slot].rx0_irqn);
+    HAL_NVIC_DisableIRQ((IRQn_Type)s_irqn[slot].rx1_irqn);
+    HAL_CAN_DeInit(&s_handles[slot]);
 
-    can_rx_buf_t *rx = &s_rx[cfg->index];
+    can_rx_buf_t *rx = &s_rx[slot];
     rx->head = 0;
     rx->tail = 0;
     rx->count = 0;
@@ -227,21 +234,20 @@ int can_deinit(const can_bus_cfg_t *cfg)
     return 0;
 }
 
-int can_transmit(const can_bus_cfg_t *cfg, const can_frame_t *frame)
+int can_transmit(uint8_t slot, const can_frame_t *frame)
 {
-    if (cfg == NULL || frame == NULL || cfg->index >= CAN_SLOT_COUNT
-        || cfg->tx_timeout_iters == 0)
+    if (frame == NULL || slot >= CAN_SLOT_COUNT)
     {
         return CAN_ERR_INVALID_ARG;
     }
 
-    CAN_HandleTypeDef *h = &s_handles[cfg->index];
+    CAN_HandleTypeDef *h = &s_handles[slot];
     if (h->Instance == NULL)
     {
         return CAN_ERR_NOT_INIT;
     }
 
-    s_tx_attempts[cfg->index]++;
+    s_tx_attempts[slot]++;
 
     CAN_TxHeaderTypeDef hdr = {
         .IDE = frame->is_extended ? CAN_ID_EXT : CAN_ID_STD,
@@ -259,12 +265,12 @@ int can_transmit(const can_bus_cfg_t *cfg, const can_frame_t *frame)
     }
 
     /* Spin outside the critical section so RX keeps draining. */
-    uint32_t timeout = cfg->tx_timeout_iters;
+    uint32_t timeout = CAN_TX_TIMEOUT_ITERS;
     while (HAL_CAN_GetTxMailboxesFreeLevel(h) == 0)
     {
         if (--timeout == 0)
         {
-            s_tx_mbx_timeouts[cfg->index]++;
+            s_tx_mbx_timeouts[slot]++;
             return CAN_ERR_TX_TIMEOUT;
         }
     }
@@ -275,25 +281,25 @@ int can_transmit(const can_bus_cfg_t *cfg, const can_frame_t *frame)
     __enable_irq();
     if (rc != HAL_OK)
     {
-        s_tx_hal_fails[cfg->index]++;
+        s_tx_hal_fails[slot]++;
         return CAN_ERR_HAL_TX;
     }
     return 0;
 }
 
-int can_receive(const can_bus_cfg_t *cfg, can_frame_t *out)
+int can_receive(uint8_t slot, can_frame_t *out)
 {
-    if (cfg == NULL || out == NULL || cfg->index >= CAN_SLOT_COUNT)
+    if (out == NULL || slot >= CAN_SLOT_COUNT)
     {
         return CAN_ERR_INVALID_ARG;
     }
 
-    if (s_handles[cfg->index].Instance == NULL)
+    if (s_handles[slot].Instance == NULL)
     {
         return CAN_ERR_NOT_INIT;
     }
 
-    can_rx_buf_t *rx = &s_rx[cfg->index];
+    can_rx_buf_t *rx = &s_rx[slot];
     if (rx->count == 0)
     {
         return 0;
@@ -332,9 +338,6 @@ int can_set_irq_handler(uint8_t slot, can_irq_handler_fn handler, void *ctx)
     return 0;
 }
 
-/* Drain one bxCAN RX FIFO into the slot's SW ring. Called by the
-   HAL_CAN_RxFifoNMsgPendingCallback overrides; both FIFOs share `s_rx[i]`
-   since consumers wait per slot, not per FIFO. */
 static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
 {
     s_rx_irqs[slot_idx]++;
@@ -373,7 +376,6 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
             continue;
         }
 
-        /* DLC is 4 bits; CAN 2.0 caps payload at 8. */
         uint8_t len = (hdr.DLC > 8) ? 8 : (uint8_t)hdr.DLC;
 
         volatile can_frame_t *slot = &rx->frames[rx->tail];
@@ -448,13 +450,13 @@ static void encode_filter(const can_filter_t *f, uint32_t *id_reg, uint32_t *mas
     }
 }
 
-int can_configure_filter(const can_bus_cfg_t *cfg, const can_filter_t *filter)
+int can_configure_filter(uint8_t slot, const can_filter_t *filter)
 {
-    if (cfg == NULL || filter == NULL || cfg->index >= CAN_SLOT_COUNT)
+    if (filter == NULL || slot >= CAN_SLOT_COUNT)
     {
         return CAN_ERR_INVALID_ARG;
     }
-    if (s_handles[cfg->index].Instance == NULL)
+    if (s_handles[slot].Instance == NULL)
     {
         return CAN_ERR_NOT_INIT;
     }
@@ -476,28 +478,28 @@ int can_configure_filter(const can_bus_cfg_t *cfg, const can_filter_t *filter)
         .SlaveStartFilterBank = 14,
     };
 
-    return HAL_CAN_ConfigFilter(&s_handles[cfg->index], &hal_f) == HAL_OK
+    return HAL_CAN_ConfigFilter(&s_handles[slot], &hal_f) == HAL_OK
                ? 0
                : CAN_ERR_HAL_FILTER;
 }
 
-uint32_t can_last_error(const can_bus_cfg_t *cfg)
+uint32_t can_last_error(uint8_t slot)
 {
-    if (cfg == NULL || cfg->index >= CAN_SLOT_COUNT)
+    if (slot >= CAN_SLOT_COUNT)
     {
         return 0;
     }
-    CAN_TypeDef *inst = s_handles[cfg->index].Instance;
+    CAN_TypeDef *inst = s_handles[slot].Instance;
     return inst ? inst->ESR : 0;
 }
 
-int can_recover(const can_bus_cfg_t *cfg)
+int can_recover(uint8_t slot)
 {
-    if (cfg == NULL || cfg->index >= CAN_SLOT_COUNT)
+    if (slot >= CAN_SLOT_COUNT)
     {
         return CAN_ERR_INVALID_ARG;
     }
-    CAN_HandleTypeDef *h = &s_handles[cfg->index];
+    CAN_HandleTypeDef *h = &s_handles[slot];
     if (h->Instance == NULL)
     {
         return CAN_ERR_NOT_INIT;
@@ -510,23 +512,23 @@ int can_recover(const can_bus_cfg_t *cfg)
     return 0;
 }
 
-void can_diag(const can_bus_cfg_t *cfg, can_diag_t *out)
+void can_diag(uint8_t slot, can_diag_t *out)
 {
-    if (cfg == NULL || out == NULL || cfg->index >= CAN_SLOT_COUNT)
+    if (out == NULL || slot >= CAN_SLOT_COUNT)
     {
         return;
     }
-    CAN_TypeDef *inst = s_handles[cfg->index].Instance;
+    CAN_TypeDef *inst = s_handles[slot].Instance;
     out->esr = inst ? inst->ESR : 0;
     out->tsr = inst ? inst->TSR : 0;
     out->msr = inst ? inst->MSR : 0;
     out->mcr = inst ? inst->MCR : 0;
     out->btr = inst ? inst->BTR : 0;
-    out->tx_attempts = s_tx_attempts[cfg->index];
-    out->tx_hal_fails = s_tx_hal_fails[cfg->index];
-    out->tx_mbx_timeouts = s_tx_mbx_timeouts[cfg->index];
-    out->rx_irqs = s_rx_irqs[cfg->index];
-    out->rx_frames = s_rx_frames[cfg->index];
-    out->rx_drops = s_rx_drops[cfg->index];
-    out->rx_hw_ovr = s_rx_hw_ovr[cfg->index];
+    out->tx_attempts = s_tx_attempts[slot];
+    out->tx_hal_fails = s_tx_hal_fails[slot];
+    out->tx_mbx_timeouts = s_tx_mbx_timeouts[slot];
+    out->rx_irqs = s_rx_irqs[slot];
+    out->rx_frames = s_rx_frames[slot];
+    out->rx_drops = s_rx_drops[slot];
+    out->rx_hw_ovr = s_rx_hw_ovr[slot];
 }

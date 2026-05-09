@@ -142,8 +142,7 @@ typedef struct
 	uint8_t index;
 	uint8_t mode;
 	uint8_t tx_open_drain;
-	uint8_t auto_retransmit;
-	uint32_t tx_timeout_iters;
+	uint8_t reserved;
 } can_bus_cfg_t;
 
 typedef struct
@@ -176,12 +175,12 @@ enum can_irq_kind
 typedef void (*can_irq_handler_fn)(int kind, void *ctx);
 
 int can_init(const can_bus_cfg_t *cfg);
-int can_deinit(const can_bus_cfg_t *cfg);
-int can_transmit(const can_bus_cfg_t *cfg, const can_frame_t *frame);
-int can_receive(const can_bus_cfg_t *cfg, can_frame_t *out);
-int can_configure_filter(const can_bus_cfg_t *cfg, const can_filter_t *filter);
-uint32_t can_last_error(const can_bus_cfg_t *cfg);
-int can_recover(const can_bus_cfg_t *cfg);
+int can_deinit(uint8_t slot);
+int can_transmit(uint8_t slot, const can_frame_t *frame);
+int can_receive(uint8_t slot, can_frame_t *out);
+int can_configure_filter(uint8_t slot, const can_filter_t *filter);
+uint32_t can_last_error(uint8_t slot);
+int can_recover(uint8_t slot);
 int can_set_irq_handler(uint8_t slot, can_irq_handler_fn handler, void *ctx);
 
 typedef struct
@@ -199,7 +198,7 @@ typedef struct
 	uint32_t rx_drops;
 	uint32_t rx_hw_ovr;
 } can_diag_t;
-void can_diag(const can_bus_cfg_t *cfg, can_diag_t *out);
+void can_diag(uint8_t slot, can_diag_t *out);
 
 void can_isr(uint8_t index);
 

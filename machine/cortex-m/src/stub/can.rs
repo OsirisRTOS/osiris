@@ -1,7 +1,5 @@
 //! Stub CAN HAL for host/test builds. Mirrors `native::can` shape.
 
-use core::num::NonZeroU32;
-
 use super::device_tree;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,13 +103,13 @@ pub struct Diag {
 pub fn get(_compatible: &str, _ordinal: usize) -> Result<Device> {
     Err(Error::NoSuchDevice)
 }
-pub fn init(_dev: &Device, _bitrate_hz: NonZeroU32, _mode: Mode) -> Result<()> {
+pub fn init(_dev: &Device, _mode: Mode) -> Result<()> {
     Err(Error::NotInitialized)
 }
 pub fn deinit(_dev: &Device) -> Result<()> {
     Err(Error::NotInitialized)
 }
-pub fn transmit(_dev: &Device, _frame: &Frame, _tx_timeout_iters: NonZeroU32) -> Result<()> {
+pub fn transmit(_dev: &Device, _frame: &Frame) -> Result<()> {
     Err(Error::NotInitialized)
 }
 pub fn receive(_dev: &Device, _out: &mut Frame) -> Result<bool> {
