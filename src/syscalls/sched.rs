@@ -72,10 +72,6 @@ fn kick_thread(_uid: usize) -> c_int {
     0
 }
 
-/// Return the raw `UId::as_usize()` of the calling thread, or 0 if no
-/// thread is current (impossible in normal operation). Consumers use
-/// this to register themselves on a queue's waiter slot before going
-/// to sleep, so a producer-side `kick_thread` can wake them.
 #[syscall_handler(num = 6)]
 fn current_id() -> c_int {
     sched::with(|sched| sched.current_uid().unwrap_or(0) as c_int)

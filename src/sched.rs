@@ -271,25 +271,19 @@ impl<const N: usize> Scheduler<N> {
         Ok(())
     }
 
-    /// If the thread is currently sleeping, this will trigger a wakeup on the next reschedule. Note this does not trigger an immediate reschedule.
-    ///
-    /// Returns an error if the thread does not exist, or if the thread is not currently sleeping.
-    /// Wake a thread by raw `UId::as_usize()`. Returns the same errors
-    /// as [`kick`](Self::kick) — notably "not in wakeup tree" if the
-    /// target is currently runnable. The lookup uses only the `uid`
-    /// field, so the synthetic `tid` is a placeholder.
+    /// `kick` lookup by raw `UId::as_usize()`. Synthetic `tid` is a placeholder.
     pub fn kick_by_uid(&mut self, uid: usize) -> Result<()> {
         let lookup_uid = thread::UId::new(uid, thread::Id::new(0, crate::sched::task::UId::new(0)));
         self.kick(lookup_uid)
     }
 
-    /// Raw `UId::as_usize()` of the currently-running thread, if any.
-    /// Used by waiters to register themselves before sleeping so a
-    /// producer-side `kick_thread` can wake them.
     pub fn current_uid(&self) -> Option<usize> {
         self.current.map(|uid| uid.as_usize())
     }
 
+    /// If the thread is currently sleeping, this will trigger a wakeup on the next reschedule. Note this does not trigger an immediate reschedule.
+    ///
+    /// Returns an error if the thread does not exist, or if the thread is not currently sleeping.
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
         WaiterView::<N>::with(&mut self.threads, |view| {
             self.wakeup.remove(uid, view)?;
@@ -401,20 +395,8 @@ impl<const N: usize> Scheduler<N> {
 /// This function provides safe access to the global scheduler.
 /// It disables interrupts and locks the scheduler. Use with caution!
 pub fn with<T, F: FnOnce(&mut GlobalScheduler) -> T>(f: F) -> T {
-    // Full IRQ disable (cpsid_i). Necessary because `kick_thread` —
-    // exported as a C-FFI symbol callable from ISR context — also
-    // enters `with` to wake a sleeping thread. If we used a weaker
-    // mask (BASEPRI=0xF0), a CAN ISR firing while a thread held
-    // `SCHED.lock` would re-enter `with` from the ISR, spin on the
-    // already-locked spinlock, and deadlock (the lock-holding thread
-    // is preempted by the ISR and can't release).
-    //
-    // With cpsid_i, the ISR is deferred until the sched op completes
-    // and IRQs are re-enabled, so re-entry is impossible.
-    //
-    // The cpsid_i windows are short (typical sched op ~10 µs, worst
-    // case ~100 µs). At 32 kbit/s, inter-frame budget is 3 ms ≈ 240 k
-    // cyc; 100 µs = 8 k cyc is well under — won't cause FOVR.
+    // Full cpsid_i: the ISR-callable `kick_thread` re-enters `with`, so a
+    // weaker BASEPRI mask would deadlock if an ISR preempted a holder.
     sync::atomic::irq_free(|| {
         let mut sched = SCHED.lock();
         f(&mut sched)
@@ -472,16 +454,10 @@ pub fn reschedule() {
     hal::Machine::trigger_reschedule();
 }
 
-/// Wake a thread by raw `uid` from any context (thread or ISR).
-/// `sched::with` masks PendSV internally, and the trailing
-/// `reschedule()` arms PendSV so the woken thread is picked on
-/// IRQ-exit. Errors are swallowed — a not-yet-sleeping target is
-/// the common case (the consumer races us to register before
-/// sleeping) and the consumer's bounded sleep loop covers it.
-///
-/// Exported as a C-FFI symbol so ISR-context consumers can wake a
-/// parked thread without going through SVC, which HardFaults from
-/// handler mode on Cortex-M.
+/// Wake a thread by raw `uid`. C-FFI so ISR-context callers can use it
+/// without SVC (handler-mode SVC HardFaults on Cortex-M). Errors are
+/// swallowed: not-yet-sleeping is normal (consumer's bounded sleep
+/// covers it).
 #[unsafe(no_mangle)]
 pub extern "C" fn kick_thread(uid: u32) {
     with(|sched| {

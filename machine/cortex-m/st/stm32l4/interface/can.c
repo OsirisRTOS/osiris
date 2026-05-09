@@ -8,15 +8,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-/* Maximum bxCAN instances on any STM32L4 family member (CAN1, CAN2). The
-   value is intentionally hardcoded here rather than DT-derived: arrays
-   sized at compile time, no codegen header dependency. The DT still
-   selects which slot each peripheral lives in via cfg->index. */
 #define CAN_SLOT_COUNT 2
 
-/* Negative return codes from can_*. Each value has exactly one meaning so
-   the Rust HAL can map directly to an Error variant. Keep in sync with
-   `osiris/machine/cortex-m/src/native/can.rs::Error` mapping. */
 #define CAN_ERR_INVALID_ARG (-1)
 #define CAN_ERR_NOT_INIT    (-2)
 #define CAN_ERR_BITRATE     (-3)
@@ -41,19 +34,14 @@ typedef struct
 static CAN_HandleTypeDef s_handles[CAN_SLOT_COUNT];
 static can_rx_buf_t s_rx[CAN_SLOT_COUNT];
 
-/* Diagnostic counters surfaced via can_diag(). */
 static uint32_t s_tx_attempts[CAN_SLOT_COUNT];
 static uint32_t s_tx_hal_fails[CAN_SLOT_COUNT];
 static uint32_t s_tx_mbx_timeouts[CAN_SLOT_COUNT];
 static uint32_t s_rx_frames[CAN_SLOT_COUNT];
 static uint32_t s_rx_irqs[CAN_SLOT_COUNT];
 static uint32_t s_rx_drops[CAN_SLOT_COUNT];
-/* HW FIFO overrun (FOVR0): bxCAN dropped a frame before we could read it. */
 static uint32_t s_rx_hw_ovr[CAN_SLOT_COUNT];
 
-/* Per-slot ISR callback. The HAL never dereferences `ctx` — it just
-   passes the value through to `fn` on every IRQ. The caller is
-   responsible for keeping the pointee alive while registered. */
 static struct
 {
     can_irq_handler_fn fn;
@@ -83,9 +71,7 @@ static int can_enable_clock(CAN_TypeDef *instance)
     return -1;
 }
 
-/* Pick BRP/TS1/TS2 for a given PCLK and target bitrate, aiming for 75 %
-   sample point and SJW = 1. Returns 0 on success, -1 if no preset divides
-   cleanly (silent fallback would mis-baud the bus). */
+/* Pick BRP/TS1/TS2 aiming for 75 % sample point and SJW = 1. */
 static int can_bit_timing(uint32_t pclk_hz, uint32_t bitrate_hz,
                           uint32_t *out_prescaler,
                           uint32_t *out_ts1,
@@ -131,7 +117,6 @@ static void can_msp_init(const can_bus_cfg_t *cfg)
     gpio_enable_clock(rx_port);
     gpio_enable_clock(tx_port);
 
-    /* RX: AF push-pull input with pull-up (recessive level when bus idle). */
     GPIO_InitTypeDef rx_gpio = {
         .Pin = rx_pin,
         .Mode = GPIO_MODE_AF_PP,
@@ -141,9 +126,6 @@ static void can_msp_init(const can_bus_cfg_t *cfg)
     };
     HAL_GPIO_Init(rx_port, &rx_gpio);
 
-    /* TX drive: push-pull when a transceiver sits between MCU and bus
-       (normal case); open-drain when MCU pins run direct into a wired-AND
-       bench setup without a transceiver. */
     GPIO_InitTypeDef tx_gpio = {
         .Pin = tx_pin,
         .Mode = cfg->tx_open_drain ? GPIO_MODE_AF_OD : GPIO_MODE_AF_PP,
@@ -155,12 +137,6 @@ static void can_msp_init(const can_bus_cfg_t *cfg)
 
     HAL_NVIC_SetPriority((IRQn_Type)cfg->rx0_irqn, cfg->rx0_priority, 0);
     HAL_NVIC_EnableIRQ((IRQn_Type)cfg->rx0_irqn);
-
-    /* Doubling HW buffering from 3 to 6 frames. With filters split
-       evenly across both FIFOs (typically by an LSB of the CAN ID),
-       a burst that overruns FIFO0 still has FIFO1 as a backstop —
-       the ISR drains both via HAL_CAN_IRQHandler regardless of which
-       NVIC line fired. */
     HAL_NVIC_SetPriority((IRQn_Type)cfg->rx1_irqn, cfg->rx1_priority, 0);
     HAL_NVIC_EnableIRQ((IRQn_Type)cfg->rx1_irqn);
 }
@@ -202,12 +178,13 @@ int can_init(const can_bus_cfg_t *cfg)
     h->Init.TimeSeg1 = ts1;
     h->Init.TimeSeg2 = ts2;
     h->Init.AutoBusOff = ENABLE;
-    /* NART=0: HW retransmits NAKed/error frames until success or arbitration
-       loss (RM0432 §55.9.2 CAN_MCR.NART). Required when no upper-layer
-       per-frame retry exists. */
+    /* NART=0: HW retransmits until ACK or arbitration loss. No upper-layer
+       per-frame retry exists, so this must stay on. */
     h->Init.AutoRetransmission = ENABLE;
     h->Init.TimeTriggeredMode = DISABLE;
     h->Init.AutoWakeUp = DISABLE;
+    /* RFLM=1 keeps the oldest 3 frames on FIFO overflow; FOVR is set so
+       the ISR can count drops via s_rx_hw_ovr. */
     h->Init.ReceiveFifoLocked = ENABLE;
     h->Init.TransmitFifoPriority = ENABLE;
 
@@ -215,11 +192,6 @@ int can_init(const can_bus_cfg_t *cfg)
     {
         return CAN_ERR_HAL_INIT;
     }
-
-    /* No filters installed by default: bxCAN drops every frame until the
-       caller adds at least one via can_configure_filter. Multiple banks
-       are OR'd, so a leftover accept-all here would silently neutralise
-       any restrictive user filter. */
 
     if (HAL_CAN_Start(h) != HAL_OK)
     {
@@ -286,8 +258,7 @@ int can_transmit(const can_bus_cfg_t *cfg, const can_frame_t *frame)
         hdr.StdId = frame->id;
     }
 
-    /* Spin outside the critical section so the RX ISR keeps draining FIFO0
-       even if the bus is stuck for the full timeout. */
+    /* Spin outside the critical section so RX keeps draining. */
     uint32_t timeout = cfg->tx_timeout_iters;
     while (HAL_CAN_GetTxMailboxesFreeLevel(h) == 0)
     {
@@ -298,8 +269,6 @@ int can_transmit(const can_bus_cfg_t *cfg, const can_frame_t *frame)
         }
     }
 
-    /* Serialize AddTxMessage: the HAL handle and PendSV both alias
-       h->ErrorCode / h->State / mailbox bookkeeping. */
     __disable_irq();
     uint32_t mailbox = 0;
     HAL_StatusTypeDef rc = HAL_CAN_AddTxMessage(h, &hdr, (uint8_t *)frame->data, &mailbox);
@@ -330,7 +299,6 @@ int can_receive(const can_bus_cfg_t *cfg, can_frame_t *out)
         return 0;
     }
 
-    /* Disable the CAN RX IRQ briefly so the ISR can't race the consumer. */
     __disable_irq();
     if (rx->count == 0)
     {
@@ -351,9 +319,6 @@ int can_receive(const can_bus_cfg_t *cfg, can_frame_t *out)
     return 1;
 }
 
-/* Install (or clear, if `handler == NULL`) the per-slot ISR callback. The
-   write is wrapped in __disable_irq so the RX ISR can't see a half-updated
-   (fn, ctx) pair. */
 int can_set_irq_handler(uint8_t slot, can_irq_handler_fn handler, void *ctx)
 {
     if (slot >= CAN_SLOT_COUNT)
@@ -367,154 +332,95 @@ int can_set_irq_handler(uint8_t slot, can_irq_handler_fn handler, void *ctx)
     return 0;
 }
 
-/* HAL `__weak` override: drain every pending frame from FIFO0 per IRQ.
-   Per-IRQ entry/exit cost (vector → trampoline → HAL prolog) is large
-   relative to one frame at 1 Mbit/s, so doing one frame per IRQ overruns
-   the 3-deep HW FIFO under bursts. */
+/* Drain one bxCAN RX FIFO into the slot's SW ring. Called by the
+   HAL_CAN_RxFifoNMsgPendingCallback overrides; both FIFOs share `s_rx[i]`
+   since consumers wait per slot, not per FIFO. */
+static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
+{
+    s_rx_irqs[slot_idx]++;
+
+    const bool is_fifo0 = (fifo == CAN_RX_FIFO0);
+    volatile uint32_t *rfr =
+        is_fifo0 ? &hcan->Instance->RF0R : &hcan->Instance->RF1R;
+    const uint32_t fovr_flag = is_fifo0 ? CAN_RF0R_FOVR0 : CAN_RF1R_FOVR1;
+    const uint32_t fmp_flag = is_fifo0 ? CAN_RF0R_FMP0 : CAN_RF1R_FMP1;
+    const uint32_t fov_clear = is_fifo0 ? CAN_FLAG_FOV0 : CAN_FLAG_FOV1;
+    const int kind = is_fifo0 ? CAN_IRQ_RX0 : CAN_IRQ_RX1;
+
+    if ((*rfr & fovr_flag) != 0u)
+    {
+        s_rx_hw_ovr[slot_idx]++;
+        __HAL_CAN_CLEAR_FLAG(hcan, fov_clear);
+    }
+
+    can_rx_buf_t *rx = &s_rx[slot_idx];
+    bool any_frame = false;
+
+    while ((*rfr & fmp_flag) != 0u)
+    {
+        CAN_RxHeaderTypeDef hdr;
+        uint8_t data[8];
+        if (HAL_CAN_GetRxMessage(hcan, fifo, &hdr, data) != HAL_OK)
+        {
+            break;
+        }
+
+        s_rx_frames[slot_idx]++;
+
+        if (rx->count >= CAN_RX_BUF_SIZE)
+        {
+            s_rx_drops[slot_idx]++;
+            continue;
+        }
+
+        /* DLC is 4 bits; CAN 2.0 caps payload at 8. */
+        uint8_t len = (hdr.DLC > 8) ? 8 : (uint8_t)hdr.DLC;
+
+        volatile can_frame_t *slot = &rx->frames[rx->tail];
+        slot->id = (hdr.IDE == CAN_ID_EXT) ? hdr.ExtId : hdr.StdId;
+        slot->len = len;
+        slot->is_extended = (hdr.IDE == CAN_ID_EXT);
+        memcpy((void *)slot->data, data, len);
+
+        rx->tail = (rx->tail + 1u) % CAN_RX_BUF_SIZE;
+        rx->count++;
+        any_frame = true;
+    }
+
+    if (any_frame)
+    {
+        can_irq_handler_fn fn = s_irq_slot[slot_idx].fn;
+        if (fn != NULL)
+        {
+            fn(kind, s_irq_slot[slot_idx].ctx);
+        }
+    }
+}
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     for (uint8_t i = 0; i < CAN_SLOT_COUNT; ++i)
     {
-        if (&s_handles[i] != hcan)
+        if (&s_handles[i] == hcan)
         {
-            continue;
+            drain_fifo(hcan, i, CAN_RX_FIFO0);
+            return;
         }
-
-        s_rx_irqs[i]++;
-
-        /* RFLM=1 keeps the oldest 3 frames on overflow; FOVR0 set means
-           a newer frame was silently dropped. Clear so the next overrun
-           is detectable. */
-        if ((hcan->Instance->RF0R & CAN_RF0R_FOVR0) != 0u)
-        {
-            s_rx_hw_ovr[i]++;
-            __HAL_CAN_CLEAR_FLAG(hcan, CAN_FLAG_FOV0);
-        }
-
-        can_rx_buf_t *rx = &s_rx[i];
-        bool any_frame = false;
-
-        while ((hcan->Instance->RF0R & CAN_RF0R_FMP0) != 0u)
-        {
-            CAN_RxHeaderTypeDef hdr;
-            uint8_t data[8];
-            if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &hdr, data) != HAL_OK)
-            {
-                break;
-            }
-
-            s_rx_frames[i]++;
-
-            if (rx->count >= CAN_RX_BUF_SIZE)
-            {
-                s_rx_drops[i]++;
-                continue;
-            }
-
-            /* DLC is a 4-bit field (0..=15); CAN 2.0 caps payload at 8
-               bytes but a corrupt bus can deliver 9..=15. Clamp before
-               any indexing so neither `data[8]` nor `slot->data[8]`
-               overflows. */
-            uint8_t len = (hdr.DLC > 8) ? 8 : (uint8_t)hdr.DLC;
-
-            volatile can_frame_t *slot = &rx->frames[rx->tail];
-            slot->id = (hdr.IDE == CAN_ID_EXT) ? hdr.ExtId : hdr.StdId;
-            slot->len = len;
-            slot->is_extended = (hdr.IDE == CAN_ID_EXT);
-            memcpy((void *)slot->data, data, len);
-
-            rx->tail = (rx->tail + 1u) % CAN_RX_BUF_SIZE;
-            rx->count++;
-            any_frame = true;
-        }
-
-        if (any_frame)
-        {
-            can_irq_handler_fn fn = s_irq_slot[i].fn;
-            if (fn != NULL)
-            {
-                fn(CAN_IRQ_RX0, s_irq_slot[i].ctx);
-            }
-        }
-        return;
     }
 }
 
-/* HAL `__weak` override: mirror of the FIFO0 callback for FIFO1.
-   The two FIFOs share `s_rx[i]` and the per-slot counters: callers
-   don't care which FIFO a frame arrived through, only that a frame
-   landed for slot `i`. The two callbacks can never race each other
-   on the same slot because both run inside `HAL_CAN_IRQHandler`,
-   which is invoked from one of the (mutually-non-preempting at
-   equal NVIC priority) RX0 / RX1 ISRs — there is no concurrent
-   second writer to `s_rx[i]`. */
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     for (uint8_t i = 0; i < CAN_SLOT_COUNT; ++i)
     {
-        if (&s_handles[i] != hcan)
+        if (&s_handles[i] == hcan)
         {
-            continue;
+            drain_fifo(hcan, i, CAN_RX_FIFO1);
+            return;
         }
-
-        s_rx_irqs[i]++;
-
-        if ((hcan->Instance->RF1R & CAN_RF1R_FOVR1) != 0u)
-        {
-            s_rx_hw_ovr[i]++;
-            __HAL_CAN_CLEAR_FLAG(hcan, CAN_FLAG_FOV1);
-        }
-
-        can_rx_buf_t *rx = &s_rx[i];
-        bool any_frame = false;
-
-        while ((hcan->Instance->RF1R & CAN_RF1R_FMP1) != 0u)
-        {
-            CAN_RxHeaderTypeDef hdr;
-            uint8_t data[8];
-            if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &hdr, data) != HAL_OK)
-            {
-                break;
-            }
-
-            s_rx_frames[i]++;
-
-            if (rx->count >= CAN_RX_BUF_SIZE)
-            {
-                s_rx_drops[i]++;
-                continue;
-            }
-
-            uint8_t len = (hdr.DLC > 8) ? 8 : (uint8_t)hdr.DLC;
-
-            volatile can_frame_t *slot = &rx->frames[rx->tail];
-            slot->id = (hdr.IDE == CAN_ID_EXT) ? hdr.ExtId : hdr.StdId;
-            slot->len = len;
-            slot->is_extended = (hdr.IDE == CAN_ID_EXT);
-            memcpy((void *)slot->data, data, len);
-
-            rx->tail = (rx->tail + 1u) % CAN_RX_BUF_SIZE;
-            rx->count++;
-            any_frame = true;
-        }
-
-        if (any_frame)
-        {
-            can_irq_handler_fn fn = s_irq_slot[i].fn;
-            if (fn != NULL)
-            {
-                /* Same notification channel as RX0: kernel consumers
-                   wait per-slot, not per-FIFO. Use `RX1` so an
-                   ISR-context observer that cares can still
-                   distinguish. */
-                fn(CAN_IRQ_RX1, s_irq_slot[i].ctx);
-            }
-        }
-        return;
     }
 }
 
-/* IRQ trampoline target — kernel IRQ-registry handler dispatches here. */
 void can_isr(uint8_t index)
 {
     if (index >= CAN_SLOT_COUNT)
@@ -527,10 +433,7 @@ void can_isr(uint8_t index)
     }
 }
 
-/* 32-bit IDMASK encoding (RM0432 §55.7.4): bits [31..3] hold the ID
-   (STID[10:0] at [31:21], EXID[28:0] at [31:3]), bit [2] is IDE.
-   Extended IDs land at <<3, standard at <<21. Setting IDE in the mask
-   rejects the wrong frame kind. */
+/* IDMASK encoding (RM0432 §55.7.4): EXID at <<3, STID at <<21, IDE at bit 2. */
 static void encode_filter(const can_filter_t *f, uint32_t *id_reg, uint32_t *mask_reg)
 {
     if (f->extended)
@@ -578,41 +481,14 @@ int can_configure_filter(const can_bus_cfg_t *cfg, const can_filter_t *filter)
                : CAN_ERR_HAL_FILTER;
 }
 
-int can_disable_filter(const can_bus_cfg_t *cfg, uint8_t bank)
-{
-    if (cfg == NULL || cfg->index >= CAN_SLOT_COUNT)
-    {
-        return CAN_ERR_INVALID_ARG;
-    }
-    if (s_handles[cfg->index].Instance == NULL)
-    {
-        return CAN_ERR_NOT_INIT;
-    }
-
-    CAN_FilterTypeDef hal_f = {
-        .FilterBank = bank,
-        .FilterActivation = CAN_FILTER_DISABLE,
-        .SlaveStartFilterBank = 14,
-    };
-    return HAL_CAN_ConfigFilter(&s_handles[cfg->index], &hal_f) == HAL_OK
-               ? 0
-               : CAN_ERR_HAL_FILTER;
-}
-
 uint32_t can_last_error(const can_bus_cfg_t *cfg)
 {
     if (cfg == NULL || cfg->index >= CAN_SLOT_COUNT)
     {
         return 0;
     }
-    /* Read ESR directly — HAL_CAN_GetError only latches with error IRQs on,
-       and we only enable CAN_IT_RX_FIFO0_MSG_PENDING. See RM0432 §55.9 (CAN_ESR). */
     CAN_TypeDef *inst = s_handles[cfg->index].Instance;
-    if (inst == NULL)
-    {
-        return 0;
-    }
-    return inst->ESR;
+    return inst ? inst->ESR : 0;
 }
 
 int can_recover(const can_bus_cfg_t *cfg)
@@ -627,9 +503,7 @@ int can_recover(const can_bus_cfg_t *cfg)
         return CAN_ERR_NOT_INIT;
     }
 
-    /* TSR.ABRQ writes; safe in bus-off. ABOM=1 handles the 128*11-bit
-       protocol recovery (RM0432 §55.7.6) — we just drop the SCHEDULED
-       frames so they don't re-fire the moment hardware comes back. */
+    /* Drop scheduled TX so they don't refire after ABOM recovery. */
     __disable_irq();
     HAL_CAN_AbortTxRequest(h, CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
     __enable_irq();

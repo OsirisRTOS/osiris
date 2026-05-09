@@ -35,14 +35,7 @@ pub fn init_memory() -> vmm::AddressSpace {
         panic!("failed to initialize PFA. Error: {e}");
     }
 
-    // TODO: Configure via env / DT.
-    //
-    // Address space holds `total_pgs` pages. The first `heap_pgs` are
-    // mapped with zeroed backing and become the kernel heap; the rest
-    // are reserved for thread stacks, each backed on demand by
-    // `task::allocate_stack`. The allocator only ever sees the heap
-    // region — handing it unmapped pages would let it return addresses
-    // that fault on first dereference.
+    // TODO: Configure via env / DT. heap_pgs is mapped, the rest reserved for stacks.
     let total_pgs = 64;
     let heap_pgs = 8; // 32 KB heap
 

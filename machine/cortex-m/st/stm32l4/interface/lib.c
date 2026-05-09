@@ -45,9 +45,7 @@ void HAL_MspInit(void) {
 
 __attribute__((noreturn)) void system_reset(void) {
   NVIC_SystemReset();
-  /* NVIC_SystemReset already ends in an infinite loop waiting for the
-     reset to land, but the CMSIS signature isn't marked noreturn — spin
-     here so the compiler accepts the noreturn attribute. */
+  /* CMSIS signature isn't noreturn; spin so the attribute holds. */
   for (;;) {
     __WFI();
   }

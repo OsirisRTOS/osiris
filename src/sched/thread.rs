@@ -288,9 +288,7 @@ pub struct ThreadList;
 
 pub struct Attributes {
     pub entry: EntryFn,
-    /// Opaque pointer delivered to `entry` as its first argument
-    /// (AAPCS R0). Caller owns the contract that the pointee outlives
-    /// the thread.
+    /// R0 argument delivered to `entry`; caller owns lifetime.
     pub ctx: *mut core::ffi::c_void,
     pub fin: Option<FinFn>,
     pub attrs: Option<uapi::sched::RtAttrs>,

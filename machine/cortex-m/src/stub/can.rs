@@ -72,7 +72,6 @@ pub enum Irq {
 
 pub type IrqHandler = extern "C" fn(kind: Irq, ctx: *mut ());
 
-#[derive(Clone, Copy)]
 pub struct Device;
 
 impl Device {
@@ -106,9 +105,6 @@ pub struct Diag {
 pub fn get(_compatible: &str, _ordinal: usize) -> Result<Device> {
     Err(Error::NoSuchDevice)
 }
-pub fn get_by_index(_index: u8) -> Result<Device> {
-    Err(Error::NoSuchDevice)
-}
 pub fn init(_dev: &Device, _bitrate_hz: NonZeroU32, _mode: Mode) -> Result<()> {
     Err(Error::NotInitialized)
 }
@@ -124,18 +120,12 @@ pub fn receive(_dev: &Device, _out: &mut Frame) -> Result<bool> {
 pub fn configure_filter(_dev: &Device, _filter: &Filter) -> Result<()> {
     Err(Error::NotInitialized)
 }
-pub fn disable_filter(_dev: &Device, _bank: u8) -> Result<()> {
-    Err(Error::NotInitialized)
-}
 pub fn register_irq_handler(
     _dev: &Device,
     _handler: Option<IrqHandler>,
     _ctx: *mut (),
 ) -> Result<()> {
     Err(Error::NotInitialized)
-}
-pub fn last_error(_dev: &Device) -> u32 {
-    0
 }
 pub fn bus_status(_dev: &Device) -> BusStatus {
     BusStatus::default()
