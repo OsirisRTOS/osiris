@@ -28,7 +28,7 @@
 #define CAN_ERR_HAL_TX      (-9)
 #define CAN_ERR_TX_TIMEOUT  (-10)
 
-#define CAN_RX_BUF_SIZE 32
+#define CAN_RX_BUF_SIZE 128
 
 typedef struct
 {
@@ -155,6 +155,14 @@ static void can_msp_init(const can_bus_cfg_t *cfg)
 
     HAL_NVIC_SetPriority((IRQn_Type)cfg->rx0_irqn, cfg->rx0_priority, 0);
     HAL_NVIC_EnableIRQ((IRQn_Type)cfg->rx0_irqn);
+
+    /* Doubling HW buffering from 3 to 6 frames. With filters split
+       evenly across both FIFOs (typically by an LSB of the CAN ID),
+       a burst that overruns FIFO0 still has FIFO1 as a backstop —
+       the ISR drains both via HAL_CAN_IRQHandler regardless of which
+       NVIC line fired. */
+    HAL_NVIC_SetPriority((IRQn_Type)cfg->rx1_irqn, cfg->rx1_priority, 0);
+    HAL_NVIC_EnableIRQ((IRQn_Type)cfg->rx1_irqn);
 }
 
 int can_init(const can_bus_cfg_t *cfg)
@@ -218,7 +226,9 @@ int can_init(const can_bus_cfg_t *cfg)
         return CAN_ERR_HAL_START;
     }
 
-    if (HAL_CAN_ActivateNotification(h, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+    if (HAL_CAN_ActivateNotification(h,
+                                     CAN_IT_RX_FIFO0_MSG_PENDING |
+                                         CAN_IT_RX_FIFO1_MSG_PENDING) != HAL_OK)
     {
         return CAN_ERR_HAL_NOTIFY;
     }
@@ -234,6 +244,7 @@ int can_deinit(const can_bus_cfg_t *cfg)
     }
 
     HAL_NVIC_DisableIRQ((IRQn_Type)cfg->rx0_irqn);
+    HAL_NVIC_DisableIRQ((IRQn_Type)cfg->rx1_irqn);
     HAL_CAN_DeInit(&s_handles[cfg->index]);
 
     can_rx_buf_t *rx = &s_rx[cfg->index];
@@ -423,6 +434,80 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
             if (fn != NULL)
             {
                 fn(CAN_IRQ_RX0, s_irq_slot[i].ctx);
+            }
+        }
+        return;
+    }
+}
+
+/* HAL `__weak` override: mirror of the FIFO0 callback for FIFO1.
+   The two FIFOs share `s_rx[i]` and the per-slot counters: callers
+   don't care which FIFO a frame arrived through, only that a frame
+   landed for slot `i`. The two callbacks can never race each other
+   on the same slot because both run inside `HAL_CAN_IRQHandler`,
+   which is invoked from one of the (mutually-non-preempting at
+   equal NVIC priority) RX0 / RX1 ISRs — there is no concurrent
+   second writer to `s_rx[i]`. */
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    for (uint8_t i = 0; i < CAN_SLOT_COUNT; ++i)
+    {
+        if (&s_handles[i] != hcan)
+        {
+            continue;
+        }
+
+        s_rx_irqs[i]++;
+
+        if ((hcan->Instance->RF1R & CAN_RF1R_FOVR1) != 0u)
+        {
+            s_rx_hw_ovr[i]++;
+            __HAL_CAN_CLEAR_FLAG(hcan, CAN_FLAG_FOV1);
+        }
+
+        can_rx_buf_t *rx = &s_rx[i];
+        bool any_frame = false;
+
+        while ((hcan->Instance->RF1R & CAN_RF1R_FMP1) != 0u)
+        {
+            CAN_RxHeaderTypeDef hdr;
+            uint8_t data[8];
+            if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &hdr, data) != HAL_OK)
+            {
+                break;
+            }
+
+            s_rx_frames[i]++;
+
+            if (rx->count >= CAN_RX_BUF_SIZE)
+            {
+                s_rx_drops[i]++;
+                continue;
+            }
+
+            uint8_t len = (hdr.DLC > 8) ? 8 : (uint8_t)hdr.DLC;
+
+            volatile can_frame_t *slot = &rx->frames[rx->tail];
+            slot->id = (hdr.IDE == CAN_ID_EXT) ? hdr.ExtId : hdr.StdId;
+            slot->len = len;
+            slot->is_extended = (hdr.IDE == CAN_ID_EXT);
+            memcpy((void *)slot->data, data, len);
+
+            rx->tail = (rx->tail + 1u) % CAN_RX_BUF_SIZE;
+            rx->count++;
+            any_frame = true;
+        }
+
+        if (any_frame)
+        {
+            can_irq_handler_fn fn = s_irq_slot[i].fn;
+            if (fn != NULL)
+            {
+                /* Same notification channel as RX0: kernel consumers
+                   wait per-slot, not per-FIFO. Use `RX1` so an
+                   ISR-context observer that cares can still
+                   distinguish. */
+                fn(CAN_IRQ_RX1, s_irq_slot[i].ctx);
             }
         }
         return;

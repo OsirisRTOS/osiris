@@ -11,9 +11,25 @@ pub fn sleep_for(_duration: u64) -> isize {
     hal::asm::syscall!(2, (_duration >> 32) as u32, _duration as u32)
 }
 
+/// Voluntarily give up CPU without parking. Triggers PendSV so the
+/// scheduler picks the next runnable thread; the caller stays in the
+/// run queue and is eligible to be re-picked. Use as a cooperative
+/// "step aside" — never as a wait, since nothing wakes a parked
+/// caller (a previous incarnation of this function called sleep with
+/// `until = u64::MAX`, which left the thread parked indefinitely).
 pub fn yield_thread() -> isize {
-    let _until = u64::MAX;
-    hal::asm::syscall!(1, (_until >> 32) as u32, _until as u32)
+    crate::sched::reschedule();
+    0
+}
+
+/// Trigger PendSV so the scheduler picks another runnable thread.
+/// Cheaper than a syscall — direct MMIO write to `SCB->ICSR.PENDSVSET`.
+/// Use as the relax step of a spin loop to break priority inversion
+/// when a higher-priority thread waits on a lock held by a preempted
+/// lower-priority thread.
+#[inline]
+pub fn reschedule() {
+    crate::sched::reschedule();
 }
 
 #[repr(C)]

@@ -132,8 +132,13 @@ pub fn set_rx_callback(slot: u8, cb: Option<RxCallback>) {
 /// Registered with the HAL once per slot at boot. The HAL hands back the
 /// per-device static as `ctx`; we walk its waiter list, kick each parked
 /// thread, then invoke the optional ISR-context callback.
+///
+/// Both `Rx0` and `Rx1` are handled identically — consumers wait per
+/// slot, not per FIFO. The C HAL fires this once per drained burst,
+/// regardless of which FIFO the frames landed in, and the SW ring is
+/// shared between the two callbacks.
 extern "C" fn kernel_dispatch(kind: hal::can::Irq, ctx: *mut ()) {
-    if !matches!(kind, hal::can::Irq::Rx0) {
+    if !matches!(kind, hal::can::Irq::Rx0 | hal::can::Irq::Rx1) {
         return;
     }
     let dev = unsafe { &*(ctx as *const CanWaitDevice) };
@@ -163,7 +168,10 @@ extern "C" fn kernel_dispatch(kind: hal::can::Irq, ctx: *mut ()) {
 
 /// Kernel IRQ-vector handler. Forwards to the C HAL, which fires the
 /// per-frame [`kernel_dispatch`] callback we registered separately.
-fn rx0_kernel_handler(_ctx: *mut u8, _vector: usize, userdata: Option<usize>) {
+/// Used for both the RX0 and RX1 NVIC vectors — `HAL_CAN_IRQHandler`
+/// inspects the bxCAN registers to figure out which FIFO has data and
+/// dispatches to the matching `HAL_CAN_RxFifo{0,1}MsgPendingCallback`.
+fn rx_kernel_handler(_ctx: *mut u8, _vector: usize, userdata: Option<usize>) {
     let Some(slot) = userdata else { return };
     if slot >= CAN_SLOT_COUNT {
         return;
@@ -175,6 +183,12 @@ fn rx0_kernel_handler(_ctx: *mut u8, _vector: usize, userdata: Option<usize>) {
 /// the NVIC line: a frame arriving in the gap fires an IRQ that finds
 /// no kernel handler, leaving the bxCAN message-pending flag set and
 /// NVIC tail-chaining forever.
+///
+/// Both RX0 and RX1 vectors are wired so traffic split across the two
+/// HW FIFOs is delivered. The same callback runs for both because
+/// `HAL_CAN_IRQHandler` figures out which FIFO has data from the
+/// peripheral registers — we just need to make sure either NVIC line
+/// firing reaches it.
 pub fn ensure_registered(dev: &hal::can::Device) -> hal::can::Result<()> {
     let slot = dev.index();
     if slot as usize >= CAN_SLOT_COUNT {
@@ -190,9 +204,12 @@ pub fn ensure_registered(dev: &hal::can::Device) -> hal::can::Result<()> {
     // Vector index = irqn + 16 (system exceptions occupy 0..15).
     let entry = dev.entry();
     let rx0_vector = entry.rx0_irq.irqn as usize + 16;
+    let rx1_vector = entry.rx1_irq.irqn as usize + 16;
     // SAFETY: called from `Device::open` (thread context, not ISR).
     unsafe {
-        crate::irq::register_irq(rx0_vector, rx0_kernel_handler, Some(slot as usize))
+        crate::irq::register_irq(rx0_vector, rx_kernel_handler, Some(slot as usize))
+            .map_err(|_| hal::can::Error::NotifyFailed)?;
+        crate::irq::register_irq(rx1_vector, rx_kernel_handler, Some(slot as usize))
             .map_err(|_| hal::can::Error::NotifyFailed)?;
     }
     Ok(())
