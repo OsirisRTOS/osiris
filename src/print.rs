@@ -29,7 +29,7 @@ macro_rules! kprint {
 }
 
 #[macro_export]
-macro_rules! kpcont {
+macro_rules! kprint_cont {
     ($($arg:tt)*) => {{
         use $crate::print::print;
         print(format_args!($($arg)*));
