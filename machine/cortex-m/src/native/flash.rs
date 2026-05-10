@@ -1,22 +1,62 @@
 use super::bindings;
 use super::device_tree;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Error {
-    InvalidArgument,
-    OutOfBounds,
-    Misaligned,
-    NotErased,
-    Busy,
-    Locked,
-    DoubleUnlock,
-    InvalidPage,
-    TimedOut,
-    Io,
-    NotFound,
+pub use hal_api::flash_addr::{Error, Result};
+
+// ---------------------------------------------------------------------------
+// Chip-level queries
+// ---------------------------------------------------------------------------
+
+pub fn flash_base() -> usize {
+    device_tree::FLASH_BASE
 }
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub fn total_size() -> usize {
+    unsafe { bindings::flash_size() as usize }
+}
+
+pub fn is_dual_bank() -> bool {
+    unsafe { bindings::flash_is_dual_bank() }
+}
+
+pub fn page_size() -> usize {
+    unsafe { bindings::flash_page_size() as usize }
+}
+
+pub fn page_count() -> usize {
+    unsafe { bindings::flash_page_count() as usize }
+}
+
+// ---------------------------------------------------------------------------
+// Flash trait impl + type aliases
+// ---------------------------------------------------------------------------
+
+/// Zero-sized backend marker that plugs the chip queries into the shared
+/// newtype constructors in `hal_api::flash`.
+pub struct ArmFlash;
+
+impl hal_api::flash_addr::Flash for ArmFlash {
+    fn flash_base() -> usize {
+        flash_base()
+    }
+    fn total_size() -> usize {
+        total_size()
+    }
+    fn page_size() -> usize {
+        page_size()
+    }
+    fn page_count() -> usize {
+        page_count()
+    }
+}
+
+pub type FlashAddress = hal_api::flash_addr::FlashAddress<ArmFlash>;
+pub type FlashOffset = hal_api::flash_addr::FlashOffset<ArmFlash>;
+pub type FlashPageStart = hal_api::flash_addr::FlashPageStart<ArmFlash>;
+
+// ---------------------------------------------------------------------------
+// Whole-chip operations
+// ---------------------------------------------------------------------------
 
 fn from_c_rc(rc: u32) -> Result<()> {
     if rc == bindings::FLASH_OK {
@@ -52,44 +92,6 @@ fn from_c_rc(rc: u32) -> Result<()> {
     Err(Error::Io)
 }
 
-pub fn flash_base() -> usize {
-    device_tree::FLASH_BASE
-}
-
-pub fn total_size() -> usize {
-    unsafe { bindings::flash_size() as usize }
-}
-
-pub fn is_dual_bank() -> bool {
-    unsafe { bindings::flash_is_dual_bank() }
-}
-
-pub fn page_size() -> usize {
-    unsafe { bindings::flash_page_size() as usize }
-}
-
-pub fn page_count() -> usize {
-    unsafe { bindings::flash_page_count() as usize }
-}
-
-/// Absolute start address of the flash page identified by `page_index`.
-pub fn page_address(page_index: usize) -> Option<usize> {
-    if page_index >= page_count() {
-        return None;
-    }
-    Some(flash_base() + page_index * page_size())
-}
-
-/// Page index containing the byte at absolute `address`.
-pub fn page_index_for_address(address: usize) -> Option<usize> {
-    let base = flash_base();
-    let size = total_size();
-    if address < base || address >= base + size {
-        return None;
-    }
-    Some((address - base) / page_size())
-}
-
 fn with_unlock<F: FnOnce() -> Result<()>>(f: F, lock_wait_ms: u32) -> Result<()> {
     let unlock_rc = unsafe { bindings::flash_unlock() };
     from_c_rc(unlock_rc)?;
@@ -103,33 +105,43 @@ fn with_unlock<F: FnOnce() -> Result<()>>(f: F, lock_wait_ms: u32) -> Result<()>
     result
 }
 
-/// Erase the flash page identified by `page_index` (i.e., a page number, not
-/// an address). The bank is derived automatically inside the C primitive.
-pub fn erase_page(page_index: usize, timeout_ms: u32, lock_wait_ms: u32) -> Result<()> {
-    if page_index >= page_count() {
-        return Err(Error::InvalidPage);
-    }
+/// Erase the page that starts at `page_start`. The bank is derived
+/// automatically inside the C primitive.
+pub fn erase_page(page_start: FlashPageStart, timeout_ms: u32, lock_wait_ms: u32) -> Result<()> {
     with_unlock(
         || {
-            let rc = unsafe { bindings::flash_erase(page_index as u32, timeout_ms) };
+            let rc = unsafe { bindings::flash_erase(page_start.page_index() as u32, timeout_ms) };
             from_c_rc(rc)
         },
         lock_wait_ms,
     )
 }
 
-pub fn program(address: usize, data: &[u64], timeout_ms: u32, lock_wait_ms: u32) -> Result<()> {
+/// Program 64-bit doublewords starting at `start` (must be 8-byte-aligned).
+/// The target range must already be erased.
+///
+/// Accepts any type that converts into `FlashAddress` — pass a `FlashAddress`
+/// directly, a `FlashPageStart` (always page- and word-aligned), or a
+/// `FlashOffset`.
+pub fn program<A: Into<FlashAddress>>(
+    start: A,
+    data: &[u64],
+    timeout_ms: u32,
+    lock_wait_ms: u32,
+) -> Result<()> {
     if data.is_empty() {
         return Ok(());
     }
-    if address & 0x7 != 0 {
+    let start: FlashAddress = start.into();
+    if start.as_usize() & 0x7 != 0 {
         return Err(Error::Misaligned);
     }
-    let base = flash_base();
-    let size = total_size();
     let bytes = data.len() * core::mem::size_of::<u64>();
-    let end = address.checked_add(bytes).ok_or(Error::OutOfBounds)?;
-    if address < base || end > base + size {
+    let end = start
+        .as_usize()
+        .checked_add(bytes)
+        .ok_or(Error::OutOfBounds)?;
+    if end > flash_base() + total_size() {
         return Err(Error::OutOfBounds);
     }
 
@@ -137,7 +149,7 @@ pub fn program(address: usize, data: &[u64], timeout_ms: u32, lock_wait_ms: u32)
         || {
             let rc = unsafe {
                 bindings::flash_program(
-                    address as u32,
+                    start.as_usize() as u32,
                     data.as_ptr(),
                     data.len() as u32,
                     timeout_ms,
@@ -149,25 +161,32 @@ pub fn program(address: usize, data: &[u64], timeout_ms: u32, lock_wait_ms: u32)
     )
 }
 
-pub fn read(address: usize, buf: &mut [u8]) -> Result<()> {
+/// Read `buf.len()` bytes starting at `start`. Flash is memory-mapped, so
+/// this is a volatile memcpy. Accepts any `Into<FlashAddress>`.
+pub fn read<A: Into<FlashAddress>>(start: A, buf: &mut [u8]) -> Result<()> {
     if buf.is_empty() {
         return Ok(());
     }
-    let base = flash_base();
-    let size = total_size();
-    let end = address.checked_add(buf.len()).ok_or(Error::OutOfBounds)?;
-    if address < base || end > base + size {
+    let start: FlashAddress = start.into();
+    let end = start
+        .as_usize()
+        .checked_add(buf.len())
+        .ok_or(Error::OutOfBounds)?;
+    if end > flash_base() + total_size() {
         return Err(Error::OutOfBounds);
     }
-    // Flash is memory-mapped; copy via volatile reads to keep the compiler honest.
     unsafe {
-        let src = address as *const u8;
+        let src = start.as_usize() as *const u8;
         for i in 0..buf.len() {
             buf[i] = core::ptr::read_volatile(src.add(i));
         }
     }
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// DT-driven partition handle
+// ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
 pub struct Region(&'static device_tree::FlashPartitionRegistryEntry);
@@ -185,6 +204,23 @@ impl Region {
             .ok_or(Error::NotFound)
     }
 
+    /// Find the partition that contains `addr` and return it together with
+    /// the byte offset of `addr` from that partition's start.
+    ///
+    /// The returned `usize` is **partition-relative**, not a `FlashOffset`
+    /// (which is from `FLASH_BASE`) — it can be passed straight to the
+    /// driver-layer `Region::read`/`erase`/`program`/`write` methods.
+    ///
+    /// Accepts any `Into<FlashAddress>`, so a `FlashOffset` or
+    /// `FlashPageStart` works too. Returns `Err(NotFound)` if `addr` doesn't
+    /// fall in any declared partition.
+    pub fn get_by_address(addr: impl Into<FlashAddress>) -> Result<(Self, usize)> {
+        let addr: FlashAddress = addr.into();
+        device_tree::flash_partition_by_address(addr.as_usize())
+            .map(|(entry, offset)| (Self(entry), offset))
+            .ok_or(Error::NotFound)
+    }
+
     pub fn label(&self) -> &'static str {
         self.0.label
     }
@@ -197,12 +233,17 @@ impl Region {
         self.0.read_only
     }
 
-    pub fn start(&self) -> usize {
-        device_tree::FLASH_BASE + self.0.offset
+    /// Absolute flash address at which this partition starts.
+    pub fn start_address(&self) -> FlashAddress {
+        // safe by DT contract: partitions live inside the parent flash node's
+        // reg, so flash_base + offset is always in flash bounds.
+        FlashAddress::new(device_tree::FLASH_BASE + self.0.offset)
+            .expect("DT partition outside flash bounds")
     }
 
-    pub fn offset_in_flash(&self) -> usize {
-        self.0.offset
+    /// Byte offset of this partition from `flash_base()`.
+    pub fn flash_offset(&self) -> FlashOffset {
+        FlashOffset::new(self.0.offset).expect("DT partition offset >= total_size")
     }
 
     pub fn len(&self) -> usize {

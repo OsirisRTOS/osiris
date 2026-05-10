@@ -1572,6 +1572,22 @@ mod flash {
             ) -> Option<&'static FlashPartitionRegistryEntry> {
                 FLASH_PARTITION_REGISTRY.iter().find(|p| p.label == label)
             }
+
+            /// Find the partition that contains the given absolute flash
+            /// address and return it together with the offset of that
+            /// address from the partition's start.
+            pub fn flash_partition_by_address(
+                address: usize,
+            ) -> Option<(&'static FlashPartitionRegistryEntry, usize)> {
+                for p in FLASH_PARTITION_REGISTRY {
+                    let start = FLASH_BASE + p.offset;
+                    let end = start + p.len;
+                    if address >= start && address < end {
+                        return Some((p, address - start));
+                    }
+                }
+                None
+            }
         }
     }
 }

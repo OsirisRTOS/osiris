@@ -2,6 +2,8 @@
 
 use core::fmt;
 use core::{fmt::Display, ops::Range};
+
+pub mod flash_addr;
 pub mod mem;
 pub mod stack;
 

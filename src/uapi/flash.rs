@@ -1,5 +1,7 @@
 pub use crate::drivers::flash::raw;
-pub use crate::drivers::flash::{Config, Error, Region, Result};
+pub use crate::drivers::flash::{
+    Config, Error, FlashAddress, FlashOffset, FlashPageStart, Region, Result,
+};
 
 pub fn open(compatible: &str, ordinal: usize, config: Config) -> Result<Region> {
     Region::open(compatible, ordinal, config)
@@ -7,4 +9,14 @@ pub fn open(compatible: &str, ordinal: usize, config: Config) -> Result<Region> 
 
 pub fn open_by_label(label: &str, config: Config) -> Result<Region> {
     Region::open_by_label(label, config)
+}
+
+/// Find the partition containing `addr` and open it with `config`. Returns
+/// the `Region` plus the **partition-relative** byte offset of `addr` within
+/// it (suitable for `Region::read`/`erase`/`program`/`write`).
+pub fn open_by_address(
+    addr: impl Into<FlashAddress>,
+    config: Config,
+) -> Result<(Region, usize)> {
+    Region::open_by_address(addr, config)
 }

@@ -1,19 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Error {
-    InvalidArgument,
-    OutOfBounds,
-    Misaligned,
-    NotErased,
-    Busy,
-    Locked,
-    DoubleUnlock,
-    InvalidPage,
-    TimedOut,
-    Io,
-    NotFound,
-}
-
-pub type Result<T> = core::result::Result<T, Error>;
+pub use hal_api::flash_addr::{Error, Result};
 
 pub fn flash_base() -> usize {
     0x0800_0000
@@ -30,19 +15,46 @@ pub fn page_size() -> usize {
 pub fn page_count() -> usize {
     0
 }
-pub fn page_address(_page_index: usize) -> Option<usize> {
-    None
+
+pub struct TestingFlash;
+
+impl hal_api::flash_addr::Flash for TestingFlash {
+    fn flash_base() -> usize {
+        flash_base()
+    }
+    fn total_size() -> usize {
+        total_size()
+    }
+    fn page_size() -> usize {
+        page_size()
+    }
+    fn page_count() -> usize {
+        page_count()
+    }
 }
-pub fn page_index_for_address(_address: usize) -> Option<usize> {
-    None
-}
-pub fn erase_page(_page_index: usize, _timeout_ms: u32, _lock_wait_ms: u32) -> Result<()> {
+
+pub type FlashAddress = hal_api::flash_addr::FlashAddress<TestingFlash>;
+pub type FlashOffset = hal_api::flash_addr::FlashOffset<TestingFlash>;
+pub type FlashPageStart = hal_api::flash_addr::FlashPageStart<TestingFlash>;
+
+pub fn erase_page(
+    _page_start: FlashPageStart,
+    _timeout_ms: u32,
+    _lock_wait_ms: u32,
+) -> Result<()> {
     Err(Error::Io)
 }
-pub fn program(_address: usize, _data: &[u64], _timeout_ms: u32, _lock_wait_ms: u32) -> Result<()> {
+
+pub fn program<A: Into<FlashAddress>>(
+    _start: A,
+    _data: &[u64],
+    _timeout_ms: u32,
+    _lock_wait_ms: u32,
+) -> Result<()> {
     Err(Error::Io)
 }
-pub fn read(_address: usize, _buf: &mut [u8]) -> Result<()> {
+
+pub fn read<A: Into<FlashAddress>>(_start: A, _buf: &mut [u8]) -> Result<()> {
     Err(Error::Io)
 }
 
@@ -56,6 +68,9 @@ impl Region {
     pub fn get_by_label(_label: &str) -> Result<Self> {
         Err(Error::NotFound)
     }
+    pub fn get_by_address(_addr: impl Into<FlashAddress>) -> Result<(Self, usize)> {
+        Err(Error::NotFound)
+    }
     pub fn label(&self) -> &'static str {
         ""
     }
@@ -65,11 +80,13 @@ impl Region {
     pub fn read_only(&self) -> bool {
         false
     }
-    pub fn start(&self) -> usize {
-        0
+    pub fn start_address(&self) -> FlashAddress {
+        // host stub: total_size() is 0, so no valid FlashAddress exists.
+        // Production code shouldn't hit this path; panic if it does.
+        unreachable!("flash region accessed in host testing stub")
     }
-    pub fn offset_in_flash(&self) -> usize {
-        0
+    pub fn flash_offset(&self) -> FlashOffset {
+        unreachable!("flash region accessed in host testing stub")
     }
     pub fn len(&self) -> usize {
         0

@@ -1,7 +1,7 @@
 #include "export.h"
 #include "lib.h"
-#include "stm32l4xx_hal.c"
 #include "stm32l4xx.h"
+#include "stm32l4xx_hal.h"
 #include "stm32l4xx_hal_cortex.h"
 #include "stm32l4xx_hal_def.h"
 #include "stm32l4xx_hal_flash.h"
@@ -121,15 +121,18 @@ uint32_t flash_erase(uint32_t page_index, uint32_t timeout_ms) {
   return HAL_OK;
 }
 
-uint32_t flash_program(uint32_t start_address, const uint64_t *data,
+// Program `length` doublewords (uint64_t) at `flash_address` (an absolute
+// flash address; must be 8-byte-aligned). The target range must already be
+// erased.
+uint32_t flash_program(uint32_t flash_address, const uint64_t *data,
                        uint32_t length, uint32_t timeout_ms) {
   uint32_t total_bytes = length * (uint32_t)sizeof(uint64_t);
-  uint32_t end_address = start_address + total_bytes;
-  if (start_address < FLASH_BASE || end_address < start_address ||
+  uint32_t end_address = flash_address + total_bytes;
+  if (flash_address < FLASH_BASE || end_address < flash_address ||
       end_address > FLASH_BASE + (uint32_t)flash_size()) {
     return ERR_FLASH_ILLEGAL;
   }
-  if ((start_address & 0x7U) != 0U) {
+  if ((flash_address & 0x7U) != 0U) {
     return ERR_FLASH_ILLEGAL;
   }
 
@@ -151,7 +154,7 @@ uint32_t flash_program(uint32_t start_address, const uint64_t *data,
     __disable_irq();
     HAL_StatusTypeDef status = HAL_FLASH_Program(
         FLASH_TYPEPROGRAM_DOUBLEWORD,
-        start_address + (dw_written * sizeof(uint64_t)), data[dw_written]);
+        flash_address + (dw_written * sizeof(uint64_t)), data[dw_written]);
     __set_PRIMASK(primask);
 
     if (status != HAL_OK) {
