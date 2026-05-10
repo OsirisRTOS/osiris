@@ -1,10 +1,10 @@
-//! Per-UART-slot wait lists and ISR-context callbacks. Mirrors
-//! `drivers/can/wait.rs` with separate RX and TX channels per slot.
-
 use core::cell::Cell;
-use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 
 pub const UART_SLOT_COUNT: usize = 6;
+
+static REGISTERED: [AtomicBool; UART_SLOT_COUNT] =
+    [const { AtomicBool::new(false) }; UART_SLOT_COUNT];
 
 pub struct UartWaitDevice {
     rx_waiters: AtomicPtr<Waiter>,
@@ -182,31 +182,24 @@ fn vector_dispatch(_ctx: *mut u8, _vector: usize, userdata: Option<usize>) {
     crate::hal::uart::dispatch_by_slot(slot as u8);
 }
 
-/// Call once during osiris boot, after the console has been initialised.
-pub fn init() {
-    for slot in 0..UART_SLOT_COUNT as u8 {
-        let Ok(dev) = crate::hal::uart::get_by_index(slot) else {
-            continue;
-        };
-
-        // IPSR = NVIC line + 16 on Cortex-M.
-        let vector = dev.irqn() as usize + 16;
-        unsafe {
-            if let Err(e) = crate::irq::register_irq(vector, vector_dispatch, Some(slot as usize))
-            {
-                panic!(
-                    "UART wait dispatcher: failed to register IRQ vector {} for slot {} ({:?})",
-                    vector, slot, e
-                );
-            }
-        }
-
-        let ctx = &UART_DEVICES[slot as usize] as *const _ as *mut ();
-        match crate::hal::uart::register_irq_handler(&dev, Some(kernel_dispatch), ctx) {
-            Ok(()) => {}
-            // Console-owned slot — IT mode disabled there by design.
-            Err(crate::hal::uart::Error::Busy) => {}
-            Err(e) => panic!("UART wait dispatcher: HAL rejected slot {} ({:?})", slot, e),
-        }
+/// Must be called *after* `hal::uart::init` — `uart_set_irq_handler` looks up
+/// the slot by `in_use`, which only `uart_init` sets.
+pub fn ensure_registered(dev: &crate::hal::uart::Device) -> Result<(), crate::hal::uart::Error> {
+    let slot = dev.index();
+    if (slot as usize) >= UART_SLOT_COUNT {
+        return Err(crate::hal::uart::Error::InvalidArgument);
     }
+    if REGISTERED[slot as usize].swap(true, Ordering::AcqRel) {
+        return Ok(());
+    }
+
+    // IPSR = NVIC line + 16 on Cortex-M.
+    let vector = dev.irqn() as usize + 16;
+    unsafe {
+        crate::irq::register_irq(vector, vector_dispatch, Some(slot as usize))
+            .map_err(|_| crate::hal::uart::Error::Io)?;
+    }
+
+    let ctx = &UART_DEVICES[slot as usize] as *const _ as *mut ();
+    crate::hal::uart::register_irq_handler(dev, Some(kernel_dispatch), ctx)
 }

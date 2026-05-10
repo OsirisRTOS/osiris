@@ -1,6 +1,6 @@
 pub mod wait;
 
-pub use crate::hal::uart::{Error, Irq, IrqHandler, Overrides};
+pub use crate::hal::uart::{Error, Overrides};
 
 use core::time::Duration;
 
@@ -90,7 +90,6 @@ fn duration_to_ticks(d: Duration) -> u64 {
     secs.saturating_add(sub)
 }
 
-#[derive(Clone, Copy)]
 pub struct Device {
     desc: crate::hal::uart::Device,
     read_timeout: Option<Duration>,
@@ -108,15 +107,15 @@ impl Device {
             flow_control: cfg.flow_control.map(flow_to_u8),
         };
         crate::hal::uart::init(&desc, &overrides)?;
+        if let Err(e) = wait::ensure_registered(&desc) {
+            let _ = crate::hal::uart::deinit(&desc);
+            return Err(e);
+        }
         Ok(Self {
             desc,
             read_timeout: cfg.read_timeout,
             write_timeout: cfg.write_timeout,
         })
-    }
-
-    pub fn close(self) -> Result<(), Error> {
-        crate::hal::uart::deinit(&self.desc)
     }
 
     pub fn slot(&self) -> u8 {
@@ -277,8 +276,10 @@ impl Device {
     pub fn set_tx_callback(&self, cb: Option<wait::ChannelCallback>) {
         wait::set_tx_callback(self.slot(), cb);
     }
+}
 
-    pub fn set_irq_handler(&self, h: Option<IrqHandler>, ctx: *mut ()) -> Result<(), Error> {
-        crate::hal::uart::register_irq_handler(&self.desc, h, ctx)
+impl Drop for Device {
+    fn drop(&mut self) {
+        let _ = crate::hal::uart::deinit(&self.desc);
     }
 }
