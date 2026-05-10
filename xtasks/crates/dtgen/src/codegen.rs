@@ -1466,16 +1466,13 @@ mod can {
             })
             .unwrap_or_else(|| panic!("Unsupported pin-controller: {:?}", pin_ctrl.compatible));
 
-            let role = match parse_can_role(pin_node.name.as_str()) {
-                Some(r) => r,
-                None => {
-                    println!(
-                        "Unable to determine CAN signal role from pin name: {}",
-                        pin_node.name
-                    );
-                    continue;
-                }
-            };
+            let role = parse_can_role(pin_node.name.as_str()).unwrap_or_else(|| {
+                panic!(
+                    "Unable to determine CAN signal role from pin name: {} \
+                     (expected `can<N>_{{rx,tx}}_p<port><line>`)",
+                    pin_node.name,
+                );
+            });
 
             pins.push((
                 role,

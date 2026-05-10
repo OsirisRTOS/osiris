@@ -13,12 +13,16 @@ static WAITER: [AtomicU32; CAN_SLOT_COUNT] = [AtomicU32::new(0), AtomicU32::new(
 
 static REGISTERED: [AtomicBool; CAN_SLOT_COUNT] = [AtomicBool::new(false), AtomicBool::new(false)];
 
-pub fn register_waiter(slot: u8, uid: u32) {
-    WAITER[slot as usize].store(uid, Ordering::Release);
+pub(super) fn register_waiter(slot: u8, uid: u32) {
+    if (slot as usize) < CAN_SLOT_COUNT {
+        WAITER[slot as usize].store(uid, Ordering::Release);
+    }
 }
 
-pub fn unregister_waiter(slot: u8) {
-    WAITER[slot as usize].store(0, Ordering::Release);
+pub(super) fn unregister_waiter(slot: u8) {
+    if (slot as usize) < CAN_SLOT_COUNT {
+        WAITER[slot as usize].store(0, Ordering::Release);
+    }
 }
 
 extern "C" fn kernel_dispatch(kind: hal::can::Irq, ctx: *mut ()) {

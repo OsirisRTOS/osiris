@@ -58,8 +58,8 @@ pub fn exit(_code: usize) -> ! {
     }
 }
 
-/// Raw `UId::as_usize()` of the calling thread. Used to register as a
-/// waiter on a queue / wake primitive.
+/// Raw `UId::as_usize()` of the calling thread, or `-1` if there is
+/// no current thread (kernel pre-init).
 pub fn current_id() -> isize {
     hal::asm::syscall!(6)
 }

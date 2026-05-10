@@ -74,5 +74,8 @@ fn kick_thread(_uid: usize) -> c_int {
 
 #[syscall_handler(num = 6)]
 fn current_id() -> c_int {
-    sched::with(|sched| sched.current_uid().unwrap_or(0) as c_int)
+    sched::with(|sched| match sched.current_uid() {
+        Some(uid) => uid as c_int,
+        None => -1,
+    })
 }
