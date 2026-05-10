@@ -25,6 +25,11 @@ impl Device {
         Ok(Self { desc })
     }
 
+    /// Bring the bus online
+    pub fn start(&self) -> Result<()> {
+        hal::can::start(&self.desc)
+    }
+
     pub fn transmit(&self, frame: &Frame) -> Result<()> {
         hal::can::transmit(&self.desc, frame)
     }
@@ -33,6 +38,7 @@ impl Device {
         hal::can::receive(&self.desc, out)
     }
 
+    /// Configure a hardware filter. Prefer calling this before start
     pub fn configure_filter(&self, filter: &Filter) -> Result<()> {
         hal::can::configure_filter(&self.desc, filter)
     }

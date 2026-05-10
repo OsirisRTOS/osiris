@@ -1477,7 +1477,14 @@ mod can {
                 }
             };
 
-            pins.push((role, Pin { port, pin: line, af: mode }));
+            pins.push((
+                role,
+                Pin {
+                    port,
+                    pin: line,
+                    af: mode,
+                },
+            ));
         }
 
         pins
@@ -1491,11 +1498,13 @@ mod can {
             panic!("CAN node missing {label} interrupt cell pair");
         }
         Irq {
-            irqn: u8::try_from(interrupts[off]).unwrap_or_else(|_| {
-                panic!("CAN {label} irqn {} out of u8 range", interrupts[off])
-            }),
+            irqn: u8::try_from(interrupts[off])
+                .unwrap_or_else(|_| panic!("CAN {label} irqn {} out of u8 range", interrupts[off])),
             priority: u8::try_from(interrupts[off + 1]).unwrap_or_else(|_| {
-                panic!("CAN {label} priority {} out of u8 range", interrupts[off + 1])
+                panic!(
+                    "CAN {label} priority {} out of u8 range",
+                    interrupts[off + 1]
+                )
             }),
         }
     }
@@ -1512,14 +1521,18 @@ mod can {
             // convention) AND the canonical Zephyr `st,stm32-bxcan` so
             // board overlays that inherit the SoC dtsi work without
             // overriding `compatible`.
-            if node.compatible.iter().all(|c| {
-                c != "osiris,stm32l4-can" && c != "st,stm32-bxcan"
-            }) {
+            if node
+                .compatible
+                .iter()
+                .all(|c| c != "osiris,stm32l4-can" && c != "st,stm32-bxcan")
+            {
                 continue;
             }
 
             let Some((base, _)) = node.reg else { continue };
-            let Ok(instance) = usize::try_from(base) else { continue };
+            let Ok(instance) = usize::try_from(base) else {
+                continue;
+            };
 
             let (mut rx, mut tx) = (None, None);
             for (key, value) in &node.extra {
@@ -1567,11 +1580,7 @@ mod can {
             // Store the matched compatible so runtime `can_by_compatible`
             // can find the entry by whichever string the user passes.
             // Prefer the osiris-namespaced one if both are present.
-            let compatible = if node
-                .compatible
-                .iter()
-                .any(|c| c == "osiris,stm32l4-can")
-            {
+            let compatible = if node.compatible.iter().any(|c| c == "osiris,stm32l4-can") {
                 "osiris,stm32l4-can".to_string()
             } else {
                 "st,stm32-bxcan".to_string()
@@ -1618,13 +1627,11 @@ mod can {
 
             let rx0_irqn = b.rx0_irq.irqn;
             let rx0_priority = b.rx0_irq.priority;
-            let rx0_irq =
-                quote! { CanIrq { irqn: #rx0_irqn, priority: #rx0_priority } };
+            let rx0_irq = quote! { CanIrq { irqn: #rx0_irqn, priority: #rx0_priority } };
 
             let rx1_irqn = b.rx1_irq.irqn;
             let rx1_priority = b.rx1_irq.priority;
-            let rx1_irq =
-                quote! { CanIrq { irqn: #rx1_irqn, priority: #rx1_priority } };
+            let rx1_irq = quote! { CanIrq { irqn: #rx1_irqn, priority: #rx1_priority } };
 
             quote! {
                 CanRegistryEntry {

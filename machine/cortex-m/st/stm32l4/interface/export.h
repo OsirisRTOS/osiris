@@ -175,6 +175,7 @@ enum can_irq_kind
 typedef void (*can_irq_handler_fn)(int kind, void *ctx);
 
 int can_init(const can_bus_cfg_t *cfg);
+int can_start(uint8_t slot);
 int can_deinit(uint8_t slot);
 int can_transmit(uint8_t slot, const can_frame_t *frame);
 int can_receive(uint8_t slot, can_frame_t *out);

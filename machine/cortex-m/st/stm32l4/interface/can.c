@@ -200,6 +200,23 @@ int can_init(const can_bus_cfg_t *cfg)
         return CAN_ERR_HAL_INIT;
     }
 
+    /* Bus stays in HAL_CAN_STATE_READY so the caller can install filters
+     * before HAL_CAN_Start (UM1884 §9.2.1 step order). */
+    return 0;
+}
+
+int can_start(uint8_t slot)
+{
+    if (slot >= CAN_SLOT_COUNT)
+    {
+        return CAN_ERR_INVALID_ARG;
+    }
+    CAN_HandleTypeDef *h = &s_handles[slot];
+    if (h->Instance == NULL)
+    {
+        return CAN_ERR_NOT_INIT;
+    }
+
     if (HAL_CAN_Start(h) != HAL_OK)
     {
         return CAN_ERR_HAL_START;
@@ -347,12 +364,12 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
         is_fifo0 ? &hcan->Instance->RF0R : &hcan->Instance->RF1R;
     const uint32_t fovr_flag = is_fifo0 ? CAN_RF0R_FOVR0 : CAN_RF1R_FOVR1;
     const uint32_t fmp_flag = is_fifo0 ? CAN_RF0R_FMP0 : CAN_RF1R_FMP1;
-    const uint32_t fov_clear = is_fifo0 ? CAN_FLAG_FOV0 : CAN_FLAG_FOV1;
     const int kind = is_fifo0 ? CAN_IRQ_RX0 : CAN_IRQ_RX1;
 
     if ((*rfr & fovr_flag) != 0u)
     {
         s_rx_hw_ovr[slot_idx]++;
+        const uint32_t fov_clear = is_fifo0 ? CAN_FLAG_FOV0 : CAN_FLAG_FOV1;
         __HAL_CAN_CLEAR_FLAG(hcan, fov_clear);
     }
 
@@ -362,8 +379,9 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
     while ((*rfr & fmp_flag) != 0u)
     {
         CAN_RxHeaderTypeDef hdr;
-        uint8_t data[8];
-        if (HAL_CAN_GetRxMessage(hcan, fifo, &hdr, data) != HAL_OK)
+
+        volatile can_frame_t *slot = &rx->frames[rx->tail];
+        if (HAL_CAN_GetRxMessage(hcan, fifo, &hdr, (void*)slot->data) != HAL_OK)
         {
             break;
         }
@@ -378,11 +396,10 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
 
         uint8_t len = (hdr.DLC > 8) ? 8 : (uint8_t)hdr.DLC;
 
-        volatile can_frame_t *slot = &rx->frames[rx->tail];
         slot->id = (hdr.IDE == CAN_ID_EXT) ? hdr.ExtId : hdr.StdId;
         slot->len = len;
         slot->is_extended = (hdr.IDE == CAN_ID_EXT);
-        memcpy((void *)slot->data, data, len);
+        /* slot->data has already been copied */
 
         rx->tail = (rx->tail + 1u) % CAN_RX_BUF_SIZE;
         rx->count++;

@@ -143,6 +143,11 @@ pub fn init(dev: &Device, mode: Mode) -> Result<()> {
     if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
 }
 
+pub fn start(dev: &Device) -> Result<()> {
+    let rc = unsafe { bindings::can_start(dev.0.index) };
+    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+}
+
 pub fn deinit(dev: &Device) -> Result<()> {
     let rc = unsafe { bindings::can_deinit(dev.0.index) };
     if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
@@ -227,11 +232,7 @@ pub enum Irq {
 
 pub type IrqHandler = extern "C" fn(kind: Irq, ctx: *mut ());
 
-pub fn register_irq_handler(
-    dev: &Device,
-    handler: Option<IrqHandler>,
-    ctx: *mut (),
-) -> Result<()> {
+pub fn register_irq_handler(dev: &Device, handler: Option<IrqHandler>, ctx: *mut ()) -> Result<()> {
     // SAFETY: bindgen lowers `can_irq_handler_fn` to
     // `Option<unsafe extern "C" fn(c_int, *mut c_void)>`. Layout-equivalent
     // to `IrqHandler` (Irq is #[repr(u32)], *mut () == *mut c_void).
@@ -289,6 +290,7 @@ pub struct Diag {
     pub rx_hw_ovr: u32,
 }
 
+#[inline]
 pub fn dispatch_isr(slot: u8) {
     unsafe { bindings::can_isr(slot) }
 }

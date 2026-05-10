@@ -11,8 +11,7 @@ pub const CAN_SLOT_COUNT: usize = 2;
 /// 0 = no waiter; otherwise raw `UId::as_usize()` of the parked thread.
 static WAITER: [AtomicU32; CAN_SLOT_COUNT] = [AtomicU32::new(0), AtomicU32::new(0)];
 
-static REGISTERED: [AtomicBool; CAN_SLOT_COUNT] =
-    [AtomicBool::new(false), AtomicBool::new(false)];
+static REGISTERED: [AtomicBool; CAN_SLOT_COUNT] = [AtomicBool::new(false), AtomicBool::new(false)];
 
 pub fn register_waiter(slot: u8, uid: u32) {
     WAITER[slot as usize].store(uid, Ordering::Release);

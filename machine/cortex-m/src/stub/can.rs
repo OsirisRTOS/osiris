@@ -106,6 +106,9 @@ pub fn get(_compatible: &str, _ordinal: usize) -> Result<Device> {
 pub fn init(_dev: &Device, _mode: Mode) -> Result<()> {
     Err(Error::NotInitialized)
 }
+pub fn start(_dev: &Device) -> Result<()> {
+    Err(Error::NotInitialized)
+}
 pub fn deinit(_dev: &Device) -> Result<()> {
     Err(Error::NotInitialized)
 }
