@@ -16,7 +16,7 @@ pub(crate) use core::convert::{identity as likely, identity as unlikely};
 pub(crate) use core::hint::{likely, unlikely};
 
 pub type Result<T> = core::result::Result<T, Error>;
-
+pub use hal_api::PosixError;
 /// This is a macro that is used to panic when a bug is detected.
 /// It is similar to the BUG() macro in the Linux kernel. Link: [https://www.kernel.org/]()
 #[macro_export]
@@ -77,51 +77,24 @@ macro_rules! warn_on {
 }
 
 macro_rules! kerr {
-    ($kind:ident) => {
-        $crate::error::Error::new($crate::error::Kind::$kind)
+    ($posix:ident) => {
+        $crate::error::Error::new($crate::error::PosixError::$posix)
     };
-    ($kind:ident, $fmt:literal $($arg:tt)*) => {{
+    ($posix:ident, $msg:expr) => {{
         #[cfg(feature = "error-msg")]
         {
-            $crate::error::Error::new($crate::error::Kind::$kind).with_msg(format_args!($fmt $($arg)*))
+            $crate::error::Error::new($crate::error::PosixError::$posix).with_msg($msg)
         }
         #[cfg(not(feature = "error-msg"))]
         {
-            $crate::error::Error::new($crate::error::Kind::$kind)
+            $crate::error::Error::new($crate::error::PosixError::$posix)
         }
     }};
 }
 
-#[proc_macros::fmt]
-#[allow(dead_code)]
-#[derive(Clone, PartialEq, Eq)]
-pub enum Kind {
-    InvalidAlign,
-    OutOfMemory,
-    InvalidSize,
-    InvalidAddress(PhysAddr),
-    InvalidArgument,
-    NotFound,
-    Hal(hal::Error),
-}
-
-impl Display for Kind {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Kind::InvalidAlign => write!(f, "Invalid alignment"),
-            Kind::OutOfMemory => write!(f, "Out of memory"),
-            Kind::InvalidSize => write!(f, "Invalid size"),
-            Kind::InvalidAddress(addr) => write!(f, "Invalid address: {addr:#x}"),
-            Kind::InvalidArgument => write!(f, "Invalid argument"),
-            Kind::NotFound => write!(f, "Not found"),
-            Kind::Hal(e) => write!(f, "HAL error: {e:?}"),
-        }
-    }
-}
-
 #[derive(Clone, Eq)]
 pub struct Error {
-    pub kind: Kind,
+    pub kind: PosixError,
     #[cfg(feature = "error-msg")]
     msg: Option<Msg>,
 }
@@ -167,7 +140,7 @@ impl Write for Msg {
 }
 
 impl Error {
-    pub fn new(kind: Kind) -> Self {
+    pub fn new(kind: PosixError) -> Self {
         #[cfg(feature = "error-msg")]
         {
             Self { kind, msg: None }
@@ -216,9 +189,9 @@ impl Display for Error {
     }
 }
 
-impl From<hal::Error> for Error {
-    fn from(e: hal::Error) -> Self {
-        Self::new(Kind::Hal(e))
+impl From<PosixError> for Error {
+    fn from(e: PosixError) -> Self {
+        Self::new(e)
     }
 }
 

@@ -19,10 +19,10 @@ pub struct AddressSpace {
 
 impl vmm::AddressSpacelike for AddressSpace {
     fn new(pgs: usize) -> Result<Self> {
-        let begin = pfa::alloc_page(pgs).ok_or(kerr!(OutOfMemory))?;
+        let begin = pfa::alloc_page(pgs).ok_or(kerr!(ENOMEM))?;
         let end = begin
             .checked_add(pgs * pfa::PAGE_SIZE)
-            .ok_or(kerr!(OutOfMemory))?;
+            .ok_or(kerr!(ENOMEM))?;
 
         let mut allocator = bestfit::BestFitAllocator::new();
         unsafe { allocator.add_range(&(begin..end))? };

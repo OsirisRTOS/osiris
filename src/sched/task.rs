@@ -77,7 +77,7 @@ impl Task {
         let address_space = match attrs.address_space {
             Some(addr_space) => addr_space,
             None => {
-                let resrv_pgs = attrs.resrv_pgs.ok_or(kerr!(InvalidArgument))?;
+                let resrv_pgs = attrs.resrv_pgs.ok_or(kerr!(EINVAL))?;
                 mem::vmm::AddressSpace::new(resrv_pgs.get())?
             }
         };

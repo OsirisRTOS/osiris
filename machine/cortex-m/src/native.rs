@@ -59,7 +59,7 @@ impl hal_api::Machinelike for ArmMachine {
         if ok {
             Ok(())
         } else {
-            Err(hal_api::Error::default())
+            Err(hal_api::PosixError::EIO)
         }
     }
 
@@ -86,6 +86,12 @@ impl hal_api::Machinelike for ArmMachine {
 
     fn systick_freq() -> u64 {
         unsafe { bindings::systick_freq() }
+    }
+
+    fn do_tick() {
+        unsafe {
+            bindings::do_tick();
+        }
     }
 
     type ExcepBacktrace = excep::ExcepBacktrace;

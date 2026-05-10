@@ -41,6 +41,11 @@ void HAL_MspInit(void) {
 
   __HAL_RCC_SYSCFG_CLK_ENABLE();
   __HAL_RCC_PWR_CLK_ENABLE();
+
+  // Necessary for GPIOG
+  #if defined(PWR_CR2_IOSV)
+    HAL_PWREx_EnableVddIO2();
+  #endif
 }
 
 __attribute__((noreturn)) void system_reset(void) {

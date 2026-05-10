@@ -35,7 +35,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
     /// `index` - The index to insert the value at.
     /// `value` - The value to insert.
     ///
-    /// Returns `Ok(())` if the index was in-bounds, otherwise `Err(KernelError::OutOfMemory)`.
+    /// Returns `Ok(())` if the index was in-bounds, otherwise `Err(KernelError::ENOMEM)`.
     pub fn insert(&mut self, idx: &K, value: V) -> Result<()> {
         let idx = K::to_index(Some(idx));
 
@@ -43,7 +43,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
             self.data[idx] = Some(value);
             Ok(())
         } else {
-            Err(kerr!(OutOfMemory))
+            Err(kerr!(ENOMEM))
         }
     }
 
@@ -63,7 +63,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> IndexMap<K, V, N> {
             self.data[idx] = Some(value);
             Ok(())
         } else {
-            Err(kerr!(OutOfMemory))
+            Err(kerr!(ENOMEM))
         }
     }
 
@@ -257,7 +257,7 @@ impl<T, const N: usize> Vec<T, N> {
     ///
     /// `additional` - The additional space to reserve.
     ///
-    /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::OutOfMemory)`.
+    /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::ENOMEM)`.
     pub fn reserve(&mut self, additional: usize) -> Result<()> {
         let len_extra = self.extra.len();
 
@@ -292,7 +292,7 @@ impl<T, const N: usize> Vec<T, N> {
     ///
     /// `total_capacity` - The total space to be reserved.
     ///
-    /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::OutOfMemory)`.
+    /// Returns `Ok(())` if the space was reserved, otherwise `Err(KernelError::ENOMEM)`.
     pub fn reserve_total_capacity(&mut self, total_capacity: usize) -> Result<()> {
         // Check if we already have enough space
         if self.capacity() >= total_capacity {
@@ -325,7 +325,7 @@ impl<T, const N: usize> Vec<T, N> {
     /// `length` - The length of the Vec.
     /// `value` - The value to initialize the elements in the Vec with.
     ///
-    /// Returns the new Vec or `Err(KernelError::OutOfMemory)` if the allocation failed.
+    /// Returns the new Vec or `Err(KernelError::ENOMEM)` if the allocation failed.
     pub fn new_init(length: usize, value: T) -> Result<Self>
     where
         T: Clone,
@@ -367,7 +367,7 @@ impl<T, const N: usize> Vec<T, N> {
     ///
     /// `value` - The value to push.
     ///
-    /// Returns `Ok(())` if the value was pushed, otherwise `Err(KernelError::OutOfMemory)`.
+    /// Returns `Ok(())` if the value was pushed, otherwise `Err(KernelError::ENOMEM)`.
     pub fn push(&mut self, value: T) -> Result<()> {
         // Check if we have enough space in the inline storage.
         if self.len < N {
@@ -748,7 +748,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
 
     #[allow(dead_code)]
     pub fn insert(&mut self, value: V) -> Result<usize> {
-        let idx = self.free.alloc(1).ok_or(kerr!(OutOfMemory))?;
+        let idx = self.free.alloc(1).ok_or(kerr!(ENOMEM))?;
         self.map.raw_insert(idx, value)?;
         Ok(idx)
     }
@@ -762,7 +762,7 @@ impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
 
 impl<K: Copy + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     pub fn insert_with(&mut self, f: impl FnOnce(usize) -> Result<(K, V)>) -> Result<K> {
-        let idx = self.free.alloc(1).ok_or(kerr!(OutOfMemory))?;
+        let idx = self.free.alloc(1).ok_or(kerr!(ENOMEM))?;
         let (key, value) = f(idx)?;
         self.map.raw_insert(idx, value)?;
         Ok(key)

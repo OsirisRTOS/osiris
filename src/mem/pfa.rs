@@ -37,7 +37,7 @@ trait Allocator<const N: usize> {
 pub fn init_pfa(addr: PhysAddr) -> Result<()> {
     let mut pfa = PFA.lock();
     if pfa.is_some() {
-        return Err(kerr!(InvalidArgument));
+        return Err(kerr!(EINVAL));
     }
 
     let initializer = AllocatorType::initializer();

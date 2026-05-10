@@ -26,7 +26,7 @@ impl<const N: usize> Scheduler<N> {
     pub fn enqueue(&mut self, uid: thread::UId, storage: &mut super::ThreadMap<N>) -> Result<()> {
         self.queue
             .push_back(uid, storage)
-            .map_err(|_| kerr!(InvalidArgument))
+            .map_err(|_| kerr!(EINVAL))
     }
 
     pub fn put(&mut self, uid: thread::UId, dt: u32) {
