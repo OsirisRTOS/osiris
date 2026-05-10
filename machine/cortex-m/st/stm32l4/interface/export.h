@@ -186,11 +186,11 @@ uint32_t flash_unlock(void);
 // flight; returns ERR_FLASH_BUSY otherwise.
 uint32_t flash_lock(void);
 
-// Erase one flash page by global page number (bank is derived automatically
-// in dual-bank mode). timeout_ms bounds the wait for the erase to finish.
-// Returns FLASH_OK, ERR_FLASH_BUSY, ERR_FLASH_INVALID_PAGE, or a
-// HAL_FLASH_ERROR_* code.
-uint32_t flash_erase(uint32_t page, uint32_t timeout_ms);
+// Erase the flash page identified by `page_index` (a page number, not an
+// address). Bank is derived automatically in dual-bank mode. timeout_ms
+// bounds the wait for the erase to finish. Returns FLASH_OK, ERR_FLASH_BUSY,
+// ERR_FLASH_INVALID_PAGE, or a HAL_FLASH_ERROR_* code.
+uint32_t flash_erase(uint32_t page_index, uint32_t timeout_ms);
 
 // Program `length` doublewords (uint64_t) starting at `start_address`.
 // `data` must point to at least `length` elements. Flash must be unlocked

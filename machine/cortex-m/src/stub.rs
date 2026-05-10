@@ -3,6 +3,7 @@ pub use hal_api::*;
 
 pub mod asm;
 pub mod device_tree;
+pub mod flash;
 pub mod i2c;
 pub mod sched;
 pub mod spi;

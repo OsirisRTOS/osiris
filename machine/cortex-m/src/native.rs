@@ -5,6 +5,7 @@ pub use hal_api::*;
 pub mod asm;
 pub mod debug;
 pub mod excep;
+pub mod flash;
 pub mod i2c;
 pub mod panic;
 pub mod sched;

@@ -91,13 +91,13 @@ uint32_t flash_lock(void) {
   return HAL_FLASH_Lock();
 }
 
-// Erase a flash page given a page number.
-// The bank will be automatically determined.
-uint32_t flash_erase(uint32_t page, uint32_t timeout_ms) {
+// Erase the flash page identified by `page_index` (a page number, not an
+// address). The bank is derived automatically from the index.
+uint32_t flash_erase(uint32_t page_index, uint32_t timeout_ms) {
   if (flash_is_busy()) {
     return ERR_FLASH_BUSY;
   }
-  if (page >= flash_page_count()) {
+  if (page_index >= flash_page_count()) {
     return ERR_FLASH_INVALID_PAGE;
   }
 
@@ -105,13 +105,13 @@ uint32_t flash_erase(uint32_t page, uint32_t timeout_ms) {
   uint32_t bank = FLASH_BANK_1;
 #ifdef FLASH_BANK_2
   const uint32_t half_page_count = flash_page_count() / 2;
-  if (flash_is_dual_bank() && page >= half_page_count) {
+  if (flash_is_dual_bank() && page_index >= half_page_count) {
     bank = FLASH_BANK_2;
-    page -= half_page_count;
+    page_index -= half_page_count;
   }
 #endif
 
-  FLASH_PageErase(page, bank);
+  FLASH_PageErase(page_index, bank);
 
   HAL_StatusTypeDef status = FLASH_WaitForLastOperation(timeout_ms);
   if (status != HAL_OK) {
@@ -123,11 +123,17 @@ uint32_t flash_erase(uint32_t page, uint32_t timeout_ms) {
 
 uint32_t flash_program(uint32_t start_address, const uint64_t *data,
                        uint32_t length, uint32_t timeout_ms) {
-  // TODO: check if start_address and start_address + (length * 8) are within
-  // flash bounds - not sure how to do that with device trees.
+  uint32_t total_bytes = length * (uint32_t)sizeof(uint64_t);
+  uint32_t end_address = start_address + total_bytes;
+  if (start_address < FLASH_BASE || end_address < start_address ||
+      end_address > FLASH_BASE + (uint32_t)flash_size()) {
+    return ERR_FLASH_ILLEGAL;
+  }
+  if ((start_address & 0x7U) != 0U) {
+    return ERR_FLASH_ILLEGAL;
+  }
 
   if (flash_is_busy()) {
-    // caller should wait until no longer busy
     return ERR_FLASH_BUSY;
   }
 
