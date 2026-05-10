@@ -4,6 +4,7 @@ use quote::quote;
 
 mod i2c;
 mod spi;
+mod can;
 
 pub fn generate_rust(dt: &DeviceTree) -> String {
     let segments: &[TokenStream] = &[
@@ -17,6 +18,8 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         i2c::emit_query_api(),
         spi::emit_registry(dt),
         spi::emit_query_api(),
+        can::emit_registry(dt),
+        can::emit_query_api(),
         emit_aliases_module(dt),
         emit_memory_module(dt),
         emit_chosen_module(dt),
