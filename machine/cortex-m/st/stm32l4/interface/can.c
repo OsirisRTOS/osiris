@@ -354,7 +354,6 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx,
   }
 
   can_rx_buf_t *rx = &s_rx[slot_idx];
-  bool any_frame = false;
 
   while ((*rfr & fmp_flag) != 0u) {
     CAN_RxHeaderTypeDef hdr;
@@ -384,14 +383,11 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx,
 
     rx->tail = (rx->tail + 1u) % CAN_RX_BUF_SIZE;
     rx->count++;
-    any_frame = true;
   }
 
-  if (any_frame) {
-    can_irq_handler_fn fn = s_irq_slot[slot_idx].fn;
-    if (fn != NULL) {
-      fn(kind, s_irq_slot[slot_idx].ctx);
-    }
+  can_irq_handler_fn fn = s_irq_slot[slot_idx].fn;
+  if (fn != NULL && rx->count > 0) {
+    fn(kind, s_irq_slot[slot_idx].ctx);
   }
 }
 
