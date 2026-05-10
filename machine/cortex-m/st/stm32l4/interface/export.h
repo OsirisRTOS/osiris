@@ -1,4 +1,36 @@
 #pragma once
+#include "stm32l4xx_hal_def.h"
+#include "stm32l4xx_hal_flash.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+// bindgen-export: HAL_FLASH_ERROR_.*
+// bindgen-export: FLASH_FLAG_.*
+
+#define __FLASH_ERRORS                                                         \
+  (FLASH_FLAG_SR_ERRORS | FLASH_FLAG_ALL_ERRORS | HAL_OK | HAL_BUSY |          \
+   HAL_TIMEOUT)
+
+#define FLASH_OK 0
+_Static_assert((FLASH_OK & __FLASH_ERRORS) == 0);
+_Static_assert(FLASH_OK == FLASH_ERROR_NONE);
+#define ERR_FLASH_DOUBLE_UNLOCK (1 << 10)
+_Static_assert((ERR_FLASH_DOUBLE_UNLOCK & __FLASH_ERRORS) == 0);
+#define ERR_FLASH_NOT_UNLOCKED (1 << 11)
+_Static_assert((ERR_FLASH_NOT_UNLOCKED & __FLASH_ERRORS) == 0);
+#define ERR_FLASH_BUSY (1 << 12)
+_Static_assert((ERR_FLASH_BUSY & __FLASH_ERRORS) == 0);
+#define ERR_FLASH_ILLEGAL (1 << 13)
+_Static_assert((ERR_FLASH_ILLEGAL & __FLASH_ERRORS) == 0);
+#define ERR_FLASH_INVALID_PAGE (1 << 16)
+_Static_assert((ERR_FLASH_INVALID_PAGE & __FLASH_ERRORS) == 0);
+#define ERR_FLASH_INVALID_BANK (1 << 18)
+_Static_assert((ERR_FLASH_INVALID_BANK & __FLASH_ERRORS) == 0);
+#define ERR_FLASH_TIMEOUT (1 << 19)
+_Static_assert((ERR_FLASH_TIMEOUT & __FLASH_ERRORS) == 0);
+
+// bindgen-export: FLASH_OK
+// bindgen-export: ERR_FLASH_.*
 
 #include <stdint.h>
 
@@ -122,6 +154,53 @@ void dwt_reset(void);
 long dwt_read(void);
 float dwt_read_ns(void);
 float dwt_cycles_to_ns(long cycles);
+
+// flash.c
+
+// True if the flash controller's BSY bit is set.
+bool flash_is_busy(void);
+
+// Total flash size in bytes.
+int flash_size(void);
+
+// True if the device is configured for dual-bank mode (affects page size
+// and how page numbers map to banks).
+bool flash_is_dual_bank(void);
+
+// Page size in bytes: 4 KiB in dual-bank mode, 8 KiB in single-bank mode.
+int flash_page_size(void);
+
+// Total number of flash pages.
+int flash_page_count(void);
+
+// Block until the last flash operation completes, or until timeout_ms
+// milliseconds elapse.
+uint32_t flash_wait_for_last_operation(uint32_t timeout_ms);
+
+// Unlock the flash control register for erase/program. Fails with
+// ERR_FLASH_BUSY if an operation is in flight, or ERR_FLASH_DOUBLE_UNLOCK if
+// the flash is already unlocked.
+uint32_t flash_unlock(void);
+
+// Re-lock the flash control register. Caller must ensure no operation is in
+// flight; returns ERR_FLASH_BUSY otherwise.
+uint32_t flash_lock(void);
+
+// Erase one flash page by global page number (bank is derived automatically
+// in dual-bank mode). timeout_ms bounds the wait for the erase to finish.
+// Returns FLASH_OK, ERR_FLASH_BUSY, ERR_FLASH_INVALID_PAGE, or a
+// HAL_FLASH_ERROR_* code.
+uint32_t flash_erase(uint32_t page, uint32_t timeout_ms);
+
+// Program `length` doublewords (uint64_t) starting at `start_address`.
+// `data` must point to at least `length` elements. Flash must be unlocked
+// and the target region must already be erased.
+//
+// timeout_ms is the total budget for the whole sequence, not per doubleword;
+// each iteration is given the remaining time. Returns FLASH_OK,
+// ERR_FLASH_BUSY, ERR_FLASH_TIMEOUT, or a HAL_FLASH_ERROR_* code.
+uint32_t flash_program(uint32_t start_address, const uint64_t *data,
+                       uint32_t length, uint32_t timeout_ms);
 
 // clock.c
 void SystemClock_Config(void);

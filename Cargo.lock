@@ -781,6 +781,7 @@ dependencies = [
  "hal-api",
  "hal-builder",
  "quote",
+ "regex",
  "serde_json",
  "syn",
 ]
