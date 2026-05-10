@@ -27,6 +27,13 @@ pub fn page_count() -> usize {
     unsafe { bindings::flash_page_count() as usize }
 }
 
+/// Smallest unit the chip will program in one shot. STM32L4/L4+/G4 program
+/// at doubleword granularity (8 bytes). Other STM32 families differ
+/// (F4: 1/2/4/8, H7: 32).
+pub fn write_unit_bytes() -> usize {
+    core::mem::size_of::<u64>()
+}
+
 // ---------------------------------------------------------------------------
 // Flash trait impl + type aliases
 // ---------------------------------------------------------------------------
@@ -47,6 +54,9 @@ impl hal_api::flash_addr::Flash for ArmFlash {
     }
     fn page_count() -> usize {
         page_count()
+    }
+    fn write_unit_bytes() -> usize {
+        write_unit_bytes()
     }
 }
 
@@ -88,6 +98,23 @@ fn from_c_rc(rc: u32) -> Result<()> {
     if rc & bindings::HAL_FLASH_ERROR_PROG != 0 {
         return Err(Error::NotErased);
     }
+    if rc & (bindings::HAL_FLASH_ERROR_WRP | bindings::HAL_FLASH_ERROR_RD) != 0 {
+        return Err(Error::Protected);
+    }
+    if rc & bindings::HAL_FLASH_ERROR_ECCD != 0 {
+        return Err(Error::EccError);
+    }
+    if rc
+        & (bindings::HAL_FLASH_ERROR_PGA
+            | bindings::HAL_FLASH_ERROR_PGS
+            | bindings::HAL_FLASH_ERROR_SIZ
+            | bindings::HAL_FLASH_ERROR_MIS
+            | bindings::HAL_FLASH_ERROR_FAST
+            | bindings::HAL_FLASH_ERROR_OPTV)
+        != 0
+    {
+        return Err(Error::ProgrammingFailed);
+    }
 
     Err(Error::Io)
 }
@@ -120,9 +147,8 @@ pub fn erase_page(page_start: FlashPageStart, timeout_ms: u32, lock_wait_ms: u32
 /// Program 64-bit doublewords starting at `start` (must be 8-byte-aligned).
 /// The target range must already be erased.
 ///
-/// Accepts any type that converts into `FlashAddress` — pass a `FlashAddress`
-/// directly, a `FlashPageStart` (always page- and word-aligned), or a
-/// `FlashOffset`.
+/// Accepts any type that converts into `FlashAddress` — pass a `FlashAddress`,
+/// `FlashPageStart`, or `FlashOffset`.
 pub fn program<A: Into<FlashAddress>>(
     start: A,
     data: &[u64],

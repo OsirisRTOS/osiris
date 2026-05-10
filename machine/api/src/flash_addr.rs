@@ -1,18 +1,7 @@
-//! Generic flash address arithmetic.
-//!
-//! Backends (`hal-arm`, `hal-testing`, …) implement [`Flash`] to plug their
-//! chip-specific queries (`flash_base`, `total_size`, `page_size`,
-//! `page_count`) into the validating constructors of the shared newtypes.
-//!
-//! Each backend then re-exports type aliases so user code calls
-//! `hal::flash::FlashAddress::new(addr)` without seeing the generic.
-
 use core::marker::PhantomData;
 
-/// Forward `fmt` and `Hash` to the wrapped `usize`. Lets a newtype be used
-/// with `{:x}` / `{:#X}` / `{:b}` / `{}` / `HashMap` keys without being a
-/// `usize` itself. `Debug` is left to each type so the output reads as
-/// `FlashAddress(0x…)` rather than the bare integer.
+/// Forward `fmt`/`Hash` to the inner `usize`. `Debug` is left to each type so
+/// the output reads as `FlashAddress(0x…)` rather than the bare integer.
 macro_rules! forward_usize_traits {
     ($t:ident) => {
         impl<F: Flash> core::fmt::Display for $t<F> {
@@ -60,11 +49,22 @@ pub enum Error {
     DoubleUnlock,
     InvalidPage,
     TimedOut,
+    /// Internal sentinel: something the generic layer expected from the HAL
+    /// (e.g. `page_size() > 0`) was missing. Not for hardware-reported failures.
     Io,
     NotFound,
     /// The DT marked this partition `read-only`; mutating operations
     /// (erase/program/write) refuse to touch it.
     ReadOnly,
+    /// Hardware refused the access because the cells are write- or
+    /// read-protected (option-byte WRP, RDP, …).
+    Protected,
+    /// Hardware programming operation failed for a sequencing/alignment/size
+    /// reason — typically "tried to program already-programmed cells" but
+    /// also covers fast-program failures.
+    ProgrammingFailed,
+    /// ECC double-bit error detected during read.
+    EccError,
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -74,8 +74,12 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub trait Flash {
     fn flash_base() -> usize;
     fn total_size() -> usize;
+    /// Erase granularity (bytes); erase ops must be page-aligned.
     fn page_size() -> usize;
     fn page_count() -> usize;
+    /// Program granularity (bytes); `program`/`write` addresses and lengths
+    /// must be a multiple of this.
+    fn write_unit_bytes() -> usize;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,7 +93,9 @@ pub struct FlashAddress<F: Flash>(usize, PhantomData<F>);
 impl<F: Flash> FlashAddress<F> {
     pub fn new(address: usize) -> Result<Self> {
         let base = F::flash_base();
-        let end = base.checked_add(F::total_size()).ok_or(Error::OutOfBounds)?;
+        let end = base
+            .checked_add(F::total_size())
+            .ok_or(Error::OutOfBounds)?;
         if address < base || address >= end {
             return Err(Error::OutOfBounds);
         }
@@ -312,7 +318,9 @@ pub struct FlashPageStart<F: Flash>(usize, PhantomData<F>);
 impl<F: Flash> FlashPageStart<F> {
     pub fn new(address: usize) -> Result<Self> {
         let base = F::flash_base();
-        let end = base.checked_add(F::total_size()).ok_or(Error::OutOfBounds)?;
+        let end = base
+            .checked_add(F::total_size())
+            .ok_or(Error::OutOfBounds)?;
         if address < base || address >= end {
             return Err(Error::OutOfBounds);
         }
@@ -326,7 +334,10 @@ impl<F: Flash> FlashPageStart<F> {
         if page_index >= F::page_count() {
             return Err(Error::InvalidPage);
         }
-        Ok(Self(F::flash_base() + page_index * F::page_size(), PhantomData))
+        Ok(Self(
+            F::flash_base() + page_index * F::page_size(),
+            PhantomData,
+        ))
     }
 
     pub fn as_usize(self) -> usize {
@@ -337,27 +348,20 @@ impl<F: Flash> FlashPageStart<F> {
         (self.0 - F::flash_base()) / F::page_size()
     }
 
-    /// Page that follows this one. Returns `Err(InvalidPage)` past the last page.
     pub fn next(self) -> Result<Self> {
         Self::from_page_index(self.page_index() + 1)
     }
 
-    /// Page that precedes this one. Returns `Err(InvalidPage)` if already at index 0.
     pub fn prev(self) -> Result<Self> {
         let idx = self.page_index().checked_sub(1).ok_or(Error::InvalidPage)?;
         Self::from_page_index(idx)
     }
 
-    /// Move forward by `n` pages. Returns `Err(InvalidPage)` past the last page.
     pub fn add_pages(self, n: usize) -> Result<Self> {
-        let idx = self
-            .page_index()
-            .checked_add(n)
-            .ok_or(Error::InvalidPage)?;
+        let idx = self.page_index().checked_add(n).ok_or(Error::InvalidPage)?;
         Self::from_page_index(idx)
     }
 
-    /// Move backward by `n` pages. Returns `Err(InvalidPage)` on underflow.
     pub fn sub_pages(self, n: usize) -> Result<Self> {
         let idx = self.page_index().checked_sub(n).ok_or(Error::InvalidPage)?;
         Self::from_page_index(idx)

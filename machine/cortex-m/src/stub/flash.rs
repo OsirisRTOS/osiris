@@ -15,6 +15,9 @@ pub fn page_size() -> usize {
 pub fn page_count() -> usize {
     0
 }
+pub fn write_unit_bytes() -> usize {
+    core::mem::size_of::<u64>()
+}
 
 pub struct TestingFlash;
 
@@ -30,6 +33,9 @@ impl hal_api::flash_addr::Flash for TestingFlash {
     }
     fn page_count() -> usize {
         page_count()
+    }
+    fn write_unit_bytes() -> usize {
+        write_unit_bytes()
     }
 }
 

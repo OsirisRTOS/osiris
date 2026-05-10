@@ -16,6 +16,20 @@
 
 #define ONE_MEGABYTE (1024 * 1024)
 
+// Translate the result of FLASH_WaitForLastOperation / HAL_FLASH_Program into
+// an osiris flash error code. Masks HAL_FLASH_GetError() so non-error status
+// bits (PEMPTY etc.) don't propagate.
+static uint32_t status_to_err(HAL_StatusTypeDef status) {
+  if (status == HAL_OK) {
+    return FLASH_OK;
+  }
+  if (status == HAL_TIMEOUT) {
+    return ERR_FLASH_TIMEOUT;
+  }
+  uint32_t err = HAL_FLASH_GetError() & FLASH_FLAG_ALL_ERRORS;
+  return err ? err : FLASH_OK;
+}
+
 // Whether the flash busy bit is set - true if busy, false otherwise
 bool flash_is_busy(void) { return __HAL_FLASH_GET_FLAG(FLASH_FLAG_BSY) != 0U; }
 
@@ -111,14 +125,16 @@ uint32_t flash_erase(uint32_t page_index, uint32_t timeout_ms) {
   }
 #endif
 
+  // HAL's low-level FLASH_PageErase sets FLASH_CR.PER/PNB/BKER and starts the
+  // erase but doesn't clear them on exit — the public wrapper (which we
+  // bypass) does. Leaving PER set makes any subsequent HAL_FLASH_Program
+  // raise PGS because the hardware sees PER|PG simultaneously.
+  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS);
   FLASH_PageErase(page_index, bank);
-
   HAL_StatusTypeDef status = FLASH_WaitForLastOperation(timeout_ms);
-  if (status != HAL_OK) {
-    return HAL_FLASH_GetError();
-  }
+  CLEAR_BIT(FLASH->CR, FLASH_CR_PER);
 
-  return HAL_OK;
+  return status_to_err(status);
 }
 
 // Program `length` doublewords (uint64_t) at `flash_address` (an absolute
@@ -140,6 +156,8 @@ uint32_t flash_program(uint32_t flash_address, const uint64_t *data,
     return ERR_FLASH_BUSY;
   }
 
+  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS);
+
   uint32_t tickstart = HAL_GetTick();
 
   for (uint32_t dw_written = 0; dw_written < length; dw_written++) {
@@ -158,7 +176,10 @@ uint32_t flash_program(uint32_t flash_address, const uint64_t *data,
     __set_PRIMASK(primask);
 
     if (status != HAL_OK) {
-      return HAL_FLASH_GetError();
+      uint32_t err = status_to_err(status);
+      if (err != FLASH_OK) {
+        return err;
+      }
     }
 
     elapsed = HAL_GetTick() - tickstart;
@@ -167,7 +188,10 @@ uint32_t flash_program(uint32_t flash_address, const uint64_t *data,
     }
     status = FLASH_WaitForLastOperation(timeout_ms - elapsed);
     if (status != HAL_OK) {
-      return HAL_FLASH_GetError();
+      uint32_t err = status_to_err(status);
+      if (err != FLASH_OK) {
+        return err;
+      }
     }
   }
 
