@@ -5,5 +5,4 @@ pub mod spi;
 pub fn init() {
     i2c::init();
     spi::init();
-    can::init();
 }

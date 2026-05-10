@@ -69,5 +69,3 @@ impl Device {
         wait::unregister_waiter(self.slot());
     }
 }
-
-pub fn init() {}
