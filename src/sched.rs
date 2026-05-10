@@ -291,6 +291,19 @@ impl<const N: usize> Scheduler<N> {
         })
     }
 
+    /// Wake a thread by raw `UId::as_usize()`. Returns the same errors as
+    /// [`kick`](Self::kick) — notably "not in wakeup tree" if the target
+    /// is currently runnable. The lookup uses only the `uid` field, so
+    /// the synthetic `tid` is a placeholder.
+    pub fn kick_by_uid(&mut self, uid: usize) -> Result<()> {
+        let lookup_uid = thread::UId::new(uid, thread::Id::new(0, crate::sched::task::UId::new(0)));
+        self.kick(lookup_uid)
+    }
+
+    pub fn current_uid(&self) -> Option<usize> {
+        self.current.map(|uid| uid.as_usize())
+    }
+
     /// This will just remove the thread from the scheduler, but it will not trigger a reschedule, even if the thread is currently running.
     ///
     /// Returns an error if the thread does not exist, or if the thread is not currently enqueued in any scheduler.
@@ -441,6 +454,23 @@ pub fn reschedule() {
     }
 
     hal::Machine::trigger_reschedule();
+}
+
+/// Wake a thread by raw `uid` from ISR context. `sched::with` disables
+/// IRQs internally, and the trailing `reschedule()` arms PendSV so the
+/// woken thread is picked on IRQ-exit. Errors are swallowed — a
+/// not-yet-sleeping target is the common case and the consumer's bounded
+/// sleep loop covers it.
+///
+/// Exported as a C-FFI symbol so consumers that run in interrupt context
+/// can avoid the SVC path, which would HardFault from handler mode on
+/// Cortex-M.
+#[unsafe(no_mangle)]
+pub extern "C" fn kick_thread(uid: u32) {
+    with(|sched| {
+        let _ = sched.kick_by_uid(uid as usize);
+    });
+    reschedule();
 }
 
 /// This will be called by the architecture-specific code to enter the scheduler. It will land the current thread, pick the next thread to run, and return its context and task.

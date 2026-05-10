@@ -7,8 +7,7 @@ unsigned long long systick_freq(void);
 void init_hal(void);
 
 // uart.c
-int init_debug_uart(void);
-int write_debug_uart(const char *buf, int len);
+#include "uart.h"
 
 // spi.c
 typedef struct

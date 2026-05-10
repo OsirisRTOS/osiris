@@ -1,5 +1,6 @@
 pub mod i2c;
 pub mod spi;
+pub mod uart;
 
 pub fn init() {
     i2c::init();

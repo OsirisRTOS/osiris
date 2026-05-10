@@ -3,3 +3,4 @@ pub mod print;
 pub mod sched;
 pub mod spi;
 pub mod time;
+pub mod uart;

@@ -6,6 +6,7 @@ pub mod device_tree;
 pub mod i2c;
 pub mod sched;
 pub mod spi;
+pub mod uart;
 
 pub type Machine = StubMachine;
 pub type Stack = sched::StubStack;

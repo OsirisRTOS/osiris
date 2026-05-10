@@ -1,5 +1,3 @@
-use core::ffi::c_char;
-
 pub use hal_api::*;
 
 pub mod asm;
@@ -9,6 +7,7 @@ pub mod i2c;
 pub mod panic;
 pub mod sched;
 pub mod spi;
+pub mod uart;
 
 mod crit;
 mod print;
@@ -39,20 +38,20 @@ impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
             bindings::init_hal();
-            bindings::init_debug_uart();
+        }
+        let _ = uart::init_console_from_dt();
+        unsafe {
             bindings::dwt_init();
         }
     }
 
     fn print(s: &str) -> Result<()> {
         let state = asm::disable_irq_save();
-
-        if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0)
-        {
-            asm::enable_irq_restr(state);
+        let ok = uart::console_write(s.as_bytes()).is_ok();
+        asm::enable_irq_restr(state);
+        if ok {
             Ok(())
         } else {
-            asm::enable_irq_restr(state);
             Err(hal_api::PosixError::EIO)
         }
     }

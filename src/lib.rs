@@ -53,6 +53,8 @@ pub unsafe extern "C" fn kernel_init() -> ! {
     sched::init(kaddr_space);
     kprintln!("Scheduler initialized.");
 
+    drivers::uart::wait::init();
+
     idle::init();
     kprintln!("Idle thread initialized.");
 
