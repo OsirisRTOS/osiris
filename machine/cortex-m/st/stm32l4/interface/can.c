@@ -45,9 +45,14 @@ static uint32_t s_tx_attempts[CAN_SLOT_COUNT];
 static uint32_t s_tx_hal_fails[CAN_SLOT_COUNT];
 static uint32_t s_tx_mbx_timeouts[CAN_SLOT_COUNT];
 static uint32_t s_rx_frames[CAN_SLOT_COUNT];
+static uint32_t s_rx_frames_fifo0[CAN_SLOT_COUNT];
+static uint32_t s_rx_frames_fifo1[CAN_SLOT_COUNT];
 static uint32_t s_rx_irqs[CAN_SLOT_COUNT];
 static uint32_t s_rx_drops[CAN_SLOT_COUNT];
 static uint32_t s_rx_hw_ovr[CAN_SLOT_COUNT];
+static uint32_t s_rx_hw_ovr_fifo0[CAN_SLOT_COUNT];
+static uint32_t s_rx_hw_ovr_fifo1[CAN_SLOT_COUNT];
+static uint32_t s_rx_peak_fmp;
 static uint32_t s_rx_get_fails[CAN_SLOT_COUNT];
 
 static struct
@@ -367,9 +372,23 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
     const uint32_t fmp_flag = is_fifo0 ? CAN_RF0R_FMP0 : CAN_RF1R_FMP1;
     const int kind = is_fifo0 ? CAN_IRQ_RX0 : CAN_IRQ_RX1;
 
+    const uint32_t fmp_now = (*rfr & fmp_flag);
+    if (fmp_now > s_rx_peak_fmp)
+    {
+        s_rx_peak_fmp = fmp_now;
+    }
+
     if ((*rfr & fovr_flag) != 0u)
     {
         s_rx_hw_ovr[slot_idx]++;
+        if (is_fifo0)
+        {
+            s_rx_hw_ovr_fifo0[slot_idx]++;
+        }
+        else
+        {
+            s_rx_hw_ovr_fifo1[slot_idx]++;
+        }
         const uint32_t fov_clear = is_fifo0 ? CAN_FLAG_FOV0 : CAN_FLAG_FOV1;
         __HAL_CAN_CLEAR_FLAG(hcan, fov_clear);
     }
@@ -389,6 +408,14 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
         }
 
         s_rx_frames[slot_idx]++;
+        if (is_fifo0)
+        {
+            s_rx_frames_fifo0[slot_idx]++;
+        }
+        else
+        {
+            s_rx_frames_fifo1[slot_idx]++;
+        }
 
         if (rx->count >= CAN_RX_BUF_SIZE)
         {
@@ -548,7 +575,12 @@ void can_diag(uint8_t slot, can_diag_t *out)
     out->tx_mbx_timeouts = s_tx_mbx_timeouts[slot];
     out->rx_irqs = s_rx_irqs[slot];
     out->rx_frames = s_rx_frames[slot];
+    out->rx_frames_fifo0 = s_rx_frames_fifo0[slot];
+    out->rx_frames_fifo1 = s_rx_frames_fifo1[slot];
     out->rx_drops = s_rx_drops[slot];
     out->rx_hw_ovr = s_rx_hw_ovr[slot];
+    out->rx_hw_ovr_fifo0 = s_rx_hw_ovr_fifo0[slot];
+    out->rx_hw_ovr_fifo1 = s_rx_hw_ovr_fifo1[slot];
+    out->rx_peak_fmp = s_rx_peak_fmp;
     out->rx_get_fails = s_rx_get_fails[slot];
 }

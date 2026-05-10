@@ -96,8 +96,13 @@ pub struct Diag {
     pub tx_mbx_timeouts: u32,
     pub rx_irqs: u32,
     pub rx_frames: u32,
+    pub rx_frames_fifo0: u32,
+    pub rx_frames_fifo1: u32,
     pub rx_drops: u32,
     pub rx_hw_ovr: u32,
+    pub rx_hw_ovr_fifo0: u32,
+    pub rx_hw_ovr_fifo1: u32,
+    pub rx_peak_fmp: u32,
     pub rx_get_fails: u32,
 }
 

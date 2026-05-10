@@ -286,8 +286,13 @@ pub struct Diag {
     pub tx_mbx_timeouts: u32,
     pub rx_irqs: u32,
     pub rx_frames: u32,
+    pub rx_frames_fifo0: u32,
+    pub rx_frames_fifo1: u32,
     pub rx_drops: u32,
     pub rx_hw_ovr: u32,
+    pub rx_hw_ovr_fifo0: u32,
+    pub rx_hw_ovr_fifo1: u32,
+    pub rx_peak_fmp: u32,
     pub rx_get_fails: u32,
 }
 
@@ -308,8 +313,13 @@ pub fn diag(dev: &Device) -> Diag {
         tx_mbx_timeouts: 0,
         rx_irqs: 0,
         rx_frames: 0,
+        rx_frames_fifo0: 0,
+        rx_frames_fifo1: 0,
         rx_drops: 0,
         rx_hw_ovr: 0,
+        rx_hw_ovr_fifo0: 0,
+        rx_hw_ovr_fifo1: 0,
+        rx_peak_fmp: 0,
         rx_get_fails: 0,
     };
     unsafe { bindings::can_diag(dev.0.index, &mut raw) };
@@ -324,8 +334,13 @@ pub fn diag(dev: &Device) -> Diag {
         tx_mbx_timeouts: raw.tx_mbx_timeouts,
         rx_irqs: raw.rx_irqs,
         rx_frames: raw.rx_frames,
+        rx_frames_fifo0: raw.rx_frames_fifo0,
+        rx_frames_fifo1: raw.rx_frames_fifo1,
         rx_drops: raw.rx_drops,
         rx_hw_ovr: raw.rx_hw_ovr,
+        rx_hw_ovr_fifo0: raw.rx_hw_ovr_fifo0,
+        rx_hw_ovr_fifo1: raw.rx_hw_ovr_fifo1,
+        rx_peak_fmp: raw.rx_peak_fmp,
         rx_get_fails: raw.rx_get_fails,
     }
 }

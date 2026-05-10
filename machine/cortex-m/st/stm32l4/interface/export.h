@@ -196,8 +196,13 @@ typedef struct
 	uint32_t tx_mbx_timeouts;
 	uint32_t rx_irqs;
 	uint32_t rx_frames;
+	uint32_t rx_frames_fifo0;
+	uint32_t rx_frames_fifo1;
 	uint32_t rx_drops;
 	uint32_t rx_hw_ovr;
+	uint32_t rx_hw_ovr_fifo0;
+	uint32_t rx_hw_ovr_fifo1;
+	uint32_t rx_peak_fmp;
 	uint32_t rx_get_fails;
 } can_diag_t;
 void can_diag(uint8_t slot, can_diag_t *out);
