@@ -4,13 +4,13 @@
 #![cfg_attr(freestanding, no_std)]
 
 #[macro_use]
-mod macros;
-#[macro_use]
 mod error;
 mod faults;
 mod idle;
 mod irq;
 mod mem;
+
+#[macro_use]
 mod print;
 mod types;
 mod uspace;
@@ -45,19 +45,19 @@ pub unsafe extern "C" fn kernel_init() -> ! {
 
     // Initialize the memory allocator.
     let kaddr_space = mem::init_memory();
-    kprintln!("Memory initialized.");
+    kprint!("Memory initialized.\n");
 
     drivers::init();
-    kprintln!("Drivers initialized.");
+    kprint!("Drivers initialized.\n");
 
     sched::init(kaddr_space);
-    kprintln!("Scheduler initialized.");
+    kprint!("Scheduler initialized.\n");
 
     idle::init();
-    kprintln!("Idle thread initialized.");
+    kprint!("Idle thread initialized.\n");
 
     let (cyc, _ns) = hal::Machine::bench_end();
-    kprintln!("Kernel init took {} cycles.", cyc);
+    kprint!("Kernel init took {} cycles.\n", cyc);
 
     // Start the init application.
     uspace::init_app();
@@ -68,15 +68,15 @@ pub unsafe extern "C" fn kernel_init() -> ! {
 }
 
 pub fn panic(info: &core::panic::PanicInfo) -> ! {
-    kprintln!("**************************** PANIC ****************************");
-    kprintln!("");
-    kprintln!("Message: {}", info.message());
+    kprint!("**************************** PANIC ****************************\n");
+    kprint!("\n");
+    kprint!("Message: {}\n", info.message());
 
     if let Some(location) = info.location() {
-        kprintln!("Location: {}:{}", location.file(), location.line());
+        kprint!("Location: {}:{}\n", location.file(), location.line());
     }
 
-    kprintln!("**************************** PANIC ****************************");
+    kprint!("**************************** PANIC ****************************\n");
 
     hal::Machine::panic_handler(info);
 }

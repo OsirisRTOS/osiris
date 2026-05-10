@@ -17,6 +17,13 @@ pub fn mono_freq() -> u64 {
     hal::Machine::monotonic_freq()
 }
 
+pub fn to_secs(cnt: u64, hz: u32, digits: u8) -> (u64, u64) {
+    let secs = cnt / (hz as u64);
+    let rem = cnt % (hz as u64);
+    let frac = (rem * 10_u64.pow(digits as u32)) / (hz as u64);
+    (secs, frac)
+}
+
 /// cbindgen:ignore
 /// cbindgen:no-export
 #[unsafe(no_mangle)]
