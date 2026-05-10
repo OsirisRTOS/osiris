@@ -175,13 +175,32 @@ extern "C" fn kernel_dispatch(kind: crate::hal::uart::Irq, ctx: *mut ()) {
     crate::sched::reschedule();
 }
 
-/// Register the kernel dispatcher with the HAL for every populated slot.
+fn vector_dispatch(_ctx: *mut u8, _vector: usize, userdata: Option<usize>) {
+    let Some(slot) = userdata else {
+        return;
+    };
+    crate::hal::uart::dispatch_by_slot(slot as u8);
+}
+
 /// Call once during osiris boot, after the console has been initialised.
 pub fn init() {
     for slot in 0..UART_SLOT_COUNT as u8 {
         let Ok(dev) = crate::hal::uart::get_by_index(slot) else {
             continue;
         };
+
+        // IPSR = NVIC line + 16 on Cortex-M.
+        let vector = dev.irqn() as usize + 16;
+        unsafe {
+            if let Err(e) = crate::irq::register_irq(vector, vector_dispatch, Some(slot as usize))
+            {
+                panic!(
+                    "UART wait dispatcher: failed to register IRQ vector {} for slot {} ({:?})",
+                    vector, slot, e
+                );
+            }
+        }
+
         let ctx = &UART_DEVICES[slot as usize] as *const _ as *mut ();
         match crate::hal::uart::register_irq_handler(&dev, Some(kernel_dispatch), ctx) {
             Ok(()) => {}

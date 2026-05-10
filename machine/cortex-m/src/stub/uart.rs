@@ -40,6 +40,9 @@ impl Device {
     pub fn instance(&self) -> usize {
         0
     }
+    pub fn irqn(&self) -> u8 {
+        0
+    }
 }
 
 pub fn get_by_index(_idx: u8) -> Result<Device> {
@@ -77,6 +80,8 @@ pub fn register_irq_handler(
 ) -> Result<()> {
     Err(Error::NotInitialized)
 }
+
+pub fn dispatch_by_slot(_slot: u8) {}
 
 /// Mirror of the `hal_arm::uart::console_entry` API; testing has no
 /// device-tree-driven console, so always returns `None`.

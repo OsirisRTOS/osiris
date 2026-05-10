@@ -1,12 +1,10 @@
-use super::device_tree;
-#[cfg(not(feature = "host"))]
 use super::bindings;
+use super::device_tree;
 
 pub(crate) fn console_entry() -> Option<&'static device_tree::UartRegistryEntry> {
     device_tree::CONSOLE_UART.map(|i| &device_tree::UART_REGISTRY[i])
 }
 
-#[cfg(not(feature = "host"))]
 pub(crate) fn init_console_from_dt() -> Result<()> {
     let Some(entry) = console_entry() else {
         return Ok(());
@@ -19,12 +17,6 @@ pub(crate) fn init_console_from_dt() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "host")]
-pub(crate) fn init_console_from_dt() -> Result<()> {
-    Ok(())
-}
-
-#[cfg(not(feature = "host"))]
 pub(crate) fn console_write(buf: &[u8]) -> Result<()> {
     let Some(entry) = console_entry() else {
         return Ok(());
@@ -34,21 +26,11 @@ pub(crate) fn console_write(buf: &[u8]) -> Result<()> {
     }
     // HAL_MAX_DELAY: console writes never give up.
     let rc = unsafe {
-        bindings::uart_transmit_blocking(
-            entry.instance,
-            buf.as_ptr(),
-            buf.len() as i32,
-            u32::MAX,
-        )
+        bindings::uart_transmit_blocking(entry.instance, buf.as_ptr(), buf.len() as i32, u32::MAX)
     };
     if rc < 0 {
         return Err(from_c_rc(rc));
     }
-    Ok(())
-}
-
-#[cfg(feature = "host")]
-pub(crate) fn console_write(_buf: &[u8]) -> Result<()> {
     Ok(())
 }
 
@@ -66,7 +48,6 @@ pub enum Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[cfg(not(feature = "host"))]
 fn from_c_rc(rc: i32) -> Error {
     match rc {
         -1 => Error::InvalidArgument,
@@ -93,6 +74,10 @@ impl Device {
     pub fn instance(&self) -> usize {
         self.0.instance
     }
+
+    pub fn irqn(&self) -> u8 {
+        self.0.irqn
+    }
 }
 
 #[repr(u32)]
@@ -116,7 +101,6 @@ pub fn get(compatible: &str, ordinal: usize) -> Result<Device> {
         .ok_or(Error::NoSuchDevice)
 }
 
-#[cfg(not(feature = "host"))]
 fn cfg_from_entry(
     entry: &device_tree::UartRegistryEntry,
     overrides: &Overrides,
@@ -168,104 +152,62 @@ pub struct Overrides {
 }
 
 pub fn init(dev: &Device, overrides: &Overrides) -> Result<()> {
-    #[cfg(feature = "host")]
-    {
-        let _ = (dev, overrides);
-        return Ok(());
+    let cfg = cfg_from_entry(dev.0, overrides);
+    let rc = unsafe { bindings::uart_init(&cfg as *const _) };
+    if rc < 0 {
+        return Err(from_c_rc(rc));
     }
-    #[cfg(not(feature = "host"))]
-    {
-        let cfg = cfg_from_entry(dev.0, overrides);
-        let rc = unsafe { bindings::uart_init(&cfg as *const _) };
-        if rc < 0 {
-            return Err(from_c_rc(rc));
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 pub fn deinit(dev: &Device) -> Result<()> {
-    #[cfg(feature = "host")]
-    {
-        let _ = dev;
-        return Ok(());
+    let rc = unsafe { bindings::uart_deinit(dev.0.instance) };
+    if rc < 0 {
+        return Err(from_c_rc(rc));
     }
-    #[cfg(not(feature = "host"))]
-    {
-        let rc = unsafe { bindings::uart_deinit(dev.0.instance) };
-        if rc < 0 {
-            return Err(from_c_rc(rc));
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 pub fn transmit_blocking(dev: &Device, buf: &[u8], timeout_ms: u32) -> Result<()> {
-    #[cfg(feature = "host")]
-    {
-        let _ = (dev, buf, timeout_ms);
+    if buf.is_empty() {
         return Ok(());
     }
-    #[cfg(not(feature = "host"))]
-    {
-        if buf.is_empty() {
-            return Ok(());
-        }
-        let rc = unsafe {
-            bindings::uart_transmit_blocking(
-                dev.0.instance,
-                buf.as_ptr(),
-                buf.len() as i32,
-                timeout_ms,
-            )
-        };
-        if rc < 0 {
-            return Err(from_c_rc(rc));
-        }
-        Ok(())
+    let rc = unsafe {
+        bindings::uart_transmit_blocking(
+            dev.0.instance,
+            buf.as_ptr(),
+            buf.len() as i32,
+            timeout_ms,
+        )
+    };
+    if rc < 0 {
+        return Err(from_c_rc(rc));
     }
+    Ok(())
 }
 
 pub fn transmit_nb(dev: &Device, buf: &[u8]) -> Result<usize> {
-    #[cfg(feature = "host")]
-    {
-        let _ = (dev, buf);
+    if buf.is_empty() {
         return Ok(0);
     }
-    #[cfg(not(feature = "host"))]
-    {
-        if buf.is_empty() {
-            return Ok(0);
-        }
-        let rc = unsafe {
-            bindings::uart_transmit_nb(dev.0.instance, buf.as_ptr(), buf.len() as i32)
-        };
-        if rc < 0 {
-            return Err(from_c_rc(rc));
-        }
-        Ok(rc as usize)
+    let rc =
+        unsafe { bindings::uart_transmit_nb(dev.0.instance, buf.as_ptr(), buf.len() as i32) };
+    if rc < 0 {
+        return Err(from_c_rc(rc));
     }
+    Ok(rc as usize)
 }
 
 pub fn receive_nb(dev: &Device, buf: &mut [u8]) -> Result<usize> {
-    #[cfg(feature = "host")]
-    {
-        let _ = (dev, buf);
+    if buf.is_empty() {
         return Ok(0);
     }
-    #[cfg(not(feature = "host"))]
-    {
-        if buf.is_empty() {
-            return Ok(0);
-        }
-        let rc = unsafe {
-            bindings::uart_receive_nb(dev.0.instance, buf.as_mut_ptr(), buf.len() as i32)
-        };
-        if rc < 0 {
-            return Err(from_c_rc(rc));
-        }
-        Ok(rc as usize)
+    let rc =
+        unsafe { bindings::uart_receive_nb(dev.0.instance, buf.as_mut_ptr(), buf.len() as i32) };
+    if rc < 0 {
+        return Err(from_c_rc(rc));
     }
+    Ok(rc as usize)
 }
 
 pub fn register_irq_handler(
@@ -273,24 +215,20 @@ pub fn register_irq_handler(
     handler: Option<IrqHandler>,
     ctx: *mut (),
 ) -> Result<()> {
-    #[cfg(feature = "host")]
-    {
-        let _ = (dev, handler, ctx);
-        return Ok(());
+    // SAFETY: `IrqHandler = extern "C" fn(Irq, *mut ())` is ABI-compatible
+    // with `uart_irq_handler_fn` because `Irq` is `#[repr(u32)]` and `ctx`
+    // is `*mut () ↔ void *`.
+    let raw: bindings::uart_irq_handler_fn = unsafe { core::mem::transmute(handler) };
+    let rc =
+        unsafe { bindings::uart_set_irq_handler(dev.0.instance, raw, ctx as *mut core::ffi::c_void) };
+    if rc < 0 {
+        return Err(from_c_rc(rc));
     }
-    #[cfg(not(feature = "host"))]
-    {
-        // SAFETY: `IrqHandler = extern "C" fn(Irq, *mut ())` is ABI-compatible
-        // with `uart_irq_handler_fn` because `Irq` is `#[repr(u32)]` and `ctx`
-        // is `*mut () ↔ void *`.
-        let raw: bindings::uart_irq_handler_fn = unsafe { core::mem::transmute(handler) };
-        let rc = unsafe {
-            bindings::uart_set_irq_handler(dev.0.instance, raw, ctx as *mut core::ffi::c_void)
-        };
-        if rc < 0 {
-            return Err(from_c_rc(rc));
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
+pub fn dispatch_by_slot(slot: u8) {
+    unsafe {
+        bindings::uart_dispatch_by_slot(slot);
+    }
+}

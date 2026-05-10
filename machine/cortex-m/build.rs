@@ -330,13 +330,6 @@ fn main() {
         panic!("Failed to generate device tree scripts: {e}");
     }
 
-    if let Err(e) = fs::write(
-        out.join("uart_trampolines.h"),
-        dtgen::generate_uart_trampolines_h(&dt),
-    ) {
-        panic!("Failed to write uart_trampolines.h: {e}");
-    }
-
     for (vendor, name) in hal_builder::dt::soc(&dt) {
         let hal = Path::new(vendor).join(name);
 

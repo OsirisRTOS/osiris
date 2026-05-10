@@ -22,9 +22,3 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
 pub fn generate_ld(dt: &DeviceTree) -> Result<String, String> {
     ldgen::generate_ld(dt)
 }
-
-/// Codegen a C header overriding `__irq_<N>_handler` for each DT-declared
-/// UART node. Consumed by `interface/uart.c` via `#include`.
-pub fn generate_uart_trampolines_h(dt: &DeviceTree) -> String {
-    codegen::generate_uart_trampolines_h(dt)
-}

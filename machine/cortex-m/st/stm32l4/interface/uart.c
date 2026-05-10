@@ -498,5 +498,3 @@ void uart_dispatch_by_slot(uint8_t slot_index)
         return;
     HAL_UART_IRQHandler(&slot->huart);
 }
-
-#include "uart_trampolines.h"
