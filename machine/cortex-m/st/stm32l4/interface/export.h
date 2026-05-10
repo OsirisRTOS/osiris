@@ -198,6 +198,7 @@ typedef struct
 	uint32_t rx_frames;
 	uint32_t rx_drops;
 	uint32_t rx_hw_ovr;
+	uint32_t rx_get_fails;
 } can_diag_t;
 void can_diag(uint8_t slot, can_diag_t *out);
 

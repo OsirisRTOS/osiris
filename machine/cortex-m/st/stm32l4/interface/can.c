@@ -48,6 +48,7 @@ static uint32_t s_rx_frames[CAN_SLOT_COUNT];
 static uint32_t s_rx_irqs[CAN_SLOT_COUNT];
 static uint32_t s_rx_drops[CAN_SLOT_COUNT];
 static uint32_t s_rx_hw_ovr[CAN_SLOT_COUNT];
+static uint32_t s_rx_get_fails[CAN_SLOT_COUNT];
 
 static struct
 {
@@ -383,6 +384,7 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx, uint32_t fifo)
         volatile can_frame_t *slot = &rx->frames[rx->tail];
         if (HAL_CAN_GetRxMessage(hcan, fifo, &hdr, (void*)slot->data) != HAL_OK)
         {
+            s_rx_get_fails[slot_idx]++;
             break;
         }
 
@@ -548,4 +550,5 @@ void can_diag(uint8_t slot, can_diag_t *out)
     out->rx_frames = s_rx_frames[slot];
     out->rx_drops = s_rx_drops[slot];
     out->rx_hw_ovr = s_rx_hw_ovr[slot];
+    out->rx_get_fails = s_rx_get_fails[slot];
 }

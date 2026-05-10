@@ -288,6 +288,7 @@ pub struct Diag {
     pub rx_frames: u32,
     pub rx_drops: u32,
     pub rx_hw_ovr: u32,
+    pub rx_get_fails: u32,
 }
 
 #[inline]
@@ -309,6 +310,7 @@ pub fn diag(dev: &Device) -> Diag {
         rx_frames: 0,
         rx_drops: 0,
         rx_hw_ovr: 0,
+        rx_get_fails: 0,
     };
     unsafe { bindings::can_diag(dev.0.index, &mut raw) };
     Diag {
@@ -324,5 +326,6 @@ pub fn diag(dev: &Device) -> Diag {
         rx_frames: raw.rx_frames,
         rx_drops: raw.rx_drops,
         rx_hw_ovr: raw.rx_hw_ovr,
+        rx_get_fails: raw.rx_get_fails,
     }
 }
