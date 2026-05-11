@@ -395,8 +395,9 @@ impl<const N: usize> Scheduler<N> {
 /// This function provides safe access to the global scheduler.
 /// It disables interrupts and locks the scheduler. Use with caution!
 pub fn with<T, F: FnOnce(&mut GlobalScheduler) -> T>(f: F) -> T {
-    // Full cpsid_i: the ISR-callable `kick_thread` re-enters `with`, so a
-    // weaker BASEPRI mask would deadlock if an ISR preempted a holder.
+    // Must mask *all* interrupts: the ISR-callable `kick_thread` re-enters
+    // `with`, so any priority-selective mask would deadlock if an ISR
+    // preempted a holder.
     sync::atomic::irq_free(|| {
         let mut sched = SCHED.lock();
         f(&mut sched)
@@ -455,8 +456,8 @@ pub fn reschedule() {
 }
 
 /// Wake a thread by raw `uid`. C-FFI so ISR-context callers can use it
-/// without SVC (handler-mode SVC HardFaults on Cortex-M). Errors are
-/// swallowed: not-yet-sleeping is normal.
+/// without going through the syscall path. Errors are swallowed:
+/// not-yet-sleeping is normal.
 #[unsafe(no_mangle)]
 pub extern "C" fn kick_thread(uid: u32) {
     with(|sched| {

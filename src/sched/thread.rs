@@ -288,7 +288,7 @@ pub struct ThreadList;
 
 pub struct Attributes {
     pub entry: EntryFn,
-    /// R0 argument delivered to `entry`; caller owns lifetime.
+    /// Delivered to `entry` as its sole argument; caller owns the pointee's lifetime.
     pub ctx: *mut core::ffi::c_void,
     pub fin: Option<FinFn>,
     pub attrs: Option<uapi::sched::RtAttrs>,

@@ -7,7 +7,7 @@ pub use hal::can::{BusState, BusStatus, Diag, Error, Filter, Frame, Mode};
 
 pub type Result<T> = hal::can::Result<T>;
 
-/// STM32L4 caps at two bxCAN controllers; the device tree may populate fewer.
+/// Max CAN controllers the kernel tracks; the device tree may populate fewer.
 const CAN_BUS_MAX: usize = 2;
 
 pub struct Bus {
@@ -51,8 +51,9 @@ static BUSES: LazyLock<[Option<BusInit>; CAN_BUS_MAX]> = LazyLock::new(|| {
             waiter: AtomicU32::new(0),
         };
         let bus_ref: &'static Bus = SLOTS[i].set_or_get(bus);
-        // Wire IRQs before `hal::can::init` — it enables NVIC, so any
-        // frame landing after must already have a dispatcher in place.
+        // Wire IRQs before `hal::can::init` — it enables interrupts at the
+        // chip controller, so any frame landing after must already have a
+        // dispatcher in place.
         let init_result =
             wire_irqs(bus_ref).and_then(|()| hal::can::init(&bus_ref.desc, Mode::Normal));
         match init_result {

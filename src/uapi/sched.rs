@@ -24,7 +24,7 @@ pub struct RtAttrs {
     pub budget: u32,
 }
 
-/// Spawn a thread. `ctx` is delivered to `func_ptr` as its R0 argument;
+/// Spawn a thread. `ctx` is delivered to `func_ptr` as its sole argument;
 /// caller owns the lifetime of the pointee.
 pub fn spawn_thread(_func_ptr: EntryFn, _ctx: *mut c_void, attrs: Option<RtAttrs>) -> isize {
     if let Some(attrs) = attrs {
