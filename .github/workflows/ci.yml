@@ -87,7 +87,7 @@ jobs:
         run: just config load ${{ matrix.config.name }} --no-confirm
 
       - name: Run task
-        run: just ${{ matrix.task }}
+        run: just ${{ matrix.task }} --all-features
 
       - name: Upload docs artifact
         if: matrix.task == 'docs'
