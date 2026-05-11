@@ -446,14 +446,13 @@ impl BestFitAllocator {
 
 #[cfg(all(test, any(feature = "metrics", osiris_metrics)))]
 mod metrics_tests {
-    use super::*;
     use super::super::*;
+    use super::*;
     use core::mem::size_of;
 
     fn alloc_range(length: usize) -> std::ops::Range<crate::hal::mem::PhysAddr> {
         use crate::hal::mem::PhysAddr;
-        let layout =
-            std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
+        let layout = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
         let ptr = unsafe { std::alloc::alloc(layout) };
         PhysAddr::new(ptr as usize)..PhysAddr::new(ptr as usize + length)
     }

@@ -8,9 +8,9 @@
 //! For full stack metrics, the backend crate's `metrics` feature must also be
 //! enabled (e.g. `hal_cortex_m/metrics`). Without it, stack metrics return zeros.
 
+use crate::mem;
 use crate::mem::alloc::bestfit::AllocatorMetrics;
 use crate::sched::{self, task, thread};
-use crate::mem;
 
 /// Aggregated snapshot of global kernel resources.
 pub struct KernelMetrics {
