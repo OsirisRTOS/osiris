@@ -73,8 +73,7 @@ fn collect(dt: &DeviceTree, primary_idx: Option<usize>) -> Vec<Partition> {
                     );
                     continue;
                 };
-                let (Ok(offset), Ok(len)) =
-                    (usize::try_from(offset_u64), usize::try_from(len_u64))
+                let (Ok(offset), Ok(len)) = (usize::try_from(offset_u64), usize::try_from(len_u64))
                 else {
                     eprintln!(
                         "cargo::warning=flash partition {} reg out of usize range; skipping",
