@@ -5,6 +5,7 @@
 // lib.c
 unsigned long long systick_freq(void);
 void init_hal(void);
+__attribute__((noreturn)) void system_reset(void);
 
 // uart.c
 int init_debug_uart(void);
@@ -112,6 +113,101 @@ int i2c_deinit(void *bus);
 
 int i2c_init_device(const i2c_device_cfg_t *dev_cfg);
 int i2c_deinit_device(const i2c_device_cfg_t *dev_cfg);
+
+// can.c
+typedef struct
+{
+	uintptr_t port;
+	uint8_t pin;
+	uint8_t af;
+	uint16_t reserved;
+} can_pin_cfg_t;
+
+enum can_mode
+{
+	CAN_MODE_NORMAL_ = 0,
+	CAN_MODE_LOOPBACK_ = 1,
+};
+
+typedef struct
+{
+	uintptr_t instance;
+	uint32_t bitrate_hz;
+	can_pin_cfg_t rx;
+	can_pin_cfg_t tx;
+	uint8_t rx0_irqn;
+	uint8_t rx0_priority;
+	uint8_t rx1_irqn;
+	uint8_t rx1_priority;
+	uint8_t index;
+	uint8_t mode;
+	uint8_t tx_open_drain;
+	uint8_t reserved;
+} can_bus_cfg_t;
+
+typedef struct
+{
+	uint32_t id;
+	uint8_t data[8];
+	uint8_t len;
+	uint8_t is_extended;
+	uint16_t reserved;
+} can_frame_t;
+
+typedef struct
+{
+	uint32_t id;
+	uint32_t mask;
+	uint8_t bank;
+	uint8_t extended;
+	uint8_t fifo;
+	uint8_t reserved;
+} can_filter_t;
+
+enum can_irq_kind
+{
+	CAN_IRQ_TX  = 0,
+	CAN_IRQ_RX0 = 1,
+	CAN_IRQ_RX1 = 2,
+	CAN_IRQ_SCE = 3,
+};
+
+typedef void (*can_irq_handler_fn)(int kind, void *ctx);
+
+int can_init(const can_bus_cfg_t *cfg);
+int can_start(uint8_t slot);
+int can_deinit(uint8_t slot);
+int can_transmit(uint8_t slot, const can_frame_t *frame);
+int can_receive(uint8_t slot, can_frame_t *out);
+int can_configure_filter(uint8_t slot, const can_filter_t *filter);
+uint32_t can_last_error(uint8_t slot);
+int can_recover(uint8_t slot);
+int can_set_irq_handler(uint8_t slot, can_irq_handler_fn handler, void *ctx);
+
+typedef struct
+{
+	uint32_t esr;
+	uint32_t tsr;
+	uint32_t msr;
+	uint32_t mcr;
+	uint32_t btr;
+	uint32_t tx_attempts;
+	uint32_t tx_hal_fails;
+	uint32_t tx_mbx_timeouts;
+	uint32_t rx_irqs;
+	uint32_t rx_frames;
+	uint32_t rx_frames_fifo0;
+	uint32_t rx_frames_fifo1;
+	uint32_t rx_drops;
+	uint32_t rx_hw_ovr;
+	uint32_t rx_hw_ovr_fifo0;
+	uint32_t rx_hw_ovr_fifo1;
+	uint32_t rx_peak_fmp;
+	uint32_t rx_get_fails;
+} can_diag_t;
+void can_diag(uint8_t slot, can_diag_t *out);
+
+void can_isr(uint8_t index);
 
 // sched.c
 void reschedule(void);

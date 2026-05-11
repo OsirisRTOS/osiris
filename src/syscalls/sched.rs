@@ -30,7 +30,7 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
 }
 
 #[syscall_handler(num = 3)]
-fn spawn_thread(func_ptr: usize, attrs: *const RtAttrs) -> c_int {
+fn spawn_thread(func_ptr: usize, ctx: usize, attrs: *const RtAttrs) -> c_int {
     sched::with(|sched| {
         let attrs = if attrs.is_null() {
             None
@@ -40,6 +40,7 @@ fn spawn_thread(func_ptr: usize, attrs: *const RtAttrs) -> c_int {
 
         let attrs = sched::thread::Attributes {
             entry: unsafe { core::mem::transmute(func_ptr) },
+            ctx: ctx as *mut core::ffi::c_void,
             fin: None,
             attrs,
         };
@@ -69,4 +70,12 @@ fn exit(_code: usize) -> c_int {
 fn kick_thread(_uid: usize) -> c_int {
     // TODO: Implement a way to retrieve the thread UID from the usize uid.
     0
+}
+
+#[syscall_handler(num = 6)]
+fn current_id() -> c_int {
+    sched::with(|sched| match sched.current_uid() {
+        Some(uid) => uid as c_int,
+        None => -1,
+    })
 }

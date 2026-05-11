@@ -2,6 +2,7 @@ use crate::ir::{DeviceTree, PropValue};
 use proc_macro2::TokenStream;
 use quote::quote;
 
+mod can;
 mod i2c;
 mod spi;
 
@@ -17,6 +18,8 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         i2c::emit_query_api(),
         spi::emit_registry(dt),
         spi::emit_query_api(),
+        can::emit_registry(dt),
+        can::emit_query_api(),
         emit_aliases_module(dt),
         emit_memory_module(dt),
         emit_chosen_module(dt),

@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
 
+use core::ffi::c_void;
+use core::ptr::null_mut;
+
 use osiris::app_main;
 
 macro_rules! println {
@@ -21,7 +24,7 @@ pub fn to_secs(cnt: u64, hz: u32, digits: u8) -> (u64, u64) {
     (secs, frac)
 }
 
-extern "C" fn second_thread() {
+extern "C" fn second_thread(_ctx: *mut c_void) {
     let mut time = osiris::uapi::time::tick();
     let mut cnt = 0;
     loop {
@@ -42,7 +45,7 @@ fn main() {
         budget: 100,
     };
 
-    osiris::uapi::sched::spawn_thread(second_thread, Some(attrs));
+    osiris::uapi::sched::spawn_thread(second_thread, null_mut(), Some(attrs));
     loop {
         println!("Tick: {}", tick);
         tick += 1;
