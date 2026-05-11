@@ -8,7 +8,7 @@ fn syscall_print(fd: usize, buf: *const u8, len: usize) -> c_int {
 
         if let Ok(s) = str::from_utf8(bytes) {
             // If the bytes are valid UTF-8, print them directly
-            kprintln!("[uspace] {}", s);
+            kprint!("[uspace] {}", s);
             return 0;
         }
     }
