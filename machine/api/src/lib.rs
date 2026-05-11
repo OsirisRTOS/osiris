@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use core::fmt;
-use core::{fmt::Display, ops::Range};
+use core::fmt::Display;
 
 pub mod flash_addr;
 pub mod mem;
