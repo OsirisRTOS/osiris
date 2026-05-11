@@ -329,6 +329,11 @@ mod vector_table {
 ///
 /// Exits with error code 1 if any critical build step fails
 fn main() {
+    println!("cargo::rerun-if-env-changed=OSIRIS_DEBUG_METRICS");
+    if env::var("OSIRIS_DEBUG_METRICS").map_or(false, |v| v == "true" || v == "1") {
+        println!("cargo::rustc-cfg=osiris_metrics");
+    }
+
     if !hal_builder::check_enabled("cortex-m") || !check_cortex_m() {
         return;
     }

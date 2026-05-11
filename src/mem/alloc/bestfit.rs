@@ -12,6 +12,26 @@ struct BestFitMeta {
     next: Option<NonNull<u8>>,
 }
 
+/// Snapshot of allocator resource usage. Available when the `metrics` feature is enabled.
+#[cfg(any(feature = "metrics", osiris_metrics))]
+#[derive(Debug, Clone, Copy)]
+pub struct AllocatorMetrics {
+    /// Total bytes under allocator management (sum of all `add_range` sizes).
+    pub total_bytes: usize,
+    /// User-accessible bytes currently in the free list.
+    pub free_bytes: usize,
+    /// `total_bytes` minus `free_bytes`; includes metadata overhead and allocated user bytes.
+    pub allocated_bytes: usize,
+    /// Number of distinct free blocks (fragmentation indicator).
+    pub free_blocks: usize,
+    /// Largest single allocation currently possible.
+    pub largest_free_block: usize,
+    /// Lifetime count of successful `malloc` calls.
+    pub alloc_count: u64,
+    /// Lifetime count of `free` calls.
+    pub free_count: u64,
+}
+
 /// This is an allocator implementation that uses the best fit strategy.
 /// That does mean, when we allocate a block, we try to find the smallest block that fits the requested size.
 /// Blocks are stored in a singly linked list. The important part is that the linked list is stored in-line with the memory blocks.
@@ -20,6 +40,12 @@ struct BestFitMeta {
 pub struct BestFitAllocator {
     /// Head of the free block list.
     head: Option<NonNull<u8>>,
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    total_bytes: usize,
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    alloc_count: u64,
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    free_count: u64,
 }
 
 // Safety: BestFitAllocator is not Copy or Clone.
@@ -37,7 +63,15 @@ impl BestFitAllocator {
     ///
     /// Returns the new BestFitAllocator.
     pub const fn new() -> Self {
-        Self { head: None }
+        Self {
+            head: None,
+            #[cfg(any(feature = "metrics", osiris_metrics))]
+            total_bytes: 0,
+            #[cfg(any(feature = "metrics", osiris_metrics))]
+            alloc_count: 0,
+            #[cfg(any(feature = "metrics", osiris_metrics))]
+            free_count: 0,
+        }
     }
 
     /// Adds a range of memory to the allocator.
@@ -81,6 +115,12 @@ impl BestFitAllocator {
 
         // Set the head to the new block.
         self.head = Some(unsafe { NonNull::new_unchecked(ptr.as_mut_ptr::<u8>()) });
+
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        {
+            self.total_bytes = self.total_bytes.saturating_add(range.end.diff(range.start));
+        }
+
         Ok(())
     }
 
@@ -334,6 +374,11 @@ impl super::Allocator for BestFitAllocator {
             });
         }
 
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        {
+            self.alloc_count += 1;
+        }
+
         // Return the user pointer.
         Ok(unsafe { Self::user_ptr(block).cast() })
     }
@@ -359,10 +404,203 @@ impl super::Allocator for BestFitAllocator {
 
         // Set the block as the new head.
         self.head = Some(block);
+
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        {
+            self.free_count += 1;
+        }
+    }
+}
+
+#[cfg(any(feature = "metrics", osiris_metrics))]
+impl BestFitAllocator {
+    pub fn metrics(&self) -> AllocatorMetrics {
+        let mut free_bytes = 0usize;
+        let mut free_blocks = 0usize;
+        let mut largest_free_block = 0usize;
+
+        let mut current = self.head;
+        while let Some(ptr) = current {
+            let meta = unsafe { ptr.cast::<BestFitMeta>().as_ref() };
+            free_bytes = free_bytes.saturating_add(meta.size);
+            free_blocks += 1;
+            if meta.size > largest_free_block {
+                largest_free_block = meta.size;
+            }
+            current = meta.next;
+        }
+
+        AllocatorMetrics {
+            total_bytes: self.total_bytes,
+            free_bytes,
+            allocated_bytes: self.total_bytes.saturating_sub(free_bytes),
+            free_blocks,
+            largest_free_block,
+            alloc_count: self.alloc_count,
+            free_count: self.free_count,
+        }
     }
 }
 
 // TESTING ------------------------------------------------------------------------------------------------------------
+
+#[cfg(all(test, any(feature = "metrics", osiris_metrics)))]
+mod metrics_tests {
+    use super::*;
+    use super::super::*;
+    use core::mem::size_of;
+
+    fn alloc_range(length: usize) -> std::ops::Range<crate::hal::mem::PhysAddr> {
+        use crate::hal::mem::PhysAddr;
+        let layout =
+            std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
+        let ptr = unsafe { std::alloc::alloc(layout) };
+        PhysAddr::new(ptr as usize)..PhysAddr::new(ptr as usize + length)
+    }
+
+    #[test]
+    fn metrics_fresh_allocator_is_zero() {
+        let allocator = BestFitAllocator::new();
+        let m = allocator.metrics();
+        assert_eq!(m.total_bytes, 0);
+        assert_eq!(m.free_bytes, 0);
+        assert_eq!(m.allocated_bytes, 0);
+        assert_eq!(m.free_blocks, 0);
+        assert_eq!(m.largest_free_block, 0);
+        assert_eq!(m.alloc_count, 0);
+        assert_eq!(m.free_count, 0);
+    }
+
+    #[test]
+    fn metrics_after_add_range() {
+        let mut allocator = BestFitAllocator::new();
+        let range_len = 4096usize;
+        let range = alloc_range(range_len);
+        unsafe { allocator.add_range(&range).unwrap() };
+
+        let m = allocator.metrics();
+        assert_eq!(m.total_bytes, range_len);
+        assert_eq!(m.free_blocks, 1);
+        assert!(m.free_bytes > 0);
+        assert!(m.free_bytes < range_len, "metadata must consume some bytes");
+        assert_eq!(m.largest_free_block, m.free_bytes);
+        assert_eq!(m.allocated_bytes, range_len - m.free_bytes);
+        assert_eq!(m.alloc_count, 0);
+        assert_eq!(m.free_count, 0);
+    }
+
+    #[test]
+    fn metrics_alloc_increments_count_and_reduces_free() {
+        let mut allocator = BestFitAllocator::new();
+        let range = alloc_range(4096);
+        unsafe { allocator.add_range(&range).unwrap() };
+        let before = allocator.metrics();
+
+        let _ptr = unsafe { allocator.malloc::<u8>(128, 1, None).unwrap() };
+        let after = allocator.metrics();
+
+        assert_eq!(after.alloc_count, 1);
+        assert_eq!(after.free_count, 0);
+        assert!(after.free_bytes < before.free_bytes);
+    }
+
+    #[test]
+    fn metrics_free_increments_count_and_restores_free_bytes() {
+        let mut allocator = BestFitAllocator::new();
+        let range = alloc_range(4096);
+        unsafe { allocator.add_range(&range).unwrap() };
+
+        let ptr = unsafe { allocator.malloc::<u8>(128, 1, None).unwrap() };
+        let after_alloc = allocator.metrics();
+
+        unsafe { allocator.free(ptr, 128) };
+        let after_free = allocator.metrics();
+
+        assert_eq!(after_free.alloc_count, 1);
+        assert_eq!(after_free.free_count, 1);
+        // Freeing must return bytes to the free pool.
+        assert!(after_free.free_bytes > after_alloc.free_bytes);
+    }
+
+    #[test]
+    fn metrics_free_blocks_count() {
+        let mut allocator = BestFitAllocator::new();
+        let range = alloc_range(4096);
+        unsafe { allocator.add_range(&range).unwrap() };
+
+        let p1 = unsafe { allocator.malloc::<u8>(128, 1, None).unwrap() };
+        let p2 = unsafe { allocator.malloc::<u8>(128, 1, None).unwrap() };
+        let after_two_allocs = allocator.metrics();
+
+        unsafe { allocator.free(p1, 128) };
+        let after_free1 = allocator.metrics();
+
+        unsafe { allocator.free(p2, 128) };
+        let after_free2 = allocator.metrics();
+
+        // Each free prepends one block to the free list.
+        assert_eq!(after_free1.free_blocks, after_two_allocs.free_blocks + 1);
+        assert_eq!(after_free2.free_blocks, after_two_allocs.free_blocks + 2);
+        assert_eq!(after_free2.alloc_count, 2);
+        assert_eq!(after_free2.free_count, 2);
+    }
+
+    #[test]
+    fn metrics_largest_free_block_single_range() {
+        let mut allocator = BestFitAllocator::new();
+        let range = alloc_range(4096);
+        unsafe { allocator.add_range(&range).unwrap() };
+
+        let m = allocator.metrics();
+        // Single block: largest == only free block.
+        assert_eq!(m.largest_free_block, m.free_bytes);
+
+        let _p = unsafe { allocator.malloc::<u8>(128, 1, None).unwrap() };
+        let m2 = allocator.metrics();
+        // Largest free block shrinks after allocation.
+        assert!(m2.largest_free_block <= m.largest_free_block);
+    }
+
+    #[test]
+    fn metrics_multiple_ranges_total_bytes() {
+        let mut allocator = BestFitAllocator::new();
+        const RANGE_LEN: usize = 1024;
+        const RANGES: usize = 3;
+
+        for _ in 0..RANGES {
+            let range = alloc_range(RANGE_LEN);
+            unsafe { allocator.add_range(&range).unwrap() };
+        }
+
+        let m = allocator.metrics();
+        assert_eq!(m.total_bytes, RANGE_LEN * RANGES);
+        assert_eq!(m.free_blocks, RANGES);
+    }
+
+    #[test]
+    fn metrics_exact_fit_no_split() {
+        // Allocate the entire usable space of a single-block range so no split occurs.
+        let mut allocator = BestFitAllocator::new();
+        let overhead = size_of::<BestFitMeta>() + BestFitAllocator::align_up();
+        let user_size = 128usize;
+        let range = alloc_range(user_size + overhead);
+        unsafe { allocator.add_range(&range).unwrap() };
+
+        let before = allocator.metrics();
+        assert_eq!(before.free_blocks, 1);
+
+        let ptr = unsafe { allocator.malloc::<u8>(user_size, 1, None).unwrap() };
+        let after_alloc = allocator.metrics();
+        // Exact fit: no remainder block left.
+        assert_eq!(after_alloc.free_blocks, 0);
+        assert_eq!(after_alloc.free_bytes, 0);
+
+        unsafe { allocator.free(ptr, user_size) };
+        let after_free = allocator.metrics();
+        assert_eq!(after_free.free_blocks, 1);
+        assert_eq!(after_free.free_bytes, before.free_bytes);
+    }
+}
 
 #[cfg(test)]
 mod tests {

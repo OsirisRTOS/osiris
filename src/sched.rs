@@ -377,6 +377,16 @@ impl<const N: usize> Scheduler<N> {
         Ok(())
     }
 
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    pub fn thread_stack_metrics(&self, tid: thread::UId) -> Option<crate::hal::stack::StackMetrics> {
+        self.threads.get(tid).map(|t| t.stack_metrics())
+    }
+
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    pub fn task_heap_metrics(&self, task_id: task::UId) -> Option<crate::mem::alloc::bestfit::AllocatorMetrics> {
+        self.tasks.get(task_id).map(|t| t.heap_metrics())
+    }
+
     pub fn create_thread(
         &mut self,
         task: Option<task::UId>,

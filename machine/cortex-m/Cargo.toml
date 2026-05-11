@@ -25,6 +25,7 @@ syn = { version = "2.0.36", features = ["full"] }
 [features]
 panic-exit = []
 panic-uart = []
+metrics = ["hal-api/metrics"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cortex_m)', 'cfg(disabled)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cortex_m)', 'cfg(disabled)', 'cfg(osiris_metrics)'] }

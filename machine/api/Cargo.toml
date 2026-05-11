@@ -3,5 +3,11 @@ name = "hal-api"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+metrics = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(osiris_metrics)'] }
+
 [dependencies]
 seq-macro = "0.3.6"

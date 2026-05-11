@@ -42,6 +42,7 @@ no-atomic-cas = []
 multi-core = []
 error-msg = []
 defmt = ["dep:defmt", "dep:defmt-rtt"]
+metrics = ["hal_api/metrics"]
 
 [build-dependencies]
 cbindgen = "0.28.0"
@@ -53,7 +54,7 @@ rand = "0.8.5"
 cfg_aliases = "0.2.1"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(osiris_metrics)'] }
 
 [profile.dev]
 panic = "abort"

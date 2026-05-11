@@ -17,6 +17,13 @@ pub struct AddressSpace {
     allocator: bestfit::BestFitAllocator,
 }
 
+#[cfg(any(feature = "metrics", osiris_metrics))]
+impl AddressSpace {
+    pub(crate) fn metrics(&self) -> crate::mem::alloc::bestfit::AllocatorMetrics {
+        self.allocator.metrics()
+    }
+}
+
 impl vmm::AddressSpacelike for AddressSpace {
     fn new(pgs: usize) -> Result<Self> {
         let begin = pfa::alloc_page(pgs).ok_or(kerr!(ENOMEM))?;

@@ -15,6 +15,10 @@ extern crate cbindgen;
 fn main() {
     println!("cargo::rerun-if-changed=src");
     println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-env-changed=OSIRIS_DEBUG_METRICS");
+    if std::env::var("OSIRIS_DEBUG_METRICS").map_or(false, |v| v == "true" || v == "1") {
+        println!("cargo::rustc-cfg=osiris_metrics");
+    }
     let out_dir = std::env::var("OUT_DIR").unwrap();
 
     if gen_syscall_match(Path::new("src/syscalls"), Path::new(&out_dir)).is_err() {

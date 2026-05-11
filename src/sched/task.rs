@@ -137,4 +137,9 @@ impl Task {
     pub fn threads(&self) -> &list::List<thread::ThreadList, thread::UId> {
         &self.threads
     }
+
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    pub(crate) fn heap_metrics(&self) -> crate::mem::alloc::bestfit::AllocatorMetrics {
+        self.address_space.metrics()
+    }
 }
