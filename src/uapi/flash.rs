@@ -1,7 +1,7 @@
+use crate::error::Result;
+
 pub use crate::drivers::flash::raw;
-pub use crate::drivers::flash::{
-    Config, Error, FlashAddress, FlashOffset, FlashPageStart, Region, Result,
-};
+pub use crate::drivers::flash::{Config, FlashAddress, FlashOffset, FlashPageStart, Region};
 
 pub fn open(compatible: &str, ordinal: usize, config: Config) -> Result<Region> {
     Region::open(compatible, ordinal, config)

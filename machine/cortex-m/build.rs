@@ -362,11 +362,13 @@ fn main() {
         panic!("Failed to generate device tree scripts: {e}");
     }
 
-    for (vendor, name) in hal_builder::dt::soc(&dt) {
+    let soc = hal_builder::dt::soc(&dt);
+
+    for &(vendor, name) in &soc {
         let hal = Path::new(vendor).join(name);
 
         if hal.exists() {
-            fail_on_error(generate_bindings(&out, &hal, &hal_builder::dt::soc(&dt)));
+            fail_on_error(generate_bindings(&out, &hal, &soc));
             let vector_code = vector_table::generate();
 
             if let Err(e) = fs::write(PathBuf::from(&out).join("vector_table.rs"), vector_code) {
@@ -383,7 +385,7 @@ fn main() {
             libhal_config.define("OUT_DIR", &out);
             libhal_config.cflag(format!("-I{}", out.display()));
 
-            for (vendor, name) in hal_builder::dt::soc(&dt) {
+            for &(vendor, name) in &soc {
                 if vendor == "st" {
                     libhal_config.cflag(format!("-D{}xx", name.to_uppercase()));
                 }

@@ -1,12 +1,17 @@
+use crate::error::Result;
 use crate::hal;
 
-pub use hal::flash::{Error, FlashAddress, FlashOffset, FlashPageStart, Result};
+pub use hal::flash::{FlashAddress, FlashOffset, FlashPageStart};
 
+/// Re-exports of the HAL-level flash primitives. Their `Result` type carries
+/// the variant-rich `hal::flash::Error` rather than the kernel's `PosixError`,
+/// for callers that need to discriminate between `NotErased`, `Protected`,
+/// `EccError`, etc.
 pub mod raw {
     use crate::hal;
     pub use hal::flash::{
-        FlashAddress, FlashOffset, FlashPageStart, erase_page, flash_base, is_dual_bank,
-        page_count, page_size, program, read, total_size, write_unit_bytes,
+        Error, FlashAddress, FlashOffset, FlashPageStart, Result, erase_page, flash_base,
+        is_dual_bank, page_count, page_size, program, read, total_size, write_unit_bytes,
     };
 }
 
@@ -58,8 +63,10 @@ impl Region {
     ///
     /// Returns `Err(NotFound)` if `addr` doesn't fall in any declared partition.
     pub fn open_by_address(addr: impl Into<FlashAddress>, config: Config) -> Result<Self> {
-        let (desc, _) = hal::flash::Region::get_by_address(addr)?;
-        Ok(Self { desc, config })
+        Ok(Self {
+            desc: hal::flash::Region::get_by_address(addr)?,
+            config,
+        })
     }
 
     pub fn config(&self) -> Config {
@@ -119,7 +126,8 @@ impl Region {
         }
         let addr: FlashAddress = addr.into();
         self.check_range(addr, buf.len())?;
-        hal::flash::read(addr, buf)
+        hal::flash::read(addr, buf)?;
+        Ok(())
     }
 
     /// Erase `len_bytes` bytes starting at `start`. `len_bytes` must be a
@@ -135,14 +143,17 @@ impl Region {
             return Ok(());
         }
         if self.read_only() {
-            return Err(Error::ReadOnly);
+            return Err(kerr!(EROFS, "flash partition is read-only; erase refused"));
         }
         let ps = self.page_size();
         if ps == 0 {
-            return Err(Error::Io);
+            return Err(kerr!(EIO, "flash HAL reported page_size == 0"));
         }
         if start.as_usize() % ps != 0 || len_bytes % ps != 0 {
-            return Err(Error::Misaligned);
+            return Err(kerr!(
+                EINVAL,
+                "flash erase: start or length not page-aligned"
+            ));
         }
         self.check_range(start.into(), len_bytes)?;
         for page in start.iter_pages(len_bytes / ps)? {
@@ -169,26 +180,30 @@ impl Region {
             return Ok(());
         }
         if self.read_only() {
-            return Err(Error::ReadOnly);
+            return Err(kerr!(
+                EROFS,
+                "flash partition is read-only; program refused"
+            ));
         }
         let addr: FlashAddress = addr.into();
         let unit = self.write_unit_bytes();
-        if unit == 0 {
-            return Err(Error::Io);
+        if unit != core::mem::size_of::<u64>() {
+            // Repacking below hardcodes 8-byte chunks; a non-u64 HAL would
+            // out-of-bounds index. Generalize before lifting this check.
+            debug_assert_eq!(unit, core::mem::size_of::<u64>());
+            return Err(kerr!(
+                EIO,
+                "flash write_unit_bytes != 8; kernel program() not generalized yet"
+            ));
         }
         if addr.as_usize() % unit != 0 || data.len() % unit != 0 {
-            return Err(Error::Misaligned);
+            return Err(kerr!(
+                EINVAL,
+                "flash program: address or length not write-unit-aligned"
+            ));
         }
         self.check_range(addr, data.len())?;
 
-        // Repack bytes into the HAL's native programming type. L4 wants
-        // &[u64]; other STM32 HALs may want different shapes, at which point
-        // this needs generalization (e.g. a Flash::WriteUnit assoc type).
-        debug_assert_eq!(
-            unit,
-            core::mem::size_of::<u64>(),
-            "kernel program(&[u8]) currently only supports u64-doubleword HALs"
-        );
         const BATCH: usize = 32;
         let mut buf = [0u64; BATCH];
         let mut written = 0;
@@ -233,20 +248,25 @@ impl Region {
             return Ok(());
         }
         if self.read_only() {
-            return Err(Error::ReadOnly);
+            return Err(kerr!(EROFS, "flash partition is read-only; write refused"));
         }
         let addr: FlashAddress = addr.into();
         let unit = self.write_unit_bytes();
-        if unit == 0 {
-            return Err(Error::Io);
+        if unit != core::mem::size_of::<u64>() {
+            // Tail buffer below is sized to u64; see program() for the same constraint.
+            debug_assert_eq!(unit, core::mem::size_of::<u64>());
+            return Err(kerr!(
+                EIO,
+                "flash write_unit_bytes != 8; kernel write() not generalized yet"
+            ));
         }
         if addr.as_usize() % unit != 0 {
-            return Err(Error::Misaligned);
+            return Err(kerr!(EINVAL, "flash write: address not write-unit-aligned"));
         }
         self.check_range(addr, data.len())?;
         let ps = self.page_size();
         if ps == 0 {
-            return Err(Error::Io);
+            return Err(kerr!(EIO, "flash HAL reported page_size == 0"));
         }
 
         let addr_u = addr.as_usize();
@@ -255,7 +275,12 @@ impl Region {
             .checked_add(data.len())
             .and_then(|end| end.checked_add(ps - 1))
             .map(|x| (x / ps) * ps)
-            .ok_or(Error::OutOfBounds)?;
+            .ok_or_else(|| {
+                kerr!(
+                    ERANGE,
+                    "flash write: end-of-write page rounding overflowed usize"
+                )
+            })?;
         let erase_len = last_page_end - first_page;
         self.erase(FlashPageStart::new(first_page)?, erase_len)?;
 
@@ -279,14 +304,16 @@ impl Region {
         let region_start = self.start_address().as_usize();
         let region_end = region_start
             .checked_add(self.len())
-            .ok_or(Error::OutOfBounds)?;
+            .ok_or_else(|| kerr!(ERANGE, "flash region end overflows usize"))?;
         let start = addr.as_usize();
         if start < region_start {
-            return Err(Error::OutOfBounds);
+            return Err(kerr!(ERANGE, "flash access starts before region"));
         }
-        let end = start.checked_add(len).ok_or(Error::OutOfBounds)?;
+        let end = start
+            .checked_add(len)
+            .ok_or_else(|| kerr!(ERANGE, "flash access end overflows usize"))?;
         if end > region_end {
-            return Err(Error::OutOfBounds);
+            return Err(kerr!(ERANGE, "flash access extends past region end"));
         }
         Ok(())
     }
