@@ -73,6 +73,10 @@ pub type IrqHandler = extern "C" fn(kind: Irq, ctx: *mut ());
 pub struct Device;
 
 impl Device {
+    pub fn from_entry(_entry: &'static device_tree::CanRegistryEntry) -> Self {
+        Self
+    }
+
     pub fn bitrate_hz(&self) -> u32 {
         0
     }

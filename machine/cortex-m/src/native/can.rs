@@ -72,6 +72,10 @@ pub struct BusStatus {
 pub struct Device(&'static device_tree::CanRegistryEntry);
 
 impl Device {
+    pub fn from_entry(entry: &'static device_tree::CanRegistryEntry) -> Self {
+        Self(entry)
+    }
+
     pub fn bitrate_hz(&self) -> u32 {
         self.0.bitrate_hz
     }
