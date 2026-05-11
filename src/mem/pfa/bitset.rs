@@ -73,7 +73,12 @@ impl<const WORDS: usize> super::Allocator<WORDS> for Allocator<WORDS> {
         );
         // diff() is absolute, so a sub-begin address would silently map to a
         // bit elsewhere in the bitmap.
-        bug_on!(addr < self.begin, "free address {} below allocator begin {}", addr, self.begin);
+        bug_on!(
+            addr < self.begin,
+            "free address {} below allocator begin {}",
+            addr,
+            self.begin
+        );
         let idx = addr.diff(self.begin) / super::PAGE_SIZE;
         self.bitalloc.free(idx, page_count);
     }
@@ -115,8 +120,14 @@ mod tests {
         let end = begin + 64 * super::super::PAGE_SIZE;
 
         while let Some(addr) = alloc.alloc(1) {
-            assert!(addr >= begin && addr < end, "addr {addr} outside [{begin}, {end})");
-            assert!(addr.is_multiple_of(super::super::PAGE_SIZE), "addr {addr} not page-aligned");
+            assert!(
+                addr >= begin && addr < end,
+                "addr {addr} outside [{begin}, {end})"
+            );
+            assert!(
+                addr.is_multiple_of(super::super::PAGE_SIZE),
+                "addr {addr} not page-aligned"
+            );
         }
     }
 

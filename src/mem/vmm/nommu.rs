@@ -109,7 +109,8 @@ mod tests {
     use crate::mem::vmm::{AddressSpacelike, Backing, Perms, Region};
 
     fn make_addr_space(size: usize) -> AddressSpace {
-        let layout = std::alloc::Layout::from_size_align(size, core::mem::align_of::<u128>()).unwrap();
+        let layout =
+            std::alloc::Layout::from_size_align(size, core::mem::align_of::<u128>()).unwrap();
         let ptr = unsafe { std::alloc::alloc(layout) };
         let begin = PhysAddr::new(ptr as usize);
         let end = begin + size;
@@ -134,8 +135,7 @@ mod tests {
         as_.unmap(&placed).unwrap();
 
         let region2 = Region::new(None, 2048, Backing::Uninit, Perms::Read);
-        as_.map(region2)
-            .expect("re-map after unmap should not OOM");
+        as_.map(region2).expect("re-map after unmap should not OOM");
     }
 
     #[test]
