@@ -29,6 +29,19 @@ macro_rules! kprint {
 }
 
 #[macro_export]
+macro_rules! kprintln {
+    ($($arg:tt)*) => {{
+        use $crate::time;
+        use $crate::print::print;
+        // Print seconds and microseconds since boot.
+        let (secs, frac) = time::to_secs(time::mono_now(), time::mono_freq() as u32, 6);
+        print(format_args!("[{}.{:06}] ", secs, frac));
+        print(format_args!($($arg)*));
+        print(format_args!("\n"));
+    }};
+}
+
+#[macro_export]
 macro_rules! kprint_cont {
     ($($arg:tt)*) => {{
         use $crate::print::print;
