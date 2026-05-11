@@ -153,12 +153,8 @@ fn collect_buses(dt: &DeviceTree) -> Vec<Bus> {
         if !is_enabled(node) {
             continue;
         }
-        
-        if node
-            .compatible
-            .iter()
-            .all(|c| c != "osiris,stm32-bxcan")
-        {
+
+        if node.compatible.iter().all(|c| c != "osiris,stm32-bxcan") {
             continue;
         }
 

@@ -2,9 +2,9 @@ use crate::ir::{DeviceTree, PropValue};
 use proc_macro2::TokenStream;
 use quote::quote;
 
+mod can;
 mod i2c;
 mod spi;
-mod can;
 
 pub fn generate_rust(dt: &DeviceTree) -> String {
     let segments: &[TokenStream] = &[
