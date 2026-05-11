@@ -344,6 +344,15 @@ impl super::Allocator for BestFitAllocator {
     /// `size` - The size of the block. (This is used to check if the size of the block is correct.)
     unsafe fn free<T>(&mut self, ptr: NonNull<T>, size: usize) {
         let block = unsafe { Self::control_ptr(ptr.cast()) };
+
+        // Walking the free list catches a double-free before it can self-loop the list
+        // and turn the next `malloc` into an infinite traversal.
+        let mut walk = self.head;
+        while let Some(p) = walk {
+            bug_on!(p == block, "double free");
+            walk = unsafe { p.cast::<BestFitMeta>().as_ref().next };
+        }
+
         let meta = unsafe { block.cast::<BestFitMeta>().as_mut() };
 
         // The next block of a free block is always the current head. We essentially insert the block at the beginning of the list.
@@ -677,6 +686,24 @@ mod tests {
 
         unsafe {
             allocator.free(ptr2, SIZE);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "double free")]
+    fn double_free_panics() {
+        let mut allocator = BestFitAllocator::new();
+        let range = alloc_range(4096);
+        unsafe {
+            allocator.add_range(&range).unwrap();
+        }
+
+        let ptr = unsafe { allocator.malloc::<u8>(128, 1, None).unwrap() };
+        unsafe {
+            allocator.free(ptr, 128);
+            // Without the defensive walk in free(), this re-insert builds a
+            // self-loop in the free list and the next malloc spins forever.
+            allocator.free(ptr, 128);
         }
     }
 
