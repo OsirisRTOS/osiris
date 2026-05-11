@@ -56,9 +56,9 @@ impl vmm::AddressSpacelike for AddressSpace {
     }
 
     fn unmap(&mut self, region: &vmm::Region) -> Result<()> {
-        let virt = region.start.ok_or(kerr!(InvalidArgument))?;
-        let phys = self.virt_to_phys(virt).ok_or(kerr!(InvalidArgument))?;
-        let ptr = NonNull::new(phys.as_mut_ptr::<u8>()).ok_or(kerr!(InvalidArgument))?;
+        let virt = region.start.ok_or(kerr!(EINVAL))?;
+        let phys = self.virt_to_phys(virt).ok_or(kerr!(EINVAL))?;
+        let ptr = NonNull::new(phys.as_mut_ptr::<u8>()).ok_or(kerr!(EINVAL))?;
         unsafe { self.allocator.free(ptr, region.len()) };
         Ok(())
     }

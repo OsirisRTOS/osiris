@@ -1347,7 +1347,7 @@ mod tests {
         let mut m: BitReclaimMap<usize, u32, 2> = BitReclaimMap::new();
         for _ in 0..10 {
             let r: KResult<usize> =
-                m.insert_with(|_idx| -> KResult<(usize, u32)> { Err(kerr!(OutOfMemory)) });
+                m.insert_with(|_idx| -> KResult<(usize, u32)> { Err(kerr!(ENOMEM)) });
             assert!(r.is_err());
         }
         let id0 = m.insert(10).unwrap();
