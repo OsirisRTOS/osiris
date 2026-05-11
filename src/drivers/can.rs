@@ -53,8 +53,8 @@ static BUSES: LazyLock<[Option<BusInit>; CAN_BUS_MAX]> = LazyLock::new(|| {
         let bus_ref: &'static Bus = SLOTS[i].set_or_get(bus);
         // Wire IRQs before `hal::can::init` — it enables NVIC, so any
         // frame landing after must already have a dispatcher in place.
-        let init_result = wire_irqs(bus_ref)
-            .and_then(|()| hal::can::init(&bus_ref.desc, Mode::Normal));
+        let init_result =
+            wire_irqs(bus_ref).and_then(|()| hal::can::init(&bus_ref.desc, Mode::Normal));
         match init_result {
             Ok(()) => kprintln!("    Initialized CAN bus at 0x{:x}", entry.instance),
             Err(e) => kprintln!(
