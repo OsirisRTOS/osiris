@@ -7,17 +7,17 @@ use crate::types::array::Vec;
 // TODO: The 3 is must be a device-tree driven constant.
 static BUSES: LazyLock<SpinLocked<Vec<Result<hal::i2c::Bus>, 3>>> = LazyLock::new(|| {
     let mut buses = Vec::<Result<hal::i2c::Bus>, 3>::new();
-    kprintln!(
-        "Found {} I2C bus entries",
+    kprint!(
+        "Found {} I2C bus entries\n",
         hal::device_tree::I2C_BUS_REGISTRY.len()
     );
     for cfg in hal::device_tree::I2C_BUS_REGISTRY {
         let bus = hal::i2c::init(cfg).map_err(|e| e.into());
 
         match &bus {
-            Ok(bus) => kprintln!("    Initialized I2C bus at 0x{:x}", cfg.instance),
-            Err(e) => kprintln!(
-                "    Failed to initialize I2C bus at 0x{:x}: {e}",
+            Ok(bus) => kprint!("    Initialized I2C bus at 0x{:x}\n", cfg.instance),
+            Err(e) => kprint!(
+                "    Failed to initialize I2C bus at 0x{:x}: {e}\n",
                 cfg.instance
             ),
         }
