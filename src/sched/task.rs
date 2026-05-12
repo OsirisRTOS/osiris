@@ -112,7 +112,7 @@ impl Task {
                 size: NonZero::new(size).unwrap(),
                 entry: attrs.entry,
                 ctx: attrs.ctx,
-                fin: attrs.fin,
+                fin: attrs.fin.or(Some(super::thread_finalizer)),
             })?
         })
     }

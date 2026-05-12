@@ -30,7 +30,11 @@ impl<const N: usize> Scheduler<N> {
     ) -> Result<()> {
         if let Some(server) = storage.get_mut(uid) {
             // Threads are only enqueued when they are runnable.
-            server.on_wakeup(now);
+            if server.budget_left() == 0 && server.deadline() != 0 {
+                server.replenish_after(now);
+            } else {
+                server.on_wakeup(now);
+            }
             self.edf.insert(uid, storage)?;
         }
         Ok(())
@@ -39,21 +43,17 @@ impl<const N: usize> Scheduler<N> {
     /// This should be called on each do_schedule call, to update the internal scheduler state.
     /// If this function returns Some(u64) it means the current thread has exhausted its budget and should be throttled until the returned timestamp.
     pub fn put(&mut self, uid: thread::UId, dt: u64, storage: &mut ServerView<N>) -> Option<u64> {
-        if Some(uid) == self.edf.min() {
-            if let Some(server) = storage.get_mut(uid) {
-                return server.consume(dt);
-            } else {
-                bug!("thread {} not found in storage", uid);
-            }
+        if let Some(server) = storage.get_mut(uid) {
+            server.consume(dt)
+        } else {
+            None
         }
-
-        None
     }
 
     pub fn pick(&mut self, storage: &mut ServerView<N>) -> Option<(thread::UId, u32)> {
         self.edf
             .min()
-            .and_then(|id| storage.get(id).map(|s| (id, s.budget())))
+            .and_then(|id| storage.get(id).map(|s| (id, s.budget_left())))
     }
 
     pub fn dequeue(&mut self, uid: thread::UId, storage: &mut ServerView<N>) -> Result<()> {

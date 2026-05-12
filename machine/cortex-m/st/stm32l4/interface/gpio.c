@@ -78,3 +78,13 @@ void gpio_init_output(GPIO_TypeDef *port, uint16_t pin_mask)
   gpio.Pin = pin_mask;
   HAL_GPIO_Init(port, &gpio);
 }
+
+void gpio_init_output_od(GPIO_TypeDef *port, uint16_t pin_mask)
+{
+  GPIO_InitTypeDef gpio = {0};
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  gpio.Pin = pin_mask;
+  HAL_GPIO_Init(port, &gpio);
+}

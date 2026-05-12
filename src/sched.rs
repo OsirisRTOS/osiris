@@ -483,3 +483,12 @@ pub extern "C" fn sched_enter(mut ctx: *mut c_void) -> *mut c_void {
         ctx
     })
 }
+
+extern "C" fn thread_finalizer() -> ! {
+    with(|sched| {
+        if sched.kill_by_thread(None).is_err() {
+            bug!("failed to terminate returned thread.");
+        }
+    });
+    unreachable!();
+}

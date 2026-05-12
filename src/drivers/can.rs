@@ -1,11 +1,12 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
+use crate::error::PosixError;
 use crate::hal;
 use crate::sync::once::{LazyLock, OnceCell};
 
-pub use hal::can::{BusState, BusStatus, Diag, Error, Filter, Frame, Mode};
+pub use hal::can::{BusState, BusStatus, Diag, Filter, Frame, Mode};
 
-pub type Result<T> = hal::can::Result<T>;
+pub type Result<T> = core::result::Result<T, PosixError>;
 
 /// Max CAN controllers the kernel tracks; the device tree may populate fewer.
 const CAN_BUS_MAX: usize = 2;
@@ -32,7 +33,7 @@ static SLOTS: [OnceCell<Bus>; CAN_BUS_MAX] = [const { OnceCell::new() }; CAN_BUS
 #[derive(Clone, Copy)]
 struct BusInit {
     slot: u8,
-    init: hal::can::Result<()>,
+    init: Result<()>,
 }
 
 static BUSES: LazyLock<[Option<BusInit>; CAN_BUS_MAX]> = LazyLock::new(|| {
@@ -82,9 +83,9 @@ fn wire_irqs(bus: &'static Bus) -> Result<()> {
     let userdata = Some(bus as *const Bus as usize);
     unsafe {
         crate::irq::register_irq(rx0_vector, rx_kernel_handler, userdata)
-            .map_err(|_| hal::can::Error::NotifyFailed)?;
+            .map_err(|_| PosixError::EIO)?;
         crate::irq::register_irq(rx1_vector, rx_kernel_handler, userdata)
-            .map_err(|_| hal::can::Error::NotifyFailed)?;
+            .map_err(|_| PosixError::EIO)?;
     }
     Ok(())
 }
@@ -134,7 +135,7 @@ impl Device {
                 }
             }
         }
-        Err(hal::can::Error::NoSuchDevice)
+        Err(PosixError::ENODEV)
     }
 
     /// Bring the bus online.

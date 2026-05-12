@@ -148,6 +148,7 @@ pub struct RtServer {
     budget: u32,
     budget_left: u32,
     period: u32,
+    relative_deadline: u64,
     deadline: u64,
 
     // Back-reference to the thread uid.
@@ -162,9 +163,10 @@ impl RtServer {
     pub fn new(budget: u32, period: u32, deadline: u64, uid: UId) -> Self {
         Self {
             budget,
-            budget_left: budget,
+            budget_left: 0,
             period,
-            deadline,
+            relative_deadline: deadline,
+            deadline: 0,
             uid,
             _rt_links: rbtree::Links::new(),
         }
@@ -175,10 +177,6 @@ impl RtServer {
         self.budget_left
     }
 
-    pub fn budget(&self) -> u32 {
-        self.budget
-    }
-
     fn violates_sched(&self, now: u64) -> bool {
         self.budget_left as u64 * self.period as u64
             > self.budget as u64 * (self.deadline.saturating_sub(now))
@@ -186,7 +184,7 @@ impl RtServer {
 
     pub fn on_wakeup(&mut self, now: u64) {
         if self.deadline <= now || self.violates_sched(now) {
-            self.deadline = now + self.period as u64;
+            self.deadline = now.saturating_add(self.relative_deadline);
             self.budget_left = self.budget;
         }
     }
@@ -197,8 +195,18 @@ impl RtServer {
         self.budget_left += self.budget;
     }
 
+    pub fn replenish_after(&mut self, now: u64) {
+        while self.deadline <= now {
+            self.replenish();
+        }
+    }
+
     pub fn consume(&mut self, dt: u64) -> Option<u64> {
-        self.budget_left = self.budget_left.saturating_sub(dt as u32);
+        self.budget_left = if dt >= self.budget_left as u64 {
+            0
+        } else {
+            self.budget_left - dt as u32
+        };
 
         if self.budget_left == 0 {
             return Some(self.deadline);

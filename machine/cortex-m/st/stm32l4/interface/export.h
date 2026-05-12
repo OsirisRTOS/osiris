@@ -103,9 +103,12 @@ struct i2c_transfer {
 	uint8_t *rx;
 	int tx_len;
 	int rx_len;
+	uint16_t timeout;
 };
 
 void *i2c_init(const i2c_bus_cfg_t *bus_cfg);
+int i2c_bus_recovery_needed(void *bus);
+int i2c_recover_bus(void *bus);
 int i2c_write(void *bus, const i2c_device_cfg_t *dev_cfg, struct i2c_transfer *transfer);
 int i2c_read(void *bus, const i2c_device_cfg_t *dev_cfg, struct i2c_transfer *transfer);
 int i2c_write_read(void *bus, const i2c_device_cfg_t *dev_cfg, const struct i2c_transfer *transfer);
