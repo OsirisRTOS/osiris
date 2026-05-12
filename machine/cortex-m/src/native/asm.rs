@@ -140,6 +140,39 @@ pub fn enable_irq_restr(state: usize) {
     }
 }
 
+/// Block context switches (PendSV/SysTick at priority 15) while leaving
+/// device IRQs free. Returns the prior `BASEPRI` for nested-safe restore
+/// via [`enable_pendsv_restr`].
+#[inline(always)]
+pub fn disable_pendsv_save() -> usize {
+    use core::arch::asm;
+    let old: usize;
+    unsafe {
+        asm!(
+            "mrs {old}, BASEPRI",
+            "msr BASEPRI, {new}",
+            "isb",
+            old = out(reg) old,
+            new = in(reg) 0xF0_usize,
+            options(nostack, preserves_flags)
+        );
+    }
+    old
+}
+
+#[inline(always)]
+pub fn enable_pendsv_restr(state: usize) {
+    use core::arch::asm;
+    unsafe {
+        asm!(
+            "msr BASEPRI, {state}",
+            "isb",
+            state = in(reg) state,
+            options(nostack, preserves_flags)
+        );
+    }
+}
+
 #[macro_export]
 macro_rules! __macro_startup_trampoline {
     () => {{

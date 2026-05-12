@@ -111,6 +111,7 @@ impl Task {
                 top: pa + size,
                 size: NonZero::new(size).unwrap(),
                 entry: attrs.entry,
+                ctx: attrs.ctx,
                 fin: attrs.fin,
             })?
         })

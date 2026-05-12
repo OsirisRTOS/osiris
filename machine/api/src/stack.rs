@@ -1,13 +1,14 @@
 use crate::{Result, mem::PhysAddr};
 use core::{ffi::c_void, num::NonZero};
 
-pub type EntryFn = extern "C" fn();
+pub type EntryFn = extern "C" fn(*mut c_void);
 pub type FinFn = extern "C" fn() -> !;
 
 pub struct Descriptor {
     pub top: PhysAddr,
     pub size: NonZero<usize>,
     pub entry: EntryFn,
+    pub ctx: *mut c_void,
     pub fin: Option<FinFn>,
 }
 

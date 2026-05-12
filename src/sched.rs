@@ -271,10 +271,19 @@ impl<const N: usize> Scheduler<N> {
         Ok(())
     }
 
+    /// `kick` lookup by raw `UId::as_usize()`. Synthetic `tid` is a placeholder.
+    pub fn kick_by_uid(&mut self, uid: usize) -> Result<()> {
+        let lookup_uid = thread::UId::new(uid, thread::Id::new(0, crate::sched::task::UId::new(0)));
+        self.kick(lookup_uid)
+    }
+
+    pub fn current_uid(&self) -> Option<usize> {
+        self.current.map(|uid| uid.as_usize())
+    }
+
     /// If the thread is currently sleeping, this will trigger a wakeup on the next reschedule. Note this does not trigger an immediate reschedule.
     ///
     /// Returns an error if the thread does not exist, or if the thread is not currently sleeping.
-    #[allow(dead_code)]
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
         WaiterView::<N>::with(&mut self.threads, |view| {
             self.wakeup.remove(uid, view)?;
@@ -386,6 +395,9 @@ impl<const N: usize> Scheduler<N> {
 /// This function provides safe access to the global scheduler.
 /// It disables interrupts and locks the scheduler. Use with caution!
 pub fn with<T, F: FnOnce(&mut GlobalScheduler) -> T>(f: F) -> T {
+    // Must mask *all* interrupts: the ISR-callable `kick_thread` re-enters
+    // `with`, so any priority-selective mask would deadlock if an ISR
+    // preempted a holder.
     sync::atomic::irq_free(|| {
         let mut sched = SCHED.lock();
         f(&mut sched)
@@ -441,6 +453,17 @@ pub fn reschedule() {
     }
 
     hal::Machine::trigger_reschedule();
+}
+
+/// Wake a thread by raw `uid`. C-FFI so ISR-context callers can use it
+/// without going through the syscall path. Errors are swallowed:
+/// not-yet-sleeping is normal.
+#[unsafe(no_mangle)]
+pub extern "C" fn kick_thread(uid: u32) {
+    with(|sched| {
+        let _ = sched.kick_by_uid(uid as usize);
+    });
+    reschedule();
 }
 
 /// This will be called by the architecture-specific code to enter the scheduler. It will land the current thread, pick the next thread to run, and return its context and task.

@@ -3,6 +3,7 @@ use core::ffi::c_char;
 pub use hal_api::*;
 
 pub mod asm;
+pub mod can;
 pub mod debug;
 pub mod excep;
 pub mod flash;
@@ -10,6 +11,7 @@ pub mod i2c;
 pub mod panic;
 pub mod sched;
 pub mod spi;
+pub mod system;
 
 mod crit;
 mod print;
@@ -46,14 +48,18 @@ impl hal_api::Machinelike for ArmMachine {
     }
 
     fn print(s: &str) -> Result<()> {
-        let state = asm::disable_irq_save();
+        // Mask PendSV only — a full cpsid_i across a polled-UART line at
+        // 115200 baud (~13 ms) overruns the bxCAN FIFO at 1 Mbit/s.
+        let state = asm::disable_pendsv_save();
 
-        if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0)
-        {
-            asm::enable_irq_restr(state);
+        let ok =
+            unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0;
+
+        asm::enable_pendsv_restr(state);
+
+        if ok {
             Ok(())
         } else {
-            asm::enable_irq_restr(state);
             Err(hal_api::PosixError::EIO)
         }
     }
