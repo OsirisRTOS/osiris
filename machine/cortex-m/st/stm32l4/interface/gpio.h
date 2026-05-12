@@ -8,3 +8,4 @@ void gpio_enable_clock(GPIO_TypeDef *port);
 void gpio_init_af(GPIO_TypeDef *port, uint16_t pin_mask, uint8_t af);
 void gpio_init_af_od(GPIO_TypeDef *port, uint16_t pin_mask, uint8_t af);
 void gpio_init_output(GPIO_TypeDef *port, uint16_t pin_mask);
+void gpio_init_output_od(GPIO_TypeDef *port, uint16_t pin_mask);

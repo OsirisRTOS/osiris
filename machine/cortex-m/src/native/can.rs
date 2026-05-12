@@ -1,40 +1,9 @@
 //! ST bxCAN HAL bridge — thin Rust wrappers over `interface/can.c`.
 
+use hal_api::{PosixError, Result, ok_or_err};
+
 use super::bindings;
 use super::device_tree;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Error {
-    InvalidArgument,
-    NoSuchDevice,
-    NotInitialized,
-    BitrateInfeasible,
-    ClockUnavailable,
-    InitFailed,
-    FilterRejected,
-    StartFailed,
-    NotifyFailed,
-    TransmitFailed,
-    MailboxBusy,
-}
-
-pub type Result<T> = core::result::Result<T, Error>;
-
-fn from_c_rc(rc: i32) -> Error {
-    match rc {
-        -1 => Error::InvalidArgument,
-        -2 => Error::NotInitialized,
-        -3 => Error::BitrateInfeasible,
-        -4 => Error::ClockUnavailable,
-        -5 => Error::InitFailed,
-        -6 => Error::FilterRejected,
-        -7 => Error::StartFailed,
-        -8 => Error::NotifyFailed,
-        -9 => Error::TransmitFailed,
-        -10 => Error::MailboxBusy,
-        _ => Error::InvalidArgument,
-    }
-}
 
 #[derive(Clone, Copy, Default)]
 pub struct Frame {
@@ -137,33 +106,35 @@ fn frame_from_c(c: &bindings::can_frame_t) -> Frame {
 }
 
 pub fn get(compatible: &str, ordinal: usize) -> Result<Device> {
-    let entry = device_tree::can_by_compatible(compatible, ordinal).ok_or(Error::NoSuchDevice)?;
+    let entry =
+        device_tree::can_by_compatible(compatible, ordinal).ok_or(PosixError::ENODEV)?;
     Ok(Device(entry))
 }
 
 pub fn init(dev: &Device, mode: Mode) -> Result<()> {
     let cfg = init_cfg(dev, mode);
     let rc = unsafe { bindings::can_init(&cfg) };
-    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+    ok_or_err(rc, ())
 }
 
 pub fn start(dev: &Device) -> Result<()> {
     let rc = unsafe { bindings::can_start(dev.0.index) };
-    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+    ok_or_err(rc, ())
 }
 
 pub fn deinit(dev: &Device) -> Result<()> {
     let rc = unsafe { bindings::can_deinit(dev.0.index) };
-    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+    ok_or_err(rc, ())
 }
 
 pub fn transmit(dev: &Device, frame: &Frame) -> Result<()> {
-    if frame.len > 8 {
-        return Err(Error::InvalidArgument);
+    let id_max = if frame.is_extended { 0x1FFF_FFFF } else { 0x7FF };
+    if frame.len > 8 || frame.id > id_max {
+        return Err(PosixError::EINVAL);
     }
     let cframe = frame_to_c(frame);
     let rc = unsafe { bindings::can_transmit(dev.0.index, &cframe) };
-    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+    ok_or_err(rc, ())
 }
 
 pub fn receive(dev: &Device, out: &mut Frame) -> Result<bool> {
@@ -181,7 +152,7 @@ pub fn receive(dev: &Device, out: &mut Frame) -> Result<bool> {
             *out = frame_from_c(&cframe);
             Ok(true)
         }
-        other => Err(from_c_rc(other)),
+        other => Err(PosixError::from_errno(-other)),
     }
 }
 
@@ -201,11 +172,11 @@ const FILTER_BANK_MAX: u8 = 13;
 
 fn validate_filter(filter: &Filter) -> Result<()> {
     if filter.bank > FILTER_BANK_MAX || filter.fifo > 1 {
-        return Err(Error::InvalidArgument);
+        return Err(PosixError::EINVAL);
     }
     let id_max: u32 = if filter.extended { 0x1FFF_FFFF } else { 0x7FF };
     if filter.id > id_max || filter.mask > id_max {
-        return Err(Error::InvalidArgument);
+        return Err(PosixError::EINVAL);
     }
     Ok(())
 }
@@ -221,7 +192,7 @@ pub fn configure_filter(dev: &Device, filter: &Filter) -> Result<()> {
         reserved: 0,
     };
     let rc = unsafe { bindings::can_configure_filter(dev.0.index, &c) };
-    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+    ok_or_err(rc, ())
 }
 
 /// IRQ kind passed to a registered handler. Mirrors the bxCAN vector lines.
@@ -247,7 +218,7 @@ pub fn register_irq_handler(dev: &Device, handler: Option<IrqHandler>, ctx: *mut
     let rc = unsafe {
         bindings::can_set_irq_handler(dev.0.index, raw_fn, ctx as *mut core::ffi::c_void)
     };
-    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+    ok_or_err(rc, ())
 }
 
 fn last_error(dev: &Device) -> u32 {
@@ -275,7 +246,7 @@ pub fn bus_status(dev: &Device) -> BusStatus {
 
 pub fn recover(dev: &Device) -> Result<()> {
     let rc = unsafe { bindings::can_recover(dev.0.index) };
-    if rc == 0 { Ok(()) } else { Err(from_c_rc(rc)) }
+    ok_or_err(rc, ())
 }
 
 #[derive(Clone, Copy, Debug, Default)]

@@ -1,23 +1,8 @@
 //! Stub CAN HAL for host/test builds. Mirrors `native::can` shape.
 
+use hal_api::{PosixError, Result};
+
 use super::device_tree;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Error {
-    InvalidArgument,
-    NoSuchDevice,
-    NotInitialized,
-    BitrateInfeasible,
-    ClockUnavailable,
-    InitFailed,
-    FilterRejected,
-    StartFailed,
-    NotifyFailed,
-    TransmitFailed,
-    MailboxBusy,
-}
-
-pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, Copy, Default)]
 pub struct Frame {
@@ -111,38 +96,38 @@ pub struct Diag {
 }
 
 pub fn get(_compatible: &str, _ordinal: usize) -> Result<Device> {
-    Err(Error::NoSuchDevice)
+    Err(PosixError::ENODEV)
 }
 pub fn init(_dev: &Device, _mode: Mode) -> Result<()> {
-    Err(Error::NotInitialized)
+    Err(PosixError::ENODEV)
 }
 pub fn start(_dev: &Device) -> Result<()> {
-    Err(Error::NotInitialized)
+    Err(PosixError::ENODEV)
 }
 pub fn deinit(_dev: &Device) -> Result<()> {
-    Err(Error::NotInitialized)
+    Err(PosixError::ENODEV)
 }
 pub fn transmit(_dev: &Device, _frame: &Frame) -> Result<()> {
-    Err(Error::NotInitialized)
+    Err(PosixError::ENODEV)
 }
 pub fn receive(_dev: &Device, _out: &mut Frame) -> Result<bool> {
     Ok(false)
 }
 pub fn configure_filter(_dev: &Device, _filter: &Filter) -> Result<()> {
-    Err(Error::NotInitialized)
+    Err(PosixError::ENODEV)
 }
 pub fn register_irq_handler(
     _dev: &Device,
     _handler: Option<IrqHandler>,
     _ctx: *mut (),
 ) -> Result<()> {
-    Err(Error::NotInitialized)
+    Err(PosixError::ENODEV)
 }
 pub fn bus_status(_dev: &Device) -> BusStatus {
     BusStatus::default()
 }
 pub fn recover(_dev: &Device) -> Result<()> {
-    Err(Error::NotInitialized)
+    Err(PosixError::ENODEV)
 }
 pub fn dispatch_isr(_slot: u8) {}
 

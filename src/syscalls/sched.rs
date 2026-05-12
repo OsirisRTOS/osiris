@@ -29,13 +29,25 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
     0
 }
 
+fn valid_rt_attrs(attrs: RtAttrs) -> bool {
+    attrs.budget != 0
+        && attrs.period != 0
+        && attrs.deadline != 0
+        && attrs.budget as u64 <= attrs.deadline
+        && attrs.deadline <= attrs.period as u64
+}
+
 #[syscall_handler(num = 3)]
 fn spawn_thread(func_ptr: usize, ctx: usize, attrs: *const RtAttrs) -> c_int {
     sched::with(|sched| {
         let attrs = if attrs.is_null() {
             None
         } else {
-            Some(unsafe { *attrs })
+            let attrs = unsafe { *attrs };
+            if !valid_rt_attrs(attrs) {
+                return -1;
+            }
+            Some(attrs)
         };
 
         let attrs = sched::thread::Attributes {

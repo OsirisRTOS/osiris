@@ -2,6 +2,7 @@ use core::cell::Cell;
 use core::ffi::c_void;
 use core::marker::PhantomData;
 
+use hal_api::ok_or_err;
 use hal_api::{PosixError, Result};
 
 use super::bindings;
@@ -110,16 +111,12 @@ pub fn transfer_words<W>(dev: &Device, tx: &[W], rx: &mut [W]) -> Result<()> {
             &transfer as *const bindings::spi_transfer,
         )
     };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(PosixError::EINVAL)
-    }
+    ok_or_err(rc, ())
 }
 
 pub fn deinit(bus: &Bus) -> Result<()> {
     let rc = unsafe { bindings::spi_deinit(bus.instance) };
-    if rc == 0 { Ok(()) } else { Err(PosixError::EINVAL) }
+    ok_or_err(rc, ())
 }
 
 pub fn init_device(
@@ -129,11 +126,8 @@ pub fn init_device(
 ) -> Result<Device> {
     let cfg = cfg_from_dev(cfg, freq);
     let rc = unsafe { bindings::spi_init_device(&cfg) };
-    if rc != 0 {
-        return Err(PosixError::EINVAL);
-    }
-
-    Ok(Device {
+    
+    ok_or_err(rc, Device {
         cfg,
         instance: bus.instance,
         _no_sync: PhantomData,

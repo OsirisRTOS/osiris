@@ -1,5 +1,6 @@
 #include "export.h"
 #include "gpio.h"
+#include "hal_api.h"
 #include "stm32l4xx.h"
 #include "stm32l4xx_hal_can.h"
 #include "stm32l4xx_hal_rcc.h"
@@ -9,17 +10,6 @@
 #include <string.h>
 
 #define CAN_SLOT_COUNT 2
-
-#define CAN_ERR_INVALID_ARG (-1)
-#define CAN_ERR_NOT_INIT (-2)
-#define CAN_ERR_BITRATE (-3)
-#define CAN_ERR_CLOCK (-4)
-#define CAN_ERR_HAL_INIT (-5)
-#define CAN_ERR_HAL_FILTER (-6)
-#define CAN_ERR_HAL_START (-7)
-#define CAN_ERR_HAL_NOTIFY (-8)
-#define CAN_ERR_HAL_TX (-9)
-#define CAN_ERR_TX_TIMEOUT (-10)
 
 #define CAN_RX_BUF_SIZE 128
 #define CAN_TX_TIMEOUT_ITERS 1000u
@@ -58,6 +48,51 @@ static struct {
   void *ctx;
 } s_irq_slot[CAN_SLOT_COUNT];
 
+static int can_hal_error(CAN_HandleTypeDef *hcan, HAL_StatusTypeDef status) {
+  if (status == HAL_TIMEOUT) {
+    return -PosixError_ETIMEDOUT;
+  }
+  if (status == HAL_BUSY) {
+    return -PosixError_EBUSY;
+  }
+
+  uint32_t err = HAL_CAN_GetError(hcan);
+  if ((err & HAL_CAN_ERROR_TIMEOUT) != 0u) {
+    return -PosixError_ETIMEDOUT;
+  }
+  if ((err & HAL_CAN_ERROR_PARAM) != 0u) {
+    return -PosixError_EINVAL;
+  }
+#if defined(HAL_CAN_ERROR_INVALID_CALLBACK)
+  if ((err & HAL_CAN_ERROR_INVALID_CALLBACK) != 0u) {
+    return -PosixError_EINVAL;
+  }
+#endif
+  if ((err & HAL_CAN_ERROR_NOT_INITIALIZED) != 0u) {
+    return -PosixError_ENODEV;
+  }
+  if ((err & (HAL_CAN_ERROR_NOT_READY | HAL_CAN_ERROR_NOT_STARTED)) != 0u) {
+    return -PosixError_EBUSY;
+  }
+  if ((err & HAL_CAN_ERROR_BOF) != 0u) {
+    return -PosixError_ENETDOWN;
+  }
+  if ((err & (HAL_CAN_ERROR_RX_FOV0 | HAL_CAN_ERROR_RX_FOV1)) != 0u) {
+    return -PosixError_EOVERFLOW;
+  }
+  if ((err & (HAL_CAN_ERROR_TX_ALST0 | HAL_CAN_ERROR_TX_ALST1 |
+              HAL_CAN_ERROR_TX_ALST2)) != 0u) {
+    return -PosixError_EAGAIN;
+  }
+  if ((err & (HAL_CAN_ERROR_EWG | HAL_CAN_ERROR_EPV | HAL_CAN_ERROR_STF |
+              HAL_CAN_ERROR_FOR | HAL_CAN_ERROR_ACK | HAL_CAN_ERROR_BR |
+              HAL_CAN_ERROR_BD | HAL_CAN_ERROR_CRC)) != 0u) {
+    return -PosixError_EPROTO;
+  }
+
+  return -PosixError_EIO;
+}
+
 static int can_enable_clock(CAN_TypeDef *instance) {
 #if defined(CAN1)
   if (instance == CAN1) {
@@ -75,7 +110,7 @@ static int can_enable_clock(CAN_TypeDef *instance) {
     return 0;
   }
 #endif
-  return -1;
+  return -PosixError_ENODEV;
 }
 
 /* Pick BRP/TS1/TS2 aiming for 75 % sample point and SJW = 1. */
@@ -105,7 +140,7 @@ static int can_bit_timing(uint32_t pclk_hz, uint32_t bitrate_hz,
       return 0;
     }
   }
-  return -1;
+  return -PosixError_EINVAL;
 }
 
 static void can_msp_init(const can_bus_cfg_t *cfg) {
@@ -143,12 +178,13 @@ static void can_msp_init(const can_bus_cfg_t *cfg) {
 
 int can_init(const can_bus_cfg_t *cfg) {
   if (cfg == NULL || cfg->index >= CAN_SLOT_COUNT || cfg->bitrate_hz == 0) {
-    return CAN_ERR_INVALID_ARG;
+    return -PosixError_EINVAL;
   }
 
   CAN_TypeDef *instance = (CAN_TypeDef *)cfg->instance;
-  if (can_enable_clock(instance) != 0) {
-    return CAN_ERR_CLOCK;
+  int rc = can_enable_clock(instance);
+  if (rc != 0) {
+    return rc;
   }
 
   can_rx_buf_t *rx = &s_rx[cfg->index];
@@ -164,9 +200,10 @@ int can_init(const can_bus_cfg_t *cfg) {
   uint32_t prescaler = 0;
   uint32_t ts1 = 0;
   uint32_t ts2 = 0;
-  if (can_bit_timing(HAL_RCC_GetPCLK1Freq(), cfg->bitrate_hz, &prescaler, &ts1,
-                     &ts2) != 0) {
-    return CAN_ERR_BITRATE;
+  rc = can_bit_timing(HAL_RCC_GetPCLK1Freq(), cfg->bitrate_hz, &prescaler,
+                      &ts1, &ts2);
+  if (rc != 0) {
+    return rc;
   }
 
   CAN_HandleTypeDef *h = &s_handles[cfg->index];
@@ -185,8 +222,9 @@ int can_init(const can_bus_cfg_t *cfg) {
   h->Init.ReceiveFifoLocked = ENABLE;
   h->Init.TransmitFifoPriority = ENABLE;
 
-  if (HAL_CAN_Init(h) != HAL_OK) {
-    return CAN_ERR_HAL_INIT;
+  HAL_StatusTypeDef hal_rc = HAL_CAN_Init(h);
+  if (hal_rc != HAL_OK) {
+    return can_hal_error(h, hal_rc);
   }
 
   /* Bus stays in HAL_CAN_STATE_READY so the caller can install filters
@@ -196,21 +234,22 @@ int can_init(const can_bus_cfg_t *cfg) {
 
 int can_start(uint8_t slot) {
   if (slot >= CAN_SLOT_COUNT) {
-    return CAN_ERR_INVALID_ARG;
+    return -PosixError_EINVAL;
   }
   CAN_HandleTypeDef *h = &s_handles[slot];
   if (h->Instance == NULL) {
-    return CAN_ERR_NOT_INIT;
+    return -PosixError_ENODEV;
   }
 
-  if (HAL_CAN_Start(h) != HAL_OK) {
-    return CAN_ERR_HAL_START;
+  HAL_StatusTypeDef hal_rc = HAL_CAN_Start(h);
+  if (hal_rc != HAL_OK) {
+    return can_hal_error(h, hal_rc);
   }
 
-  if (HAL_CAN_ActivateNotification(h, CAN_IT_RX_FIFO0_MSG_PENDING |
-                                          CAN_IT_RX_FIFO1_MSG_PENDING) !=
-      HAL_OK) {
-    return CAN_ERR_HAL_NOTIFY;
+  hal_rc = HAL_CAN_ActivateNotification(h, CAN_IT_RX_FIFO0_MSG_PENDING |
+                                               CAN_IT_RX_FIFO1_MSG_PENDING);
+  if (hal_rc != HAL_OK) {
+    return can_hal_error(h, hal_rc);
   }
 
   return 0;
@@ -218,7 +257,7 @@ int can_start(uint8_t slot) {
 
 int can_deinit(uint8_t slot) {
   if (slot >= CAN_SLOT_COUNT) {
-    return CAN_ERR_INVALID_ARG;
+    return -PosixError_EINVAL;
   }
 
   HAL_NVIC_DisableIRQ((IRQn_Type)s_irqn[slot].rx0_irqn);
@@ -234,13 +273,15 @@ int can_deinit(uint8_t slot) {
 }
 
 int can_transmit(uint8_t slot, const can_frame_t *frame) {
-  if (frame == NULL || slot >= CAN_SLOT_COUNT) {
-    return CAN_ERR_INVALID_ARG;
+  if (frame == NULL || slot >= CAN_SLOT_COUNT || frame->len > 8 ||
+      (!frame->is_extended && frame->id > 0x7FFu) ||
+      (frame->is_extended && frame->id > 0x1FFFFFFFu)) {
+    return -PosixError_EINVAL;
   }
 
   CAN_HandleTypeDef *h = &s_handles[slot];
   if (h->Instance == NULL) {
-    return CAN_ERR_NOT_INIT;
+    return -PosixError_ENODEV;
   }
 
   s_tx_attempts[slot]++;
@@ -262,7 +303,7 @@ int can_transmit(uint8_t slot, const can_frame_t *frame) {
   while (HAL_CAN_GetTxMailboxesFreeLevel(h) == 0) {
     if (--timeout == 0) {
       s_tx_mbx_timeouts[slot]++;
-      return CAN_ERR_TX_TIMEOUT;
+      return -PosixError_ETIMEDOUT;
     }
   }
 
@@ -274,18 +315,18 @@ int can_transmit(uint8_t slot, const can_frame_t *frame) {
   __set_PRIMASK(primask);
   if (rc != HAL_OK) {
     s_tx_hal_fails[slot]++;
-    return CAN_ERR_HAL_TX;
+    return can_hal_error(h, rc);
   }
   return 0;
 }
 
 int can_receive(uint8_t slot, can_frame_t *out) {
   if (out == NULL || slot >= CAN_SLOT_COUNT) {
-    return CAN_ERR_INVALID_ARG;
+    return -PosixError_EINVAL;
   }
 
   if (s_handles[slot].Instance == NULL) {
-    return CAN_ERR_NOT_INIT;
+    return -PosixError_ENODEV;
   }
 
   can_rx_buf_t *rx = &s_rx[slot];
@@ -315,7 +356,7 @@ int can_receive(uint8_t slot, can_frame_t *out) {
 
 int can_set_irq_handler(uint8_t slot, can_irq_handler_fn handler, void *ctx) {
   if (slot >= CAN_SLOT_COUNT) {
-    return CAN_ERR_INVALID_ARG;
+    return -PosixError_EINVAL;
   }
   uint32_t primask = __get_PRIMASK();
   __disable_irq();
@@ -432,10 +473,15 @@ static void encode_filter(const can_filter_t *f, uint32_t *id_reg,
 
 int can_configure_filter(uint8_t slot, const can_filter_t *filter) {
   if (filter == NULL || slot >= CAN_SLOT_COUNT) {
-    return CAN_ERR_INVALID_ARG;
+    return -PosixError_EINVAL;
   }
   if (s_handles[slot].Instance == NULL) {
-    return CAN_ERR_NOT_INIT;
+    return -PosixError_ENODEV;
+  }
+  uint32_t id_max = filter->extended ? 0x1FFFFFFFu : 0x7FFu;
+  if (filter->bank > 13 || filter->fifo > 1 || filter->id > id_max ||
+      filter->mask > id_max) {
+    return -PosixError_EINVAL;
   }
 
   uint32_t id_reg = 0;
@@ -455,9 +501,8 @@ int can_configure_filter(uint8_t slot, const can_filter_t *filter) {
       .SlaveStartFilterBank = 14,
   };
 
-  return HAL_CAN_ConfigFilter(&s_handles[slot], &hal_f) == HAL_OK
-             ? 0
-             : CAN_ERR_HAL_FILTER;
+  HAL_StatusTypeDef rc = HAL_CAN_ConfigFilter(&s_handles[slot], &hal_f);
+  return rc == HAL_OK ? 0 : can_hal_error(&s_handles[slot], rc);
 }
 
 uint32_t can_last_error(uint8_t slot) {
@@ -470,20 +515,20 @@ uint32_t can_last_error(uint8_t slot) {
 
 int can_recover(uint8_t slot) {
   if (slot >= CAN_SLOT_COUNT) {
-    return CAN_ERR_INVALID_ARG;
+    return -PosixError_EINVAL;
   }
   CAN_HandleTypeDef *h = &s_handles[slot];
   if (h->Instance == NULL) {
-    return CAN_ERR_NOT_INIT;
+    return -PosixError_ENODEV;
   }
 
   /* Drop scheduled TX so they don't refire after ABOM recovery. */
   uint32_t primask = __get_PRIMASK();
   __disable_irq();
-  HAL_CAN_AbortTxRequest(h,
-                         CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
+  HAL_StatusTypeDef rc = HAL_CAN_AbortTxRequest(
+      h, CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
   __set_PRIMASK(primask);
-  return 0;
+  return rc == HAL_OK ? 0 : can_hal_error(h, rc);
 }
 
 void can_diag(uint8_t slot, can_diag_t *out) {

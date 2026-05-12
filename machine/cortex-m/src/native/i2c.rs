@@ -2,8 +2,7 @@ use core::cell::Cell;
 use core::ffi::c_void;
 use core::marker::PhantomData;
 
-
-use hal_api::{PosixError, Result};
+use hal_api::{PosixError, Result, ok_or_err};
 
 use super::bindings;
 use super::device_tree;
@@ -74,7 +73,21 @@ pub fn init(cfg: &'static device_tree::I2cBusRegistryEntry) -> Result<Bus> {
     }
 }
 
-pub fn write(dev: &Device, tx: &[u8]) -> Result<()> {
+pub fn recover_bus(dev: &Device) -> Result<()> {
+    let rc = unsafe { bindings::i2c_recover_bus(dev.handle) };
+    ok_or_err(rc, ())
+}
+
+pub fn bus_recovery_needed(dev: &Device) -> Result<bool> {
+    let rc = unsafe { bindings::i2c_bus_recovery_needed(dev.handle) };
+    match rc {
+        0 => Ok(false),
+        1 => Ok(true),
+        other => Err(PosixError::from_errno(-other)),
+    }
+}
+
+pub fn write(dev: &Device, tx: &[u8], timeout: u16) -> Result<()> {
     if tx.is_empty() {
         return Err(PosixError::EINVAL);
     }
@@ -84,6 +97,7 @@ pub fn write(dev: &Device, tx: &[u8]) -> Result<()> {
         rx: core::ptr::null_mut(),
         tx_len: tx.len() as i32,
         rx_len: 0,
+        timeout,
     };
 
     let rc = unsafe {
@@ -93,14 +107,10 @@ pub fn write(dev: &Device, tx: &[u8]) -> Result<()> {
             &mut transfer as *mut bindings::i2c_transfer,
         )
     };
-    if rc == tx.len() as i32 {
-        Ok(())
-    } else {
-        Err(PosixError::EINVAL)
-    }
+    ok_or_err(rc, ())
 }
 
-pub fn read(dev: &Device, rx: &mut [u8]) -> Result<()> {
+pub fn read(dev: &Device, rx: &mut [u8], timeout: u16) -> Result<()> {
     if rx.is_empty() {
         return Err(PosixError::EINVAL);
     }
@@ -110,6 +120,7 @@ pub fn read(dev: &Device, rx: &mut [u8]) -> Result<()> {
         rx: rx.as_mut_ptr(),
         tx_len: 0,
         rx_len: rx.len() as i32,
+        timeout,
     };
 
     let rc = unsafe {
@@ -119,14 +130,10 @@ pub fn read(dev: &Device, rx: &mut [u8]) -> Result<()> {
             &mut transfer as *mut bindings::i2c_transfer,
         )
     };
-    if rc == rx.len() as i32 {
-        Ok(())
-    } else {
-        Err(PosixError::EINVAL)
-    }
+    ok_or_err(rc, ())
 }
 
-pub fn write_read(dev: &Device, tx: &[u8], rx: &mut [u8]) -> Result<()> {
+pub fn write_read(dev: &Device, tx: &[u8], rx: &mut [u8], timeout: u16) -> Result<()> {
     if tx.is_empty() || rx.is_empty() {
         return Err(PosixError::EINVAL);
     }
@@ -136,6 +143,7 @@ pub fn write_read(dev: &Device, tx: &[u8], rx: &mut [u8]) -> Result<()> {
         rx: rx.as_mut_ptr(),
         tx_len: tx.len() as i32,
         rx_len: rx.len() as i32,
+        timeout,
     };
 
     let rc = unsafe {
@@ -145,16 +153,12 @@ pub fn write_read(dev: &Device, tx: &[u8], rx: &mut [u8]) -> Result<()> {
             &transfer as *const bindings::i2c_transfer,
         )
     };
-    if rc == rx.len() as i32 {
-        Ok(())
-    } else {
-        Err(PosixError::EINVAL)
-    }
+    ok_or_err(rc, ())
 }
 
 pub fn deinit(bus: &Bus) -> Result<()> {
     let rc = unsafe { bindings::i2c_deinit(bus.handle) };
-    if rc == 0 { Ok(()) } else { Err(PosixError::EINVAL) }
+    ok_or_err(rc, ())
 }
 
 pub fn init_device(
@@ -163,11 +167,8 @@ pub fn init_device(
 ) -> Result<Device> {
     let cfg = cfg_from_dev(cfg)?;
     let rc = unsafe { bindings::i2c_init_device(&cfg) };
-    if rc != 0 {
-        return Err(PosixError::EINVAL);
-    }
 
-    Ok(Device {
+    ok_or_err(rc, Device {
         cfg,
         handle: bus.handle,
         _no_sync: PhantomData,
