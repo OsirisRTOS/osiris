@@ -31,7 +31,7 @@ impl<const N: usize> Scheduler<N> {
         if let Some(server) = storage.get_mut(uid) {
             // Threads are only enqueued when they are runnable.
             if server.budget_left() == 0 && server.deadline() != 0 {
-                server.replenish_after(now);
+                server.replenish();
             } else {
                 server.on_wakeup(now);
             }

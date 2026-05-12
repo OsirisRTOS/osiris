@@ -189,16 +189,9 @@ impl RtServer {
         }
     }
 
-    #[allow(dead_code)]
     pub fn replenish(&mut self) {
         self.deadline = self.deadline + self.period as u64;
         self.budget_left += self.budget;
-    }
-
-    pub fn replenish_after(&mut self, now: u64) {
-        while self.deadline <= now {
-            self.replenish();
-        }
     }
 
     pub fn consume(&mut self, dt: u64) -> Option<u64> {
