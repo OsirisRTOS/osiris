@@ -32,12 +32,10 @@ macro_rules! bug {
 #[macro_export]
 macro_rules! warn {
     () => {
-        use $crate::kprint;
-        kprint!("WARN at {}:{}", file!(), line!());
+        $crate::kprintln!("WARN at {}:{}", file!(), line!());
     };
     ($fmt:literal $(, $arg:expr)* $(,)?) => {{
-        use $crate::kprint;
-        kprint!(concat!("WARN at {}:{}: ", $fmt), file!(), line!() $(, $arg)*);
+        $crate::kprintln!(concat!("WARN at {}:{}: ", $fmt), file!(), line!() $(, $arg)*);
     }};
 }
 
@@ -66,14 +64,14 @@ macro_rules! warn_on {
         let cond = $cond;
         #[allow(unused_unsafe)]
         if unsafe { $crate::error::unlikely(cond) } {
-            kprint!("WARN({}) at {}:{}", stringify!($cond), file!(), line!());
+            kprintln!("WARN({}) at {}:{}", stringify!($cond), file!(), line!());
         }
     }};
     ($cond:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
         let cond = $cond;
         #[allow(unused_unsafe)]
         if unsafe { $crate::error::unlikely(cond) } {
-            kprint!(concat!("WARN({}) at {}:{}: ", $fmt), stringify!($cond), file!(), line!() $(, $arg)*);
+            kprintln!(concat!("WARN({}) at {}:{}: ", $fmt), stringify!($cond), file!(), line!() $(, $arg)*);
         }
     }};
 }

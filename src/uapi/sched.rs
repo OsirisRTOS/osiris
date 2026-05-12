@@ -32,8 +32,12 @@ pub fn spawn_thread(_func_ptr: EntryFn, _ctx: *mut c_void, attrs: Option<RtAttrs
             return -1; // Invalid attributes
         }
 
-        if attrs.budget > attrs.period {
-            return -1; // Budget cannot exceed period
+        if attrs.deadline == 0 || attrs.budget as u64 > attrs.deadline {
+            return -1; // Budget cannot exceed relative deadline
+        }
+
+        if attrs.deadline > attrs.period as u64 {
+            return -1; // Relative deadline cannot exceed period
         }
 
         if attrs.budget > u32::MAX / 2 || attrs.period > u32::MAX / 2 {
