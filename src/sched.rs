@@ -490,5 +490,7 @@ extern "C" fn thread_finalizer() -> ! {
             bug!("failed to terminate returned thread.");
         }
     });
-    unreachable!();
+    loop {
+        hal::asm::nop!();
+    }
 }
