@@ -137,7 +137,7 @@ jobs:
         with:
           pattern: docs-*
           path: website/docs
-          merge-multiple: true
+          merge-multiple: false
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
