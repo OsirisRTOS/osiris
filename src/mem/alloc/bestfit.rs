@@ -42,6 +42,12 @@ pub struct BestFitAllocator {
     head: Option<NonNull<u8>>,
     #[cfg(any(feature = "metrics", osiris_metrics))]
     total_bytes: usize,
+    /// Sum of `meta.size` across all free blocks. Updated O(1) on every alloc/free.
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    free_bytes: usize,
+    /// Count of free blocks. Updated O(1) on every alloc/free.
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    free_blocks: usize,
     #[cfg(any(feature = "metrics", osiris_metrics))]
     alloc_count: u64,
     #[cfg(any(feature = "metrics", osiris_metrics))]
@@ -67,6 +73,10 @@ impl BestFitAllocator {
             head: None,
             #[cfg(any(feature = "metrics", osiris_metrics))]
             total_bytes: 0,
+            #[cfg(any(feature = "metrics", osiris_metrics))]
+            free_bytes: 0,
+            #[cfg(any(feature = "metrics", osiris_metrics))]
+            free_blocks: 0,
             #[cfg(any(feature = "metrics", osiris_metrics))]
             alloc_count: 0,
             #[cfg(any(feature = "metrics", osiris_metrics))]
@@ -104,9 +114,11 @@ impl BestFitAllocator {
         // The user pointer is the pointer to the user memory. So we need to add the size of the meta data and possibly add padding.
         let user_pointer = ptr + size_of::<BestFitMeta>() + Self::align_up();
 
+        let usable = range.end.diff(user_pointer);
+
         // Set the current head as the next block, so we can add the new block to the head.
         let meta = BestFitMeta {
-            size: range.end.diff(user_pointer),
+            size: usable,
             next: self.head,
         };
 
@@ -119,6 +131,8 @@ impl BestFitAllocator {
         #[cfg(any(feature = "metrics", osiris_metrics))]
         {
             self.total_bytes = self.total_bytes.saturating_add(range.end.diff(range.start));
+            self.free_bytes = self.free_bytes.saturating_add(usable);
+            self.free_blocks += 1;
         }
 
         Ok(())
@@ -282,6 +296,12 @@ impl super::Allocator for BestFitAllocator {
         debug_assert!(aligned_size >= size);
         debug_assert!(aligned_size <= isize::MAX as usize);
 
+        // Tracking variables for O(1) metrics update after the allocation.
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        let mut free_sub: usize = 0;
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        let mut blocks_sub: usize = 0;
+
         // Find the best fit block.
         let (split, block, prev) = match self.select_block(aligned_size, request) {
             Ok((block, prev)) => {
@@ -312,6 +332,11 @@ impl super::Allocator for BestFitAllocator {
 
                 // If the block is big enough to split. Then it also needs to be big enough to store the metadata + align of the next block.
                 if meta.size > min {
+                    // Split: old free block (meta.size) leaves, remainder (meta.size - min) stays.
+                    // Net free_bytes change: -min. free_blocks unchanged (one out, one in).
+                    #[cfg(any(feature = "metrics", osiris_metrics))]
+                    { free_sub = min; }
+
                     // Calculate the remaining size of the block and thus the next metadata.
                     let remaining_meta = BestFitMeta {
                         size: meta.size - min,
@@ -342,11 +367,22 @@ impl super::Allocator for BestFitAllocator {
 
                     (true, block, prev)
                 } else {
+                    // No split: entire free block (meta.size) is consumed.
+                    #[cfg(any(feature = "metrics", osiris_metrics))]
+                    { free_sub = meta.size; blocks_sub = 1; }
+
                     (false, block, prev)
                 }
             }
             Err(_) => {
                 let (block, prev) = self.select_block(size, request)?;
+                // Retry succeeded with original size; always no-split.
+                #[cfg(any(feature = "metrics", osiris_metrics))]
+                {
+                    let meta = unsafe { block.cast::<BestFitMeta>().as_ref() };
+                    free_sub = meta.size;
+                    blocks_sub = 1;
+                }
                 (false, block, prev)
             }
         };
@@ -376,6 +412,8 @@ impl super::Allocator for BestFitAllocator {
 
         #[cfg(any(feature = "metrics", osiris_metrics))]
         {
+            self.free_bytes = self.free_bytes.saturating_sub(free_sub);
+            self.free_blocks = self.free_blocks.saturating_sub(blocks_sub);
             self.alloc_count += 1;
         }
 
@@ -407,6 +445,8 @@ impl super::Allocator for BestFitAllocator {
 
         #[cfg(any(feature = "metrics", osiris_metrics))]
         {
+            self.free_bytes = self.free_bytes.saturating_add(meta.size);
+            self.free_blocks += 1;
             self.free_count += 1;
         }
     }
@@ -414,16 +454,13 @@ impl super::Allocator for BestFitAllocator {
 
 #[cfg(any(feature = "metrics", osiris_metrics))]
 impl BestFitAllocator {
+    /// Returns an O(1) snapshot using eagerly maintained counters.
+    /// `largest_free_block` still requires a free-list walk.
     pub fn metrics(&self) -> AllocatorMetrics {
-        let mut free_bytes = 0usize;
-        let mut free_blocks = 0usize;
         let mut largest_free_block = 0usize;
-
         let mut current = self.head;
         while let Some(ptr) = current {
             let meta = unsafe { ptr.cast::<BestFitMeta>().as_ref() };
-            free_bytes = free_bytes.saturating_add(meta.size);
-            free_blocks += 1;
             if meta.size > largest_free_block {
                 largest_free_block = meta.size;
             }
@@ -432,9 +469,9 @@ impl BestFitAllocator {
 
         AllocatorMetrics {
             total_bytes: self.total_bytes,
-            free_bytes,
-            allocated_bytes: self.total_bytes.saturating_sub(free_bytes),
-            free_blocks,
+            free_bytes: self.free_bytes,
+            allocated_bytes: self.total_bytes.saturating_sub(self.free_bytes),
+            free_blocks: self.free_blocks,
             largest_free_block,
             alloc_count: self.alloc_count,
             free_count: self.free_count,

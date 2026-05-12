@@ -37,6 +37,10 @@ impl UId {
         Self { uid }
     }
 
+    pub fn as_usize(&self) -> usize {
+        self.uid
+    }
+
     pub fn is_kernel(&self) -> bool {
         self.uid == 0
     }
@@ -139,7 +143,7 @@ impl Task {
     }
 
     #[cfg(any(feature = "metrics", osiris_metrics))]
-    pub(crate) fn heap_metrics(&self) -> crate::mem::alloc::bestfit::AllocatorMetrics {
+    pub(crate) fn allocator_metrics(&self) -> crate::mem::alloc::bestfit::AllocatorMetrics {
         self.address_space.metrics()
     }
 }

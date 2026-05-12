@@ -29,7 +29,7 @@ use crate::{
 type ThreadMap<const N: usize> = BitReclaimMap<thread::UId, thread::Thread, N>;
 type TaskMap<const N: usize> = BitReclaimMap<task::UId, task::Task, N>;
 
-const THREAD_COUNT: usize = 32;
+pub(crate) const THREAD_COUNT: usize = 32;
 type GlobalScheduler = Scheduler<THREAD_COUNT>;
 
 static SCHED: SpinLocked<GlobalScheduler> = SpinLocked::new(GlobalScheduler::new());
@@ -342,10 +342,24 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn create_task(&mut self, attrs: task::Attributes) -> Result<task::UId> {
-        self.tasks.insert_with(|idx| {
+        let task_id = self.tasks.insert_with(|idx| {
             let task = task::Task::new(task::UId::new(idx), attrs);
             task.map(|t| (task::UId::new(idx), t))
-        })
+        })?;
+
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        if let Some(task) = self.tasks.get(task_id) {
+            let m = task.allocator_metrics();
+            crate::metrics::store::write_task_heap(task_id.as_usize(), crate::metrics::store::HeapSnapshot {
+                total_bytes: m.total_bytes,
+                free_bytes: m.free_bytes,
+                used_bytes: m.allocated_bytes,
+                alloc_count: m.alloc_count,
+                free_count: m.free_count,
+            });
+        }
+
+        Ok(task_id)
     }
 
     /// Dequeues all threads of the task and removes the task. If the current thread belongs to the task, reschedule will be triggered.
@@ -367,6 +381,9 @@ impl<const N: usize> Scheduler<N> {
                 bug!("failed to remove thread {} from thread list.", id);
             }
 
+            #[cfg(any(feature = "metrics", osiris_metrics))]
+            crate::metrics::store::clear_thread_stack(id.as_usize());
+
             if Some(id) == self.current {
                 self.current = None;
                 reschedule();
@@ -374,23 +391,11 @@ impl<const N: usize> Scheduler<N> {
         }
 
         self.tasks.remove(&uid).ok_or(kerr!(EINVAL))?;
+
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        crate::metrics::store::clear_task_heap(uid.as_usize());
+
         Ok(())
-    }
-
-    #[cfg(any(feature = "metrics", osiris_metrics))]
-    pub fn thread_stack_metrics(
-        &self,
-        tid: thread::UId,
-    ) -> Option<crate::hal::stack::StackMetrics> {
-        self.threads.get(tid).map(|t| t.stack_metrics())
-    }
-
-    #[cfg(any(feature = "metrics", osiris_metrics))]
-    pub fn task_heap_metrics(
-        &self,
-        task_id: task::UId,
-    ) -> Option<crate::mem::alloc::bestfit::AllocatorMetrics> {
-        self.tasks.get(task_id).map(|t| t.heap_metrics())
     }
 
     pub fn create_thread(
@@ -404,7 +409,7 @@ impl<const N: usize> Scheduler<N> {
         };
         let task = self.tasks.get_mut(task).ok_or(kerr!(EINVAL))?;
 
-        self.threads
+        let uid = self.threads
             .insert_with(|idx| {
                 let uid = task.allocate_tid().get_uid(idx);
                 let stack = task.allocate_stack(attrs)?;
@@ -414,7 +419,20 @@ impl<const N: usize> Scheduler<N> {
             .and_then(|k| {
                 task.register_thread(k, &mut self.threads)?;
                 Ok(k)
-            })
+            })?;
+
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        if let Some(thread) = self.threads.get(uid) {
+            let m = thread.stack_metrics();
+            crate::metrics::store::write_thread_stack(uid.as_usize(), crate::metrics::store::StackSnapshot {
+                total_bytes: m.total_bytes,
+                used_bytes: m.used_bytes,
+                free_bytes: m.free_bytes,
+                peak_used_bytes: m.peak_used_bytes,
+            });
+        }
+
+        Ok(uid)
     }
 
     /// Dequeues a thread and removes it from its corresponding task. If the thread is currently running, reschedule will be triggered.
@@ -437,11 +455,50 @@ impl<const N: usize> Scheduler<N> {
 
         self.threads.remove(&uid).ok_or(kerr!(EINVAL))?;
 
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        crate::metrics::store::clear_thread_stack(uid.as_usize());
+
         if Some(uid) == self.current {
             self.current = None;
             reschedule();
         }
         Ok(())
+    }
+
+    /// Copies live stats from all threads and tasks into the lock-free mirror.
+    /// Called on every reschedule so external readers can access metrics without
+    /// acquiring the scheduler lock.
+    #[cfg(any(feature = "metrics", osiris_metrics))]
+    fn mirror_stats(&self) {
+        let global = crate::mem::global_metrics();
+        crate::metrics::store::write_global_heap(crate::metrics::store::HeapSnapshot {
+            total_bytes: global.total_bytes,
+            free_bytes: global.free_bytes,
+            used_bytes: global.allocated_bytes,
+            alloc_count: global.alloc_count,
+            free_count: global.free_count,
+        });
+
+        self.tasks.for_each(|slot, task| {
+            let m = task.allocator_metrics();
+            crate::metrics::store::write_task_heap(slot, crate::metrics::store::HeapSnapshot {
+                total_bytes: m.total_bytes,
+                free_bytes: m.free_bytes,
+                used_bytes: m.allocated_bytes,
+                alloc_count: m.alloc_count,
+                free_count: m.free_count,
+            });
+        });
+
+        self.threads.for_each(|slot, thread| {
+            let m = thread.stack_metrics();
+            crate::metrics::store::write_thread_stack(slot, crate::metrics::store::StackSnapshot {
+                total_bytes: m.total_bytes,
+                used_bytes: m.used_bytes,
+                free_bytes: m.free_bytes,
+                peak_used_bytes: m.peak_used_bytes,
+            });
+        });
     }
 }
 
@@ -532,6 +589,9 @@ pub extern "C" fn sched_enter(mut ctx: *mut c_void) -> *mut c_void {
             }
             ctx = new;
         }
+
+        #[cfg(any(feature = "metrics", osiris_metrics))]
+        sched.mirror_stats();
 
         ctx
     })

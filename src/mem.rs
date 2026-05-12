@@ -93,7 +93,7 @@ pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
 
 /// Returns a metrics snapshot of the global kernel heap.
 #[cfg(any(feature = "metrics", osiris_metrics))]
-pub fn global_metrics() -> alloc::bestfit::AllocatorMetrics {
+pub(crate) fn global_metrics() -> alloc::bestfit::AllocatorMetrics {
     GLOBAL_ALLOCATOR.lock().metrics()
 }
 
