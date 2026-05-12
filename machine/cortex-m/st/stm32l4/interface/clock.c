@@ -1,6 +1,7 @@
 #include "lib.h"
 #include <stdatomic.h>
 #include <stm32l4xx_hal.h>
+#include <stm32l4xx_ll_tim.h>
 
 static volatile uint64_t monotonic_hi = 0;
 static volatile uint32_t tick = 0;
@@ -49,8 +50,8 @@ static void init_monotonic_timer(void)
 
 void tim2_hndlr(void)
 {
-    if ((TIM2->SR & TIM_SR_UIF) != 0U) {
-        TIM2->SR &= ~TIM_SR_UIF;
+    if (LL_TIM_IsActiveFlag_UPDATE(TIM2)) {
+        LL_TIM_ClearFlag_UPDATE(TIM2);
         monotonic_hi += (1ULL << 32);
     }
 }

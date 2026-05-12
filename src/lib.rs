@@ -40,6 +40,7 @@ pub use proc_macros::app_main;
 pub unsafe extern "C" fn kernel_init() -> ! {
     // Initialize basic hardware and the logging system.
     hal::Machine::init();
+    hal::Machine::init_irqs(irq::register_irq_safe);
     hal::Machine::bench_start();
 
     print::print_header();

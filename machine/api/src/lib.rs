@@ -619,8 +619,17 @@ pub enum Fault {
 
 pub type Result<T> = core::result::Result<T, PosixError>;
 
+/// IRQ handler signature: `(ctx, vector, userdata)`.
+pub type IrqHandler = fn(*mut u8, usize, Option<usize>);
+
+/// Registration callback the kernel hands to the HAL during init.
+pub type IrqRegister = fn(usize, IrqHandler, Option<usize>) -> Result<()>;
+
 pub trait Machinelike {
     fn init();
+    /// Register HAL-owned IRQs through the kernel-supplied callback.
+    fn init_irqs(register: IrqRegister);
+
     fn print(s: &str) -> Result<()>;
 
     fn bench_start();

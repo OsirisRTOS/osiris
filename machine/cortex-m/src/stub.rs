@@ -19,6 +19,10 @@ impl hal_api::Machinelike for StubMachine {
         // No hardware to initialize in testing.
     }
 
+    fn init_irqs(_register: hal_api::IrqRegister) {
+        // No hardware IRQs in testing.
+    }
+
     fn print(s: &str) -> Result<()> {
         // Print to standard output in testing.
         print!("{s}");

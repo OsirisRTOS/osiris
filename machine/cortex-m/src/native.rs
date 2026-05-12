@@ -37,12 +37,30 @@ pub type Stack = sched::ArmStack;
 
 pub struct ArmMachine;
 
+fn monotonic_overflow_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    unsafe { bindings::tim2_hndlr() };
+}
+
 impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
             bindings::init_hal();
             bindings::init_debug_uart();
             bindings::dwt_init();
+        }
+    }
+
+    fn init_irqs(register: hal_api::IrqRegister) {
+        // Monotonic timer - usually TIM2 - picked by the board via `osiris,monotonic-timer`
+        // in /chosen; vector = irqn + 16 (Cortex-M IPSR offset).
+        if let Some(&(_, device_tree::PropValue::Str(path))) = device_tree::chosen::EXTRAS
+            .iter()
+            .find(|(k, _)| *k == "osiris,monotonic-timer")
+            && let Some(timer) = device_tree::peripheral_by_path(path)
+            && let Some(&irqn) = timer.interrupts.first()
+        {
+            let vector = irqn as usize + 16;
+            let _ = register(vector, monotonic_overflow_irq, None);
         }
     }
 
