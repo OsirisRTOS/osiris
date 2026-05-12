@@ -14,8 +14,6 @@ pub enum Fault {
     Usage,
 }
 
-pub type Result<T> = core::result::Result<T, PosixError>;
-
 /// IRQ handler signature: `(ctx, vector, userdata)`.
 pub type IrqHandler = fn(*mut u8, usize, Option<usize>);
 
