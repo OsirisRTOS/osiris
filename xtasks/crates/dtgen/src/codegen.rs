@@ -2,8 +2,8 @@ use crate::ir::{DeviceTree, PropValue};
 use proc_macro2::TokenStream;
 use quote::quote;
 
-mod flash;
 mod can;
+mod flash;
 mod i2c;
 mod spi;
 

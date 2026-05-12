@@ -1,5 +1,5 @@
-pub mod flash;
 pub mod can;
+pub mod flash;
 pub mod i2c;
 pub mod spi;
 
