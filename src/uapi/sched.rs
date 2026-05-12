@@ -67,3 +67,10 @@ pub fn exit(_code: usize) -> ! {
 pub fn current_id() -> isize {
     hal::asm::syscall!(6)
 }
+
+/// Wake the thread identified by `uid` (as returned by [`current_id`])
+/// if it is currently parked in `sleep` / `sleep_for`. No-op for a uid
+/// that is unknown or already runnable.
+pub fn kick(uid: u32) -> isize {
+    hal::asm::syscall!(5, uid)
+}

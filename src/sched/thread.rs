@@ -190,11 +190,16 @@ impl RtServer {
     }
 
     pub fn replenish(&mut self) {
-        self.deadline = self.deadline + self.period as u64;
-        self.budget_left += self.budget;
+        self.deadline = self.deadline.saturating_add(self.period as u64);
+        self.budget_left = self.budget_left.saturating_add(self.budget);
     }
 
     pub fn consume(&mut self, dt: u64) -> Option<u64> {
+        bug_on!(
+            dt > u32::MAX as u64,
+            "RtServer::consume: dt={} exceeds u32::MAX",
+            dt
+        );
         self.budget_left = if dt >= self.budget_left as u64 {
             0
         } else {
@@ -344,6 +349,10 @@ impl Thread {
 
     pub fn waiter(&self) -> Option<&Waiter> {
         self.waiter.as_ref()
+    }
+
+    pub fn waiter_mut(&mut self) -> Option<&mut Waiter> {
+        self.waiter.as_mut()
     }
 
     pub fn save_ctx(&mut self, ctx: *mut c_void) -> Result<()> {

@@ -14,7 +14,7 @@ use core::{
 use crate::hal::{self, Schedable};
 
 use crate::{
-    error::Result,
+    error::{PosixError, Result},
     mem,
     sched::thread::Waiter,
     sync::{self, atomic::AtomicU64, spinlock::SpinLocked},
@@ -30,8 +30,8 @@ use crate::{
 type ThreadMap<const N: usize> = BitReclaimMap<thread::UId, thread::Thread, N>;
 type TaskMap<const N: usize> = BitReclaimMap<task::UId, task::Task, N>;
 
-const THREAD_COUNT: usize = 32;
-type GlobalScheduler = Scheduler<THREAD_COUNT>;
+const N: usize = 32;
+type GlobalScheduler = Scheduler<N>;
 
 static SCHED: SpinLocked<GlobalScheduler> = SpinLocked::new(GlobalScheduler::new());
 
@@ -181,6 +181,14 @@ impl<const N: usize> Scheduler<N> {
 
     /// Syncs the new state after the last do_sched call to the scheduler, and returns whether we need to immediately reschedule.
     fn sync_to_sched(&mut self, now: u64) -> bool {
+        // last_tick is monotonic with `time::tick()`; an underflow here means
+        // the scheduler is being driven with a non-monotonic clock.
+        bug_on!(
+            now < self.last_tick,
+            "sync_to_sched: now={} < last_tick={}",
+            now,
+            self.last_tick
+        );
         let dt = now - self.last_tick;
         self.last_tick = now;
 
@@ -190,11 +198,39 @@ impl<const N: usize> Scheduler<N> {
             });
 
             if let Some(throttle) = throttle {
-                let _ = self.sleep_until(throttle, now);
-                return true;
+                if throttle > now {
+                    // Budget exhausted before the period ended — park the
+                    // thread until the deadline. `self.current = None` so
+                    // the next `sync_to_sched` doesn't re-throttle the same
+                    // (now-sleeping) thread on every PendSV tail-chain.
+                    if let Err(e) = self.sleep_until(throttle, now) {
+                        bug!(
+                            "sync_to_sched: throttle sleep_until({}, {}) for thread {} (slot {}) failed: {:?}",
+                            throttle,
+                            now,
+                            old,
+                            old.as_usize(),
+                            e
+                        );
+                    }
+                    self.current = None;
+                } else {
+                    // Period boundary already passed — `sleep_until(throttle,
+                    // now)` would no-op (until <= now early-return) and leave
+                    // the thread in rt edf with budget 0, which `consume`
+                    // would re-trigger as a throttle on every subsequent
+                    // call. Replenish on the spot instead: refresh the
+                    // budget for the new period and let the thread keep
+                    // running.
+                    rt::ServerView::<N>::with(&mut self.threads, |view| {
+                        if let Some(server) = view.get_mut(old) {
+                            server.on_wakeup(now);
+                        }
+                    });
+                }
+            } else {
+                self.rr_scheduler.put(old, dt as u32);
             }
-
-            self.rr_scheduler.put(old, dt as u32);
         }
 
         self.do_wakeups(now);
@@ -246,17 +282,27 @@ impl<const N: usize> Scheduler<N> {
         }
         let uid = self.current.ok_or(kerr!(EINVAL))?;
 
-        if let Some(thread) = self.threads.get_mut(uid) {
-            thread.set_waiter(Some(Waiter::new(until, uid)));
-        } else {
-            // This should not be possible. The thread must exist since it's the current thread.
+        // Dequeue first. `dequeue!` for the wakeup tree path navigates via
+        // the thread's existing `Waiter._wakeup_links`, so we must not stomp
+        // them before the dequeue runs.
+        dequeue!(self, uid)?;
+
+        // Now it's safe to install a fresh waiter — at this point the thread
+        // is out of every queue, so the rbtree links inside `Waiter` are
+        // free to be reset. Update in place if a waiter already exists so we
+        // also handle the case where the thread is in the wakeup tree (rare,
+        // but possible if a future caller stops going through `dequeue!`).
+        let thread = self.threads.get_mut(uid).unwrap_or_else(|| {
             bug!(
                 "failed to put current thread {} to sleep. Does not exist.",
                 uid
             );
+        });
+        if let Some(waiter) = thread.waiter_mut() {
+            waiter.set_until(until);
+        } else {
+            thread.set_waiter(Some(Waiter::new(until, uid)));
         }
-
-        dequeue!(self, uid)?;
 
         if self
             .wakeup
@@ -456,12 +502,20 @@ pub fn reschedule() {
 }
 
 /// Wake a thread by raw `uid`. C-FFI so ISR-context callers can use it
-/// without going through the syscall path. Errors are swallowed:
-/// not-yet-sleeping is normal.
+/// without going through the syscall path. ENOENT (not in the wakeup tree)
+/// is normal — the target may be running or already runnable. Any other
+/// error is a real scheduler bug and panics.
 #[unsafe(no_mangle)]
 pub extern "C" fn kick_thread(uid: u32) {
     with(|sched| {
-        let _ = sched.kick_by_uid(uid as usize);
+        if let Err(e) = sched.kick_by_uid(uid as usize) {
+            bug_on!(
+                e.kind != PosixError::ENOENT,
+                "kick_thread({}): unexpected error: {:?}",
+                uid,
+                e
+            );
+        }
     });
     reschedule();
 }
