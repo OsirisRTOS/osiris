@@ -6,6 +6,9 @@ pub mod rt;
 pub mod task;
 pub mod thread;
 
+#[cfg(test)]
+mod tests;
+
 use core::{
     ffi::c_void,
     sync::atomic::{AtomicBool, Ordering},
@@ -392,6 +395,104 @@ impl<const N: usize> Scheduler<N> {
             })
     }
 
+    /// Returns the current running thread, if any. Test/inspection only.
+    #[cfg(test)]
+    pub fn current(&self) -> Option<thread::UId> {
+        self.current
+    }
+
+    /// Force-set the current thread. Test only.
+    #[cfg(test)]
+    pub fn set_current_for_test(&mut self, uid: Option<thread::UId>) {
+        self.current = uid;
+    }
+
+    /// Test-only direct accessor for the wakeup tree.
+    #[cfg(test)]
+    pub fn wakeup_min(&self) -> Option<thread::UId> {
+        self.wakeup.min()
+    }
+
+    /// Test-only: returns the uids of all live threads.
+    #[cfg(test)]
+    pub fn live_threads(&self) -> std::vec::Vec<thread::UId> {
+        use crate::types::traits::Get;
+        let mut out = std::vec::Vec::new();
+        for i in 0..N {
+            if let Some(t) = self.threads.get(thread::UId::new(
+                i,
+                thread::Id::new(0, task::UId::new(0)),
+            )) {
+                out.push(t.uid());
+            }
+        }
+        out
+    }
+
+    /// Test-only: returns true if `uid` is currently sleeping (has a waiter).
+    #[cfg(test)]
+    pub fn is_waiting(&self, uid: thread::UId) -> bool {
+        use crate::types::traits::Get;
+        self.threads.get(uid).map_or(false, |t| t.is_waiting())
+    }
+
+    /// Test-only: drive `sync_to_sched` and `select_next` without going through the
+    /// `sched_enter` plumbing. Returns the picked thread's uid and budget.
+    #[cfg(test)]
+    pub fn step(&mut self, now: u64) -> (thread::UId, u32) {
+        self.sync_to_sched(now);
+        self.select_next()
+    }
+
+    /// Test-only: ask the scheduler to advance time and update internal state
+    /// without picking a new thread.
+    #[cfg(test)]
+    pub fn tick_for_test(&mut self, now: u64) {
+        self.sync_to_sched(now);
+    }
+
+    /// Test-only: insert a fresh task into the scheduler without going through
+    /// `create_task` (which requires a memory subsystem).
+    #[cfg(test)]
+    pub fn insert_task_for_test(&mut self) -> Result<task::UId> {
+        self.tasks
+            .insert_with(|idx| Ok((task::UId::new(idx), task::Task::new_for_test(task::UId::new(idx)))))
+    }
+
+    /// Test-only: insert a thread into the scheduler without allocating a real
+    /// stack. The thread starts detached (not enqueued, not waiting).
+    #[cfg(test)]
+    pub fn insert_thread_for_test(
+        &mut self,
+        task_id: task::UId,
+        rtattrs: Option<crate::uapi::sched::RtAttrs>,
+    ) -> Result<thread::UId> {
+        use core::num::NonZero;
+        use crate::hal::stack::Stacklike;
+        let task = self.tasks.get_mut(task_id).ok_or(kerr!(EINVAL))?;
+        let stack = unsafe {
+            crate::hal::Stack::new(crate::hal::stack::Descriptor {
+                top: crate::hal::mem::PhysAddr::new(0),
+                size: NonZero::new(1).unwrap(),
+                entry: test_dummy_entry,
+                ctx: core::ptr::null_mut(),
+                fin: None,
+            })?
+        };
+        let uid = self
+            .threads
+            .insert_with(|idx| {
+                let uid = task.allocate_tid().get_uid(idx);
+                let thread = thread::Thread::new(uid, stack, rtattrs);
+                Ok((uid, thread))
+            })
+            .and_then(|k| {
+                task.register_thread(k, &mut self.threads)?;
+                Ok(k)
+            })?;
+        Ok(uid)
+    }
+
     /// Dequeues a thread and removes it from its corresponding task. If the thread is currently running, reschedule will be triggered.
     ///
     /// `uid` - The UID of the thread to kill, or None to kill the current thread.
@@ -508,6 +609,9 @@ pub extern "C" fn sched_enter(mut ctx: *mut c_void) -> *mut c_void {
         ctx
     })
 }
+
+#[cfg(test)]
+extern "C" fn test_dummy_entry(_ctx: *mut c_void) {}
 
 extern "C" fn thread_finalizer() -> ! {
     with(|sched| {

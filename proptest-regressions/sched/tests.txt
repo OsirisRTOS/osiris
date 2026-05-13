@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc bc3a41fbc7968fd6c1bfc1301f157a3236fe16b2a518d0a85bbf919bc251e07b # shrinks to ops = [NewThread { rt: false }, Sleep { idx: 0, until: 0 }, Enqueue { idx: 0 }, KillThread { idx: 0 }]
