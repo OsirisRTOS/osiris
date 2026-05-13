@@ -349,16 +349,9 @@ impl<const N: usize> Scheduler<N> {
 
         #[cfg(any(feature = "metrics", metrics))]
         if let Some(task) = self.tasks.get(task_id) {
-            let m = task.allocator_metrics();
             crate::metrics::store::write_task_heap(
                 task_id.as_usize(),
-                crate::metrics::store::HeapSnapshot {
-                    total_bytes: m.total_bytes,
-                    free_bytes: m.free_bytes,
-                    used_bytes: m.allocated_bytes(),
-                    alloc_count: m.alloc_count,
-                    free_count: m.free_count,
-                },
+                task.allocator_metrics().into(),
             );
         }
 
@@ -427,15 +420,9 @@ impl<const N: usize> Scheduler<N> {
 
         #[cfg(any(feature = "metrics", metrics))]
         if let Some(thread) = self.threads.get(uid) {
-            let m = thread.stack_metrics();
             crate::metrics::store::write_thread_stack(
                 uid.as_usize(),
-                crate::metrics::store::StackSnapshot {
-                    total_bytes: m.total_bytes,
-                    used_bytes: m.used_bytes,
-                    free_bytes: m.free_bytes,
-                    peak_used_bytes: m.peak_used_bytes,
-                },
+                thread.stack_metrics().into(),
             );
         }
 
