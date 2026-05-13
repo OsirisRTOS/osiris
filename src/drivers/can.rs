@@ -12,7 +12,8 @@ const CAN_BUS_MAX: usize = 2;
 
 pub struct Bus {
     desc: hal::can::Device,
-    /// Single consumer per controller — a second `register_waiter` overwrites the first.
+    /// Single consumer per controller; concurrent `register_waiter`
+    /// calls are rejected with `EBUSY`.
     waiter: ParkedWaiter,
 }
 
@@ -174,8 +175,8 @@ impl Device {
             .map_err(|e| e.kind)
     }
 
-    pub fn unregister_waiter(&self) {
-        let _ = self.with_bus(|bus| bus.waiter.disarm());
+    pub fn unregister_waiter(&self) -> Result<()> {
+        self.with_bus(|bus| bus.waiter.disarm())
     }
 
     fn with_bus<R, F: FnOnce(&Bus) -> R>(&self, f: F) -> Result<R> {

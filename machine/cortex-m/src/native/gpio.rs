@@ -170,9 +170,9 @@ pub fn unregister_edge_handler(pin: Pin) -> Result<()> {
     if pin.line >= 16 {
         return Err(PosixError::EINVAL);
     }
-    // Mask the EXTI line first so no further IRQs reach `dispatch`,
-    // then drop the handler. Order matters: clearing handler before the
-    // line is masked would let an in-flight IRQ skip a live line.
+    // Mask the line and clear its pending bit first; that way any IRQ
+    // still pending in NVIC reads PR1 as zero in `dispatch` and skips
+    // this slot before we null the handler out from under it.
     let rc = unsafe { bindings::exti_release(pin.line) };
     let slot = &LINES[pin.line as usize];
     slot.handler.store(core::ptr::null_mut(), Ordering::Release);

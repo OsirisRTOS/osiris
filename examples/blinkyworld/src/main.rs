@@ -27,22 +27,21 @@ static RED: BlinkyLed = BlinkyLed {
 };
 
 extern "C" fn run(ctx: *mut c_void) {
-    // SAFETY: every caller hands us a pointer to one of the `static BlinkyLed`s
-    // below, which live for the entire program.
-    let BlinkyLed = unsafe { &*(ctx as *const BlinkyLed) };
+    // SAFETY: every caller hands us a pointer to a BlinkyLed, which live for the entire program.
+    let blinky_led = unsafe { &*(ctx as *const BlinkyLed) };
 
-    let led = match Led::open_by_alias(BlinkyLed.alias) {
+    let led = match Led::open_by_alias(blinky_led.alias) {
         Ok(l) => l,
         Err(e) => {
             print::print(format_args!(
                 "blinkyworld: Led::open({}) failed: {:?}\n",
-                BlinkyLed.alias, e
+                blinky_led.alias, e
             ));
             return;
         }
     };
 
-    let half = BlinkyLed.half_period_ms as u64;
+    let half = blinky_led.half_period_ms as u64;
     loop {
         let _ = led.on();
         sleep_for(half);

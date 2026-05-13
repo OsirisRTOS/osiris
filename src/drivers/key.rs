@@ -110,9 +110,9 @@ impl Key {
 }
 
 extern "C" fn on_edge(_line: u8, ctx: *mut ()) {
-    // `ctx` is non-null in steady state, but `register_edge_handler`
-    // rolls it back to null on `exti_configure` failure — and that
-    // rollback races against `dispatch` since both are lock-free.
+    // Defensive: the HAL guarantees a non-null `ctx` for any line whose
+    // handler is currently installed, but a stray fire (e.g. against a
+    // line in the middle of teardown) should not deref a null.
     if ctx.is_null() {
         return;
     }

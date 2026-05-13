@@ -22,7 +22,7 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
     let duration = ((duration_hi as u64) << 32) | (duration_lo as u64);
     sched::with(|sched| {
         let now = time::tick();
-        // saturate so userland passing u64::MAX doesn't wrap the deadline.
+        // Saturate so userland passing u64::MAX doesn't wrap the deadline.
         if sched
             .sleep_until(now.saturating_add(duration), now)
             .is_err()

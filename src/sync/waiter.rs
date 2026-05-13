@@ -1,28 +1,20 @@
-//! Single-consumer park/wake primitive.
-//!
-//! [`ParkedWaiter`] holds at most one parked uid in an `AtomicU32`.
-//! Producers call [`wake`](ParkedWaiter::wake) from IRQ context — it is
-//! lock-free. Consumers either:
-//!
-//! - drive their own park loop with the low-level [`arm`] / [`disarm`]
-//!   pair, or
-//! - call [`park`] / [`park_current`], which couples arming and the
-//!   scheduler-side park so a wake that fires in between cannot be lost.
-//!
-//! Either entry rejects a concurrent second consumer with `EBUSY`
-//! instead of silently overwriting the first uid (which would strand
-//! that thread).
+//! Single-consumer park/wake primitive: at most one thread parks per
+//! [`ParkedWaiter`] at a time. Producers call [`wake`] from IRQ context
+//! (lock-free); consumers call [`park`] / [`park_current`], or drive
+//! arming and parking themselves with [`arm`] / [`disarm`]. A second
+//! concurrent consumer is rejected with `EBUSY`.
 //!
 //! [`arm`]: ParkedWaiter::arm
 //! [`disarm`]: ParkedWaiter::disarm
 //! [`park`]: ParkedWaiter::park
 //! [`park_current`]: ParkedWaiter::park_current
+//! [`wake`]: ParkedWaiter::wake
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use crate::error::Result;
 
-/// uid 0 is the idle thread, which cannot park; safe sentinel.
+// 0 is the idle thread's uid, which is never allowed to park.
 const UNARMED: u32 = 0;
 
 pub struct ParkedWaiter {
@@ -50,10 +42,8 @@ impl ParkedWaiter {
         self.uid.store(UNARMED, Ordering::Release);
     }
 
-    /// Look up the current thread and park it. Returns `EINVAL` if
-    /// invoked outside of a thread context (e.g. from the idle thread or
-    /// pre-`sched::enable`), `EBUSY` if another consumer is already
-    /// parked here.
+    /// Park the calling thread; returns `EBUSY` if another consumer is
+    /// already parked here.
     pub fn park_current(&self) -> Result<()> {
         let uid = crate::sched::with(|s| s.current_uid())
             .ok_or_else(|| kerr!(EINVAL, "park_current with no current thread"))?
@@ -64,11 +54,12 @@ impl ParkedWaiter {
         self.park(uid)
     }
 
-    /// Atomically (vs IRQs) arm `uid` and park it on the scheduler's
-    /// wakeup tree. The intervening edge — wake fires after `arm` returns
-    /// but before `sched::with` runs — would otherwise kick a uid that
-    /// the scheduler does not yet see as sleeping, dropping the wakeup.
+    /// Park `uid`. Prefer [`park_current`](Self::park_current) unless
+    /// you already have the uid in hand.
     pub fn park(&self, uid: u32) -> Result<()> {
+        // IRQs masked across arm + scheduler park so a wake firing
+        // in between can't kick a uid the scheduler hasn't yet
+        // recorded as sleeping.
         crate::sync::atomic::irq_free(|| -> Result<()> {
             self.arm(uid)?;
             crate::sched::with(|s| {
@@ -78,8 +69,6 @@ impl ParkedWaiter {
             });
             Ok(())
         })?;
-        // The scheduler switches us out once IRQs re-enable; control
-        // resumes here after `wake` has run.
         self.disarm();
         Ok(())
     }

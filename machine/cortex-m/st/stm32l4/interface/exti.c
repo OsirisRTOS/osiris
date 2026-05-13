@@ -35,7 +35,7 @@ static uint32_t port_to_gpiosel(GPIO_TypeDef *port)
   return EXTI_GPIOA;
 }
 
-/* Precondition: line < 16, checked by both callers. */
+/* Precondition: line < 16. */
 static IRQn_Type irqn_for_line(uint8_t line)
 {
   switch (line)
