@@ -20,6 +20,9 @@ mod sync;
 mod syscalls;
 mod time;
 
+#[cfg(any(feature = "metrics", metrics))]
+pub mod metrics;
+
 // Public, for now.
 pub mod drivers;
 pub mod uapi;

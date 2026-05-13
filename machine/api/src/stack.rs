@@ -12,6 +12,21 @@ pub struct Descriptor {
     pub fin: Option<FinFn>,
 }
 
+/// Per-stack resource snapshot. Available when the `metrics` feature is enabled.
+/// Backends that do not override `Stacklike::metrics` return all-zero values.
+#[cfg(any(feature = "metrics", metrics))]
+#[derive(Debug, Clone, Copy)]
+pub struct StackMetrics {
+    /// Total bytes allocated for this stack.
+    pub total_bytes: usize,
+    /// Bytes currently consumed (from stack top down to current SP).
+    pub used_bytes: usize,
+    /// Bytes still available for use.
+    pub free_bytes: usize,
+    /// Peak bytes ever used since the stack was created (high-water mark).
+    pub peak_used_bytes: usize,
+}
+
 pub trait Stacklike {
     type ElemSize: Copy;
     type StackPtr;
@@ -24,6 +39,18 @@ pub trait Stacklike {
     fn set_sp(&mut self, sp: Self::StackPtr);
 
     fn sp(&self) -> *mut c_void;
+
+    /// Returns a metrics snapshot for this stack.
+    /// Backends that do not implement full metrics tracking return all-zero values.
+    #[cfg(any(feature = "metrics", metrics))]
+    fn metrics(&self) -> StackMetrics {
+        StackMetrics {
+            total_bytes: 0,
+            used_bytes: 0,
+            free_bytes: 0,
+            peak_used_bytes: 0,
+        }
+    }
 
     //fn push_tinit<F, const N: usize>(&mut self, init: &ThreadInitializer<F, N, Self::ElemSize>) -> Result<CtxPtr>;
 

@@ -29,7 +29,7 @@ use crate::{
 type ThreadMap<const N: usize> = BitReclaimMap<thread::UId, thread::Thread, N>;
 type TaskMap<const N: usize> = BitReclaimMap<task::UId, task::Task, N>;
 
-const THREAD_COUNT: usize = 32;
+pub(crate) const THREAD_COUNT: usize = 32;
 type GlobalScheduler = Scheduler<THREAD_COUNT>;
 
 static SCHED: SpinLocked<GlobalScheduler> = SpinLocked::new(GlobalScheduler::new());
@@ -342,10 +342,20 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn create_task(&mut self, attrs: task::Attributes) -> Result<task::UId> {
-        self.tasks.insert_with(|idx| {
+        let task_id = self.tasks.insert_with(|idx| {
             let task = task::Task::new(task::UId::new(idx), attrs);
             task.map(|t| (task::UId::new(idx), t))
-        })
+        })?;
+
+        #[cfg(any(feature = "metrics", metrics))]
+        if let Some(task) = self.tasks.get(task_id) {
+            crate::metrics::store::write_task_heap(
+                task_id.as_usize(),
+                task.allocator_metrics().into(),
+            );
+        }
+
+        Ok(task_id)
     }
 
     /// Dequeues all threads of the task and removes the task. If the current thread belongs to the task, reschedule will be triggered.
@@ -367,6 +377,9 @@ impl<const N: usize> Scheduler<N> {
                 bug!("failed to remove thread {} from thread list.", id);
             }
 
+            #[cfg(any(feature = "metrics", metrics))]
+            crate::metrics::store::clear_thread_stack(id.as_usize());
+
             if Some(id) == self.current {
                 self.current = None;
                 reschedule();
@@ -374,6 +387,10 @@ impl<const N: usize> Scheduler<N> {
         }
 
         self.tasks.remove(&uid).ok_or(kerr!(EINVAL))?;
+
+        #[cfg(any(feature = "metrics", metrics))]
+        crate::metrics::store::clear_task_heap(uid.as_usize());
+
         Ok(())
     }
 
@@ -388,7 +405,8 @@ impl<const N: usize> Scheduler<N> {
         };
         let task = self.tasks.get_mut(task).ok_or(kerr!(EINVAL))?;
 
-        self.threads
+        let uid = self
+            .threads
             .insert_with(|idx| {
                 let uid = task.allocate_tid().get_uid(idx);
                 let stack = task.allocate_stack(attrs)?;
@@ -398,7 +416,17 @@ impl<const N: usize> Scheduler<N> {
             .and_then(|k| {
                 task.register_thread(k, &mut self.threads)?;
                 Ok(k)
-            })
+            })?;
+
+        #[cfg(any(feature = "metrics", metrics))]
+        if let Some(thread) = self.threads.get(uid) {
+            crate::metrics::store::write_thread_stack(
+                uid.as_usize(),
+                thread.stack_metrics().into(),
+            );
+        }
+
+        Ok(uid)
     }
 
     /// Dequeues a thread and removes it from its corresponding task. If the thread is currently running, reschedule will be triggered.
@@ -421,11 +449,34 @@ impl<const N: usize> Scheduler<N> {
 
         self.threads.remove(&uid).ok_or(kerr!(EINVAL))?;
 
+        #[cfg(any(feature = "metrics", metrics))]
+        crate::metrics::store::clear_thread_stack(uid.as_usize());
+
         if Some(uid) == self.current {
             self.current = None;
             reschedule();
         }
         Ok(())
+    }
+
+    /// Updates the lock-free mirror for the currently scheduled thread and its task.
+    /// Called on every reschedule; only the thread that just ran needs updating.
+    #[cfg(any(feature = "metrics", metrics))]
+    fn mirror_stats(&self) {
+        use crate::metrics::store;
+
+        store::write_global_heap(crate::mem::global_metrics().into());
+
+        if let Some(uid) = self.current {
+            if let Some(thread) = self.threads.get(uid) {
+                store::write_thread_stack(uid.as_usize(), thread.stack_metrics().into());
+
+                let task_id = thread.task_id();
+                if let Some(task) = self.tasks.get(task_id) {
+                    store::write_task_heap(task_id.as_usize(), task.allocator_metrics().into());
+                }
+            }
+        }
     }
 }
 
@@ -509,6 +560,12 @@ pub extern "C" fn sched_enter(mut ctx: *mut c_void) -> *mut c_void {
     with(|sched| {
         let old = sched.current.map(|c| c.owner());
         sched.land(ctx);
+
+        // Mirror stats while self.current still points to the outgoing thread —
+        // its stack context was just saved by land() and its task reflects any
+        // allocations made since the last reschedule.
+        #[cfg(any(feature = "metrics", metrics))]
+        sched.mirror_stats();
 
         if let Some((new, task)) = sched.do_sched(time::tick()) {
             if old != Some(task.id) {
