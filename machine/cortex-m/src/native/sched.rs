@@ -7,7 +7,7 @@ use core::{
     ptr::NonNull,
 };
 
-use hal_api::{Result, stack::Descriptor};
+use hal_api::{Result, stack::{Descriptor, Stacklike}};
 
 // A default finalizer used if none is supplied: just spins forever.
 #[inline(never)]
