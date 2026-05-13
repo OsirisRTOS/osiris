@@ -9,7 +9,7 @@ use osiris::uapi::{key::Key, led::Led, print};
 /// press (`sw0`). Releases are ignored.
 #[app_main]
 fn main() {
-    print::print(format_args!("gpio-blink: opening led0..led2 + sw0\n"));
+    print::print(format_args!("gpio-button: opening led0..led2 + sw0\n"));
 
     let leds = match (
         Led::open_by_alias("led0"),

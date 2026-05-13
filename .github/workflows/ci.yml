@@ -108,7 +108,7 @@ jobs:
           - stm32l4r5zi
         example:
           - hello-world
-          - gpio-blink
+          - gpio-button
           - blinkyworld
         include:
           - preset: stm32l4r5zi
