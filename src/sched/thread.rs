@@ -164,8 +164,8 @@ impl RtServer {
     }
 
     fn violates_sched(&self, now: u64) -> bool {
-        self.budget_left as u64 * self.period as u64
-            > self.budget as u64 * (self.deadline.saturating_sub(now))
+        (self.budget_left as u64).saturating_mul(self.period as u64)
+            > (self.budget as u64).saturating_mul(self.deadline.saturating_sub(now))
     }
 
     pub fn on_wakeup(&mut self, now: u64) {
@@ -176,8 +176,8 @@ impl RtServer {
     }
 
     pub fn replenish(&mut self) {
-        self.deadline = self.deadline + self.period as u64;
-        self.budget_left += self.budget;
+        self.deadline = self.deadline.saturating_add(self.period as u64);
+        self.budget_left = self.budget_left.saturating_add(self.budget);
     }
 
     pub fn consume(&mut self, dt: u64) -> Option<u64> {
