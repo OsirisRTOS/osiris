@@ -44,7 +44,8 @@ extern "C" fn run(ctx: *mut c_void) {
 #[app_main]
 fn main() {
     print::print(format_args!(
-        "blinkyworld: spawning blinkers green=100ms blue=200ms red=500ms\n"
+        "blinkyworld: spawning blinkers green={}ms blue={}ms red={}ms\n",
+        GREEN.half_period_ms, BLUE.half_period_ms, RED.half_period_ms
     ));
 
     let attrs = Some(RtAttrs {

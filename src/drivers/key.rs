@@ -22,12 +22,13 @@ pub struct KeyEvent {
 struct KeyState {
     entry: &'static KeyRegistryEntry,
     waiter: ParkedWaiter,
+    /// `0` means "no edge yet" — see `on_edge`.
     last_event_mono: AtomicU64,
-    /// Pre-converted from `entry.debounce_ms` so the ISR avoids a divide.
+    /// Pre-converted from `entry.debounce_ms` so the edge callback avoids a divide.
     debounce_ticks: u64,
-    /// Set true only after `init_entry` ran to completion. `Key::open_*`
-    /// rejects keys whose init started but failed partway, so callers
-    /// don't get a handle that would block on `wait()` forever.
+    /// State at edge time, so `wait()` survives presses that settle back before the consumer wakes.
+    latched_pressed: AtomicBool,
+    /// `Key::open_*` rejects handles whose init failed partway.
     initialized: AtomicBool,
 }
 
@@ -40,24 +41,35 @@ impl KeyState {
     }
 }
 
-// One slot per DT entry, sized at compile time so there is no truncation
-// case to handle at runtime. `OnceCell::set_or_get` writes in place, so
-// the `&'static KeyState` handed to ISRs stays valid for the program
-// lifetime.
+// One slot per DT entry; the `&'static KeyState` handed to ISRs lives
+// for the program.
 static SLOTS: [OnceCell<KeyState>; hal::device_tree::KEY_REGISTRY.len()] =
     [const { OnceCell::new() }; hal::device_tree::KEY_REGISTRY.len()];
 
-// Compile-time validation: every DT-derived line must map to a known
-// IRQ vector that fits in the u64 dedup mask. If a board adds a key
-// with an unsupported line, the build fails here with a clear message
-// rather than silently failing at boot.
 const _: () = {
     let entries = hal::device_tree::KEY_REGISTRY;
     let mut i = 0;
     while i < entries.len() {
-        match hal::gpio::nvic_vector_for_line(entries[i].line) {
-            Some(v) => assert!(v < 64, "gpio-key IRQ vector exceeds u64 dedup-mask width"),
+        let slot_i = match hal::gpio::irq_slot_for_line(entries[i].line) {
+            Some(v) => v,
             None => panic!("gpio-key DT entry references an unmapped GPIO line"),
+        };
+        assert!(
+            slot_i < 64,
+            "gpio-key IRQ slot exceeds u64 dedup-mask width"
+        );
+
+        let mut j = 0;
+        while j < i {
+            if let Some(slot_j) = hal::gpio::irq_slot_for_line(entries[j].line) {
+                if slot_i == slot_j {
+                    assert!(
+                        entries[i].irq_priority == entries[j].irq_priority,
+                        "gpio-keys sharing an IRQ slot must declare the same `osiris,irq-priority`"
+                    );
+                }
+            }
+            j += 1;
         }
         i += 1;
     }
@@ -111,32 +123,30 @@ impl Key {
     /// Snapshot the line without blocking.
     pub fn poll(&self) -> Result<KeyEvent> {
         let level = hal::gpio::read(self.state.pin())?;
-        Ok(self.event_from_level(level))
+        Ok(KeyEvent {
+            code: self.state.entry.code,
+            pressed: pressed_from_level(self.state.entry, level),
+        })
     }
 
-    /// Block until the next edge, then return the event for the current
-    /// line level. Returns `EBUSY` if another thread is already waiting
-    /// on this key.
+    /// Block until the next edge. `EBUSY` if another thread is already
+    /// waiting; edges arriving before wake-up coalesce into one event.
     pub fn wait(&self) -> Result<KeyEvent> {
         self.state.waiter.park_current()?;
-        let level = hal::gpio::read(self.state.pin())?;
-        Ok(self.event_from_level(level))
-    }
-
-    fn event_from_level(&self, level: Level) -> KeyEvent {
-        let active_low = self.state.entry.active_low != 0;
-        let pressed = (level == Level::High) ^ active_low;
-        KeyEvent {
+        Ok(KeyEvent {
             code: self.state.entry.code,
-            pressed,
-        }
+            pressed: self.state.latched_pressed.load(Ordering::Acquire),
+        })
     }
 }
 
+fn pressed_from_level(entry: &KeyRegistryEntry, level: Level) -> bool {
+    let active_low = entry.active_low != 0;
+    (level == Level::High) ^ active_low
+}
+
 extern "C" fn on_edge(_line: u8, ctx: *mut ()) {
-    // Defensive: the HAL guarantees a non-null `ctx` for any line whose
-    // handler is currently installed, but a stray fire (e.g. against a
-    // line in the middle of teardown) should not deref a null.
+    // Guard against a stray fire during teardown.
     if ctx.is_null() {
         return;
     }
@@ -146,10 +156,19 @@ extern "C" fn on_edge(_line: u8, ctx: *mut ()) {
     if state.debounce_ticks > 0 {
         let now = hal::Machine::monotonic_now();
         let prev = state.last_event_mono.load(Ordering::Acquire);
-        if now.saturating_sub(prev) < state.debounce_ticks {
+        // Skip debounce on the first edge — `monotonic_now()` may still
+        // be smaller than `debounce_ticks`.
+        if prev != 0 && now.saturating_sub(prev) < state.debounce_ticks {
             return;
         }
-        state.last_event_mono.store(now, Ordering::Release);
+        let stored = if now == 0 { 1 } else { now };
+        state.last_event_mono.store(stored, Ordering::Release);
+    }
+
+    if let Ok(level) = hal::gpio::read(state.pin()) {
+        state
+            .latched_pressed
+            .store(pressed_from_level(state.entry, level), Ordering::Release);
     }
 
     state.waiter.wake();
@@ -167,8 +186,7 @@ pub fn init() {
     let entries = hal::device_tree::KEY_REGISTRY;
     kprintln!("Found {} gpio-key entries", entries.len());
 
-    // Several keys may resolve to the same IRQ vector; install the
-    // shared dispatcher exactly once per vector.
+    // Install the shared dispatcher once per slot.
     let mut seen_slots: u64 = 0;
 
     for (i, entry) in entries.iter().enumerate() {
@@ -183,25 +201,23 @@ fn init_entry(
     entry: &'static KeyRegistryEntry,
     seen_slots: &mut u64,
 ) -> Result<()> {
-    // `nvic_vector_for_line` returning Some and `vector < 64` are both
-    // enforced at compile time for every DT entry by the const block at
-    // the top of this module, so this never errors in practice.
-    let vector =
-        hal::gpio::nvic_vector_for_line(entry.line).ok_or_else(|| kerr!(EINVAL, "invalid line"))?;
+    let slot =
+        hal::gpio::irq_slot_for_line(entry.line).ok_or_else(|| kerr!(EINVAL, "invalid line"))?;
 
     let state = KeyState {
         entry,
         waiter: ParkedWaiter::new(),
         last_event_mono: AtomicU64::new(0),
         debounce_ticks: debounce_to_ticks(entry.debounce_ms),
+        latched_pressed: AtomicBool::new(false),
         initialized: AtomicBool::new(false),
     };
     let state_ref: &'static KeyState = SLOTS[slot_idx].set_or_get(state);
     let pin = state_ref.pin();
 
-    let bit = 1u64 << vector;
+    let bit = 1u64 << slot;
     if *seen_slots & bit == 0 {
-        unsafe { crate::irq::register_irq(vector, hal::gpio::dispatch, None) }?;
+        unsafe { crate::irq::register_irq(slot, hal::gpio::dispatch, None) }?;
         *seen_slots |= bit;
     }
 
@@ -211,6 +227,12 @@ fn init_entry(
         Pull::Down
     };
     hal::gpio::configure_input(pin, pull)?;
+
+    if let Ok(level) = hal::gpio::read(pin) {
+        state_ref
+            .latched_pressed
+            .store(pressed_from_level(entry, level), Ordering::Release);
+    }
 
     let ctx = state_ref as *const KeyState as *mut ();
     hal::gpio::register_edge_handler(pin, Edges::BOTH, on_edge, ctx, entry.irq_priority)?;

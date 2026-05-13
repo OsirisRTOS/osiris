@@ -112,9 +112,9 @@ static uint32_t pull_to_hal(uint8_t pull)
 {
   switch (pull)
   {
-  case GPIO_PULL_UP_:
+  case GPIO_PULL_UP:
     return GPIO_PULLUP;
-  case GPIO_PULL_DOWN_:
+  case GPIO_PULL_DOWN:
     return GPIO_PULLDOWN;
   default:
     return GPIO_NOPULL;
@@ -126,7 +126,7 @@ int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull)
   GPIO_TypeDef *p = (GPIO_TypeDef *)port;
   if (!port_is_known(p) || pin_mask == 0)
     return -PosixError_EINVAL;
-  if (pull > GPIO_PULL_DOWN_)
+  if (pull > GPIO_PULL_DOWN)
     return -PosixError_EINVAL;
 
   gpio_enable_clock(p);

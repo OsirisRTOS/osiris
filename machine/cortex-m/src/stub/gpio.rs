@@ -83,6 +83,6 @@ pub fn unregister_edge_handler(_pin: Pin) -> Result<()> {
 
 pub fn dispatch(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {}
 
-pub const fn nvic_vector_for_line(_line: u8) -> Option<usize> {
+pub const fn irq_slot_for_line(_line: u8) -> Option<usize> {
     None
 }

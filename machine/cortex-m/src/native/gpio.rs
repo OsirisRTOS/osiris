@@ -1,7 +1,5 @@
-//! GPIO HAL over `interface/gpio.c` plus the EXTI line→callback demuxer.
-//! Hides SYSCFG routing and shared `EXTI9_5`/`EXTI15_10` vectors from
-//! kernel drivers, which only need `register_edge_handler(pin, edges, fn, ctx)`
-//! and the matching NVIC slot from [`nvic_vector_for_line`].
+//! GPIO HAL plus per-line edge-callback demuxer. Kernel drivers use
+//! `register_edge_handler` and the IRQ slot from [`irq_slot_for_line`].
 
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicPtr, Ordering};
@@ -23,6 +21,13 @@ pub enum Pull {
     Up = 1,
     Down = 2,
 }
+
+// Keep Rust and C pull constants in sync.
+const _: () = {
+    assert!(Pull::None as u32 == bindings::GPIO_PULL_NONE);
+    assert!(Pull::Up as u32 == bindings::GPIO_PULL_UP);
+    assert!(Pull::Down as u32 == bindings::GPIO_PULL_DOWN);
+};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,17 +119,14 @@ impl LineCb {
     }
 }
 
-// One slot per EXTI GPIO line. `dispatch` reads these from IRQ context
-// without a lock; registration uses CAS on `handler` to claim the slot
-// and a brief PRIMASK mask to publish `ctx` and `handler` together.
+// One slot per EXTI GPIO line; lock-free reads from `dispatch`,
+// CAS-claimed in registration.
 static LINES: [LineCb; 16] = [const { LineCb::new() }; 16];
 
-/// Install an edge handler for `pin` and unmask the EXTI line. Returns
-/// `EBUSY` if the line already has a registered handler — callers must
-/// [`unregister_edge_handler`] first, since hot-swapping would race
-/// against [`dispatch`]. The caller is responsible for registering
-/// `dispatch` at the NVIC slot reported by [`nvic_vector_for_line`]
-/// (once per slot).
+/// Install an edge handler for `pin` and unmask the line. `EBUSY` if
+/// the line is already claimed — call [`unregister_edge_handler`]
+/// first. The caller registers `dispatch` at the matching
+/// [`irq_slot_for_line`] (once per slot).
 pub fn register_edge_handler(
     pin: Pin,
     edges: Edges,
@@ -137,9 +139,8 @@ pub fn register_edge_handler(
     }
     let slot = &LINES[pin.line as usize];
 
-    // Mask IRQs while we publish `ctx` and `handler` together so a
-    // concurrent dispatch cannot observe handler-without-ctx. The CAS
-    // rejects re-registration of an already-claimed line.
+    // Publish `ctx` and `handler` together so `dispatch` never sees
+    // one without the other. CAS rejects re-registration.
     let state = super::asm::disable_irq_save();
     let claimed = slot
         .handler
@@ -163,9 +164,8 @@ pub fn register_edge_handler(
         bindings::exti_configure(port_ptr(pin), pin.line, edges.bits(), nvic_priority)
     };
     if rc != 0 {
-        // The EXTI line was never unmasked (`exti_configure` short-circuits
-        // before any peripheral writes when it errors), so dropping the
-        // claim back to null cannot race with `dispatch`.
+        // `exti_configure` errors before any peripheral writes, so the
+        // line is still masked and clearing the claim can't race `dispatch`.
         slot.ctx.store(core::ptr::null_mut(), Ordering::Release);
         slot.handler.store(core::ptr::null_mut(), Ordering::Release);
         return Err(PosixError::from_errno(-rc));
@@ -177,9 +177,8 @@ pub fn unregister_edge_handler(pin: Pin) -> Result<()> {
     if pin.line >= 16 {
         return Err(PosixError::EINVAL);
     }
-    // Mask the line and clear its pending bit first; that way any IRQ
-    // still pending in NVIC reads PR1 as zero in `dispatch` and skips
-    // this slot before we null the handler out from under it.
+    // Mask + clear pending first; any in-flight `dispatch` then reads
+    // PR1=0 for this line and skips before we null the handler.
     let rc = unsafe { bindings::exti_release(pin.line) };
     let slot = &LINES[pin.line as usize];
     slot.handler.store(core::ptr::null_mut(), Ordering::Release);
@@ -187,16 +186,16 @@ pub fn unregister_edge_handler(pin: Pin) -> Result<()> {
     ok_or_err(rc, ())
 }
 
-/// IRQ-context demuxer; register once per used EXTI NVIC slot. Signature
-/// matches `crate::irq::IrqHandler` in the kernel.
-pub fn dispatch(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+/// IRQ-context demuxer; register once per used IRQ slot. Only
+/// services lines belonging to `vector`.
+pub fn dispatch(_ctx: *mut u8, vector: usize, _userdata: Option<usize>) {
     let pending = unsafe { bindings::exti_pending() };
-    let serviced = pending & 0xFFFFu32; // GPIO lines are bits 0..15.
+    let owned = lines_for_slot(vector) as u32;
+    let serviced = pending & owned;
     if serviced == 0 {
         return;
     }
-    // Ack first: a new edge after ack repends the bit and we'll service
-    // it on the next IRQ rather than dropping it.
+    // Ack before servicing — a new edge re-pends the bit.
     unsafe { bindings::exti_ack(serviced) };
 
     let mut bits = serviced;
@@ -215,10 +214,9 @@ pub fn dispatch(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
     }
 }
 
-/// Cortex-M vector slot (`IRQn + 16`) that fires for `line`. Returns
-/// None for lines outside 0..15. `const` so callers can compile-time
-/// validate device-tree-derived lines.
-pub const fn nvic_vector_for_line(line: u8) -> Option<usize> {
+/// IRQ slot that fires for `line`, or None for lines outside 0..15.
+/// `const` so callers can validate DT-derived lines at compile time.
+pub const fn irq_slot_for_line(line: u8) -> Option<usize> {
     let irqn: usize = match line {
         0 => 6,
         1 => 7,
@@ -230,4 +228,19 @@ pub const fn nvic_vector_for_line(line: u8) -> Option<usize> {
         _ => return None,
     };
     Some(irqn + 16)
+}
+
+/// Bitmask of GPIO lines whose IRQ slot is `vector`.
+const fn lines_for_slot(vector: usize) -> u16 {
+    let mut mask: u16 = 0;
+    let mut line: u8 = 0;
+    while line < 16 {
+        if let Some(v) = irq_slot_for_line(line) {
+            if v == vector {
+                mask |= 1u16 << line;
+            }
+        }
+        line += 1;
+    }
+    mask
 }

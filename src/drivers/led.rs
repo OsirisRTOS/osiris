@@ -29,11 +29,11 @@ impl Led {
     }
 
     pub fn on(&self) -> Result<()> {
-        hal::gpio::write(pin_of(self.entry), level_for(self.entry, true)).map_err(Into::into)
+        self.set(true)
     }
 
     pub fn off(&self) -> Result<()> {
-        hal::gpio::write(pin_of(self.entry), level_for(self.entry, false)).map_err(Into::into)
+        self.set(false)
     }
 
     pub fn set(&self, on: bool) -> Result<()> {

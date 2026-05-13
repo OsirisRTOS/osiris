@@ -1,16 +1,9 @@
 #pragma once
 
+#include "export.h" /* GPIO_PULL_NONE / GPIO_PULL_UP / GPIO_PULL_DOWN */
 #include "stm32l4xx.h"
 
 #include <stdint.h>
-
-/* Pull mode for gpio_configure_input. */
-enum gpio_pull
-{
-	GPIO_PULL_NONE_ = 0,
-	GPIO_PULL_UP_   = 1,
-	GPIO_PULL_DOWN_ = 2,
-};
 
 void gpio_enable_clock(GPIO_TypeDef *port);
 void gpio_init_af(GPIO_TypeDef *port, uint16_t pin_mask, uint8_t af);

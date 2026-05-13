@@ -213,7 +213,10 @@ void can_diag(uint8_t slot, can_diag_t *out);
 void can_isr(uint8_t index);
 
 // gpio.c
-// Pull values: 0 = none, 1 = pull-up, 2 = pull-down (see gpio.h enum gpio_pull).
+// Pull values accepted by `gpio_configure_input`.
+#define GPIO_PULL_NONE 0
+#define GPIO_PULL_UP   1
+#define GPIO_PULL_DOWN 2
 int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull);
 int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial);
 int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
