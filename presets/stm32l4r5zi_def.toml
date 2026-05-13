@@ -8,7 +8,7 @@ OSIRIS_MACHINE = "cortex-m"
 # Debugging configuration
 OSIRIS_DEBUG_UART = "LPUART1"
 OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
-METRICS = "false"
+OSIRIS_METRICS = "false"
 
 # Tuning parameters
 OSIRIS_TUNING_ENABLEFPU = "false"
