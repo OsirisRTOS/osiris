@@ -28,8 +28,9 @@ fn ensure_idle(sched: &mut TestSched) -> (task::UId, ThreadUId) {
     let task = sched.insert_task_for_test().expect("task slot");
     let idle = sched.insert_thread_for_test(task, None).expect("thread slot");
     // The first thread inserted gets uid 0 (the BitReclaimMap allocates
-    // sequentially), which matches IDLE_THREAD. Enqueue so it's pickable.
-    let _ = sched.enqueue(0, idle);
+    // sequentially), which matches IDLE_THREAD. We do NOT enqueue it here:
+    // `select_next` falls back to IDLE_THREAD when no other thread is
+    // runnable. Enqueueing idle would steal RR quanta from other threads.
     (task, idle)
 }
 

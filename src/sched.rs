@@ -259,11 +259,15 @@ impl<const N: usize> Scheduler<N> {
     /// `until` - The timepoint to sleep until, in ticks. This is an absolute time, not a relative time.
     /// `now` - The current timepoint, in ticks.
     ///
-    /// Returns an error if there is no current thread, it is not enqueued, or if the specified timepoint is in the past.
+    /// If `until` is in the past, the thread is still removed from any
+    /// scheduler queue and parked in the wakeup tree; `do_wakeups` on the
+    /// following pick will resume it immediately. This is essential for the
+    /// RT throttle path, which calls this with `until == now` when an RT
+    /// thread's budget runs out exactly at its deadline.
+    ///
+    /// Returns an error if the thread does not exist.
     pub fn sleep_until(&mut self, uid: Option<thread::UId>, until: u64, now: u64) -> Result<()> {
-        if until <= now {
-            return Ok(());
-        }
+        let _ = now; // kept in the signature for symmetry with the other paths
         let uid = match uid {
             Some(uid) => uid,
             None => self.current.ok_or(kerr!(EINVAL))?,
