@@ -6,26 +6,41 @@ concurrency model checking with Loom.
 
 ## Bugs found and fixed
 
-### B1 — `kill` removed from only one of {RT, RR, wakeup} (data corruption)
+### B1 — `kill!` not exhaustive (defensive fix; not currently reachable)
 
 `kill!` short-circuited with `or_else` across RT / RR / wakeup tree. If a
-thread ended up in more than one structure (most easily reachable via
-`sleep_until` followed by `enqueue`), only the first hit was removed and the
-others retained pointers into the freed slot. After the slot was reused by a
-later insert, those stale pointers silently referenced a different thread.
+thread were ever in more than one structure, only the first hit would be
+removed and the others would retain pointers into the freed slot.
+
+Reachability in current code: **none**. The four real `Scheduler::enqueue`
+callsites (`do_wakeups`, `kick`, `spawn_thread`, `init_app`) all operate on
+a thread that is provably not in the wakeup tree at the time of the call.
+The bug is therefore dormant in production today.
+
+The proptest harness drove the public `Scheduler::enqueue` on a thread
+already in the wakeup tree — a sequence the API doesn't forbid but no
+current caller produces. The fix is defensive: it removes the implicit
+precondition from `kill!` so that future API misuse, or a new call site
+that doesn't pre-clean the wakeup state, can't leak stale tree links into
+a freed slot. The fix also lets `kill_by_thread` succeed on a detached
+thread (created but never enqueued), which the old `or_else` chain
+rejected with `ENOENT`.
 
 - Reproducer: `regression_b1_enqueue_sleeping_thread_then_kill_leaves_wakeup_dangling`
 - Discovery: proptest, minimal failing case 4 ops long
 - Fix: `kill!` now removes from all three structures unconditionally and
-  clears the waiter; the slot can be safely freed afterwards.
+  clears the waiter.
 
-### B2 — RT throttle no-op at exact deadline (real-time correctness)
+### B2 — RT throttle no-op at exact deadline (reachable, real-time correctness)
 
 When an RT thread's budget runs out at its deadline, `sync_to_sched` calls
 `sleep_until(t, deadline, now)` with `until == now`. The old
 `if until <= now { return Ok(()); }` early-return made this a silent no-op,
 so the thread stayed in the EDF tree with `budget_left = 0` and `select_next`
 re-picked it with a zero-tick budget on the next pass.
+
+Reachability: any tick where `consume(dt)` ends with the new `now` equal to
+the server's `deadline`. Rare but reachable with integer-aligned ticks.
 
 - Reproducer: `regression_b2_rt_throttle_at_exact_deadline_returns_zero_budget`
 - Discovery: proptest, surfaced via the `step_always_returns_live_thread`
@@ -34,14 +49,18 @@ re-picked it with a zero-tick budget on the next pass.
   `until <= now`; `do_wakeups` then resumes it on the same pass and
   `enqueue`'s replenish branch refills the budget.
 
-### B3 — `kill_by_thread(Some(uid))` fails when no current thread
+### B3 — `kill_by_thread(Some(uid))` fails when no current thread (dormant API bug)
 
 The body started with
 `let uid = uid.unwrap_or(self.current.ok_or(kerr!(EINVAL))?);`. Because
 `Option::unwrap_or` eagerly evaluates its argument, the `?` fires whenever
-`self.current` is `None` — even when the caller already supplied a UID. The
-practical effect: a thread cannot be killed by uid during early boot or
-right after a `kill_by_task` that cleared `current`.
+`self.current` is `None` — even when the caller already supplied a UID.
+
+Reachability in current code: **none**. The only caller is `thread_finalizer`
+which always passes `None`, so the bug is dormant. But the public method
+accepts `Some(uid)`, and the moment anyone calls it from a context without
+a running thread (early boot, post-`kill_by_task`, an external observer
+killing a thread) they hit `EINVAL` spuriously.
 
 - Reproducer: `regression_b3_kill_by_thread_fails_when_no_current_even_with_explicit_uid`
 - Discovery: proptest harness failure on a 0-op-prefix case
