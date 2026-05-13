@@ -6,7 +6,7 @@ use core::ffi::c_void;
 use osiris::app_main;
 use osiris::uapi::led::Led;
 use osiris::uapi::print;
-use osiris::uapi::sched::{RtAttrs, sleep, sleep_for, spawn_thread};
+use osiris::uapi::sched::{RtAttrs, sleep_for, spawn_thread};
 
 struct BlinkyLed {
     alias: &'static str,
@@ -27,25 +27,16 @@ static RED: BlinkyLed = BlinkyLed {
 };
 
 extern "C" fn run(ctx: *mut c_void) {
-    // SAFETY: every caller hands us a pointer to a BlinkyLed, which live for the entire program.
-    let blinky_led = unsafe { &*(ctx as *const BlinkyLed) };
+    // SAFETY: every caller hands us a pointer to a static BlinkyLed,
+    // which lives for the entire program.
+    let cfg = unsafe { &*(ctx as *const BlinkyLed) };
 
-    let led = match Led::open_by_alias(blinky_led.alias) {
-        Ok(l) => l,
-        Err(e) => {
-            print::print(format_args!(
-                "blinkyworld: Led::open({}) failed: {:?}\n",
-                blinky_led.alias, e
-            ));
-            return;
-        }
-    };
-
-    let half = blinky_led.half_period_ms as u64;
+    let led = Led::open_by_alias(cfg.alias).expect("Led::open_by_alias failed");
+    let half = cfg.half_period_ms as u64;
     loop {
-        let _ = led.on();
+        led.on().expect("led.on failed");
         sleep_for(half);
-        let _ = led.off();
+        led.off().expect("led.off failed");
         sleep_for(half);
     }
 }
@@ -62,12 +53,12 @@ fn main() {
         period: 100,
     });
 
-    for BlinkyLed in [&GREEN, &BLUE, &RED] {
-        let ctx = BlinkyLed as *const BlinkyLed as *mut c_void;
+    for cfg in [&GREEN, &BLUE, &RED] {
+        let ctx = cfg as *const BlinkyLed as *mut c_void;
         if spawn_thread(run, ctx, attrs) < 0 {
             print::print(format_args!(
                 "blinkyworld: spawn_thread for {} failed\n",
-                BlinkyLed.alias
+                cfg.alias
             ));
         }
     }

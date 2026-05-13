@@ -58,28 +58,34 @@ fn port_ptr(pin: Pin) -> *mut c_void {
     pin.port as *mut c_void
 }
 
-fn pin_mask(pin: Pin) -> u16 {
-    1u16 << (pin.line & 0xF)
+fn pin_mask(pin: Pin) -> Result<u16> {
+    if pin.line >= 16 {
+        return Err(PosixError::EINVAL);
+    }
+    Ok(1u16 << pin.line)
 }
 
 pub fn configure_input(pin: Pin, pull: Pull) -> Result<()> {
-    let rc = unsafe { bindings::gpio_configure_input(port_ptr(pin), pin_mask(pin), pull as u8) };
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_configure_input(port_ptr(pin), mask, pull as u8) };
     ok_or_err(rc, ())
 }
 
 pub fn configure_output(pin: Pin, initial: Level) -> Result<()> {
-    let rc =
-        unsafe { bindings::gpio_configure_output_pp(port_ptr(pin), pin_mask(pin), initial as u8) };
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_configure_output_pp(port_ptr(pin), mask, initial as u8) };
     ok_or_err(rc, ())
 }
 
 pub fn write(pin: Pin, level: Level) -> Result<()> {
-    let rc = unsafe { bindings::gpio_write(port_ptr(pin), pin_mask(pin), level as u8) };
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_write(port_ptr(pin), mask, level as u8) };
     ok_or_err(rc, ())
 }
 
 pub fn read(pin: Pin) -> Result<Level> {
-    let rc = unsafe { bindings::gpio_read(port_ptr(pin), pin_mask(pin)) };
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_read(port_ptr(pin), mask) };
     match rc {
         0 => Ok(Level::Low),
         1 => Ok(Level::High),
@@ -89,7 +95,8 @@ pub fn read(pin: Pin) -> Result<Level> {
 }
 
 pub fn toggle(pin: Pin) -> Result<()> {
-    let rc = unsafe { bindings::gpio_toggle(port_ptr(pin), pin_mask(pin)) };
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_toggle(port_ptr(pin), mask) };
     ok_or_err(rc, ())
 }
 
@@ -209,8 +216,9 @@ pub fn dispatch(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
 }
 
 /// Cortex-M vector slot (`IRQn + 16`) that fires for `line`. Returns
-/// None for lines outside 0..15.
-pub fn nvic_vector_for_line(line: u8) -> Option<usize> {
+/// None for lines outside 0..15. `const` so callers can compile-time
+/// validate device-tree-derived lines.
+pub const fn nvic_vector_for_line(line: u8) -> Option<usize> {
     let irqn: usize = match line {
         0 => 6,
         1 => 7,

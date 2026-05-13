@@ -56,6 +56,6 @@ fn main() {
 
 fn apply(leds: &[Led; 3], count: u8) {
     for (i, led) in leds.iter().enumerate() {
-        let _ = led.set(count & (1 << i) != 0);
+        led.set(count & (1 << i) != 0).expect("led.set failed");
     }
 }

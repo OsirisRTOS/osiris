@@ -445,7 +445,8 @@ fn decode_gpio_pins<'a>(dt: &'a DeviceTree, gpios: &[u32]) -> Vec<(&'a crate::ir
             panic!("Invalid GPIO spec - expected groups of 3 u32 values (phandle, pin, flags)");
         }
         let phandle = chunk[0];
-        let pin = chunk[1] as u8;
+        let pin = u8::try_from(chunk[1])
+            .unwrap_or_else(|_| panic!("GPIO pin number {} out of u8 range", chunk[1]));
         let flags = chunk[2];
         let active_low = (flags & 1) != 0;
 
