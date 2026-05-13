@@ -27,19 +27,28 @@ struct Key {
 }
 
 fn collect_keys(dt: &DeviceTree) -> Vec<Key> {
-    collect_gpio_children(dt, "gpio-keys")
+    let keys: Vec<Key> = collect_gpio_children(dt, "gpio-keys")
         .into_iter()
         .map(|c| {
             // Prefer osiris-namespaced; fall back to canonical Zephyr.
-            let code = match c
+            // Required: a missing or malformed code would collide on 0
+            // and make `key_by_code(0)` ambiguous, so we fail the build.
+            let code_prop = c
                 .child
                 .extra
                 .get("osiris,code")
-                .or_else(|| c.child.extra.get("zephyr,code"))
-            {
+                .or_else(|| c.child.extra.get("zephyr,code"));
+            let code = match code_prop {
                 Some(PropValue::U32(v)) => *v,
-                Some(PropValue::U32Array(v)) if !v.is_empty() => v[0],
-                _ => 0,
+                Some(PropValue::U32Array(v)) if v.len() == 1 => v[0],
+                Some(other) => panic!(
+                    "gpio-keys child {} `osiris,code`/`zephyr,code` has unexpected type {:?}",
+                    c.child.name, other
+                ),
+                None => panic!(
+                    "gpio-keys child {} is missing required `osiris,code` (or `zephyr,code`) property",
+                    c.child.name
+                ),
             };
 
             let debounce_ms = match c.child.extra.get("debounce-interval-ms") {
@@ -85,7 +94,21 @@ fn collect_keys(dt: &DeviceTree) -> Vec<Key> {
                 irq_priority,
             }
         })
-        .collect()
+        .collect();
+
+    // Enforce uniqueness: `key_by_code` is a one-to-one lookup.
+    for i in 0..keys.len() {
+        for j in (i + 1)..keys.len() {
+            if keys[i].code == keys[j].code {
+                panic!(
+                    "gpio-keys code {} is reused by `{}` and `{}` — codes must be unique",
+                    keys[i].code, keys[i].label, keys[j].label
+                );
+            }
+        }
+    }
+
+    keys
 }
 
 pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
