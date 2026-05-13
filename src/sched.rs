@@ -58,7 +58,7 @@ unsafe impl<const N: usize> Send for Scheduler<N> {}
 // Safety: The scheduler does only allow access to its data through &mut self, which is synchronized by the SCHED spinlock.
 unsafe impl<const N: usize> Sync for Scheduler<N> {}
 
-/// We define dequeue as a macro in order to avoid borrow checker issues.
+/// We define kill as a macro in order to avoid borrow checker issues.
 macro_rules! kill {
     ($self:expr, $uid:expr) => {
         rt::ServerView::<N>::with(&mut $self.threads, |view| {
@@ -249,7 +249,10 @@ impl<const N: usize> Scheduler<N> {
         if until <= now {
             return Ok(());
         }
-        let uid = uid.unwrap_or(self.current.ok_or(kerr!(EINVAL))?);
+        let uid = match uid {
+            Some(uid) => uid,
+            None => self.current.ok_or(kerr!(EINVAL))?,
+        };
         // Make the thread not runnable. Triggers a reschedule if the thread is currently running.
         self.dequeue(uid)?;
 
@@ -303,13 +306,11 @@ impl<const N: usize> Scheduler<N> {
         if let Some(thread) = self.threads.get_mut(uid) {
             thread.resume();
         } else {
-            // This should not be possible. The thread is being kicked, so it must exist.
-            bug!("failed to kick thread {}. Does not exist.", uid);
+            return Err(kerr!(EINVAL)); // Thread does not exist.
         }
 
         if res.is_ok() {
             self.enqueue(now, uid)?;
-            reschedule();
         }
         Ok(())
     }
