@@ -20,8 +20,7 @@ pub struct StackSnapshot {
 }
 
 static GLOBAL_HEAP: Seqlock<Option<HeapSnapshot>> = Seqlock::new(None);
-static TASK_HEAPS: [Seqlock<Option<HeapSnapshot>>; SLOTS] =
-    [const { Seqlock::new(None) }; SLOTS];
+static TASK_HEAPS: [Seqlock<Option<HeapSnapshot>>; SLOTS] = [const { Seqlock::new(None) }; SLOTS];
 static THREAD_STACKS: [Seqlock<Option<StackSnapshot>>; SLOTS] =
     [const { Seqlock::new(None) }; SLOTS];
 
@@ -58,9 +57,17 @@ pub fn global_heap() -> Option<HeapSnapshot> {
 }
 
 pub fn task_heap(slot: usize) -> Option<HeapSnapshot> {
-    if slot < SLOTS { TASK_HEAPS[slot].read() } else { None }
+    if slot < SLOTS {
+        TASK_HEAPS[slot].read()
+    } else {
+        None
+    }
 }
 
 pub fn thread_stack(slot: usize) -> Option<StackSnapshot> {
-    if slot < SLOTS { THREAD_STACKS[slot].read() } else { None }
+    if slot < SLOTS {
+        THREAD_STACKS[slot].read()
+    } else {
+        None
+    }
 }

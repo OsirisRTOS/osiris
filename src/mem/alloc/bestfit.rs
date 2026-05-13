@@ -91,7 +91,8 @@ impl BestFitAllocator {
         self.head = Some(unsafe { NonNull::new_unchecked(ptr.as_mut_ptr::<u8>()) });
 
         #[cfg(any(feature = "metrics", metrics))]
-        self.metrics.record_add_range(range.end.diff(range.start), usable);
+        self.metrics
+            .record_add_range(range.end.diff(range.start), usable);
 
         Ok(())
     }
@@ -293,7 +294,9 @@ impl super::Allocator for BestFitAllocator {
                     // Split: old free block (meta.size) leaves, remainder (meta.size - min) stays.
                     // Net free_bytes change: -min. free_blocks unchanged (one out, one in).
                     #[cfg(any(feature = "metrics", metrics))]
-                    { free_sub = min; }
+                    {
+                        free_sub = min;
+                    }
 
                     // Calculate the remaining size of the block and thus the next metadata.
                     let remaining_meta = BestFitMeta {
@@ -327,7 +330,10 @@ impl super::Allocator for BestFitAllocator {
                 } else {
                     // No split: entire free block (meta.size) is consumed.
                     #[cfg(any(feature = "metrics", metrics))]
-                    { free_sub = meta.size; blocks_sub = 1; }
+                    {
+                        free_sub = meta.size;
+                        blocks_sub = 1;
+                    }
 
                     (false, block, prev)
                 }
