@@ -520,7 +520,13 @@ impl<const N: usize> Scheduler<N> {
     ///
     /// If the thread does not exist, or if `uid` is None and there is no current thread, an error will be returned.
     pub fn kill_by_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
-        let uid = uid.unwrap_or(self.current.ok_or(kerr!(EINVAL))?);
+        // NOTE: must be unwrap_or_else, not unwrap_or — the latter eagerly
+        // evaluates its argument, which would propagate EINVAL whenever
+        // `self.current` is None even if the caller passed `Some(uid)`.
+        let uid = match uid {
+            Some(uid) => uid,
+            None => self.current.ok_or(kerr!(EINVAL))?,
+        };
         kill!(self, uid)?;
 
         self.tasks
