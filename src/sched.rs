@@ -254,7 +254,8 @@ impl<const N: usize> Scheduler<N> {
             None => self.current.ok_or(kerr!(EINVAL))?,
         };
         // Make the thread not runnable. Triggers a reschedule if the thread is currently running.
-        self.dequeue(uid)?;
+        // If it fails, it means the thread was not enqueued, which is fine.
+        let _ = self.dequeue(uid);
 
         // Check if the thread is already sleeping.
         let already = match self.threads.get_mut(uid) {
