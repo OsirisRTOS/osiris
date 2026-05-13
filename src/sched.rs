@@ -454,10 +454,15 @@ impl<const N: usize> Scheduler<N> {
 
     /// Test-only: drive `sync_to_sched` and `select_next` without going through the
     /// `sched_enter` plumbing. Returns the picked thread's uid and budget.
+    ///
+    /// Mirrors do_sched: sync time, pick, then assign self.current. The
+    /// next_resched bookkeeping isn't useful in tests so we skip it.
     #[cfg(test)]
     pub fn step(&mut self, now: u64) -> (thread::UId, u32) {
         self.sync_to_sched(now);
-        self.select_next()
+        let (new, budget) = self.select_next();
+        self.current = Some(new);
+        (new, budget)
     }
 
     /// Test-only: ask the scheduler to advance time and update internal state

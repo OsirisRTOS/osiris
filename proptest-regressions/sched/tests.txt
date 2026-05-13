@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc bc3a41fbc7968fd6c1bfc1301f157a3236fe16b2a518d0a85bbf919bc251e07b # shrinks to ops = [NewThread { rt: false }, Sleep { idx: 0, until: 0 }, Enqueue { idx: 0 }, KillThread { idx: 0 }]
 cc 8d57163ff090c1a303382ffedbaf99ee2032e00f228665d02ac493a934bd7e28 # shrinks to ops = [NewThread { rt: true }, NewThread { rt: false }, NewThread { rt: false }, Sleep { idx: 33, until: 5724 }, Enqueue { idx: 3 }, Step { advance: 100 }]
+cc 2e01d5fb779846a62277ba9c70721f423a0ff840fce424ff07ded01883e5aca2 # shrinks to ops_before = []

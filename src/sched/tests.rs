@@ -130,6 +130,30 @@ fn check_step_consistency(s: &mut TestSched, now: u64) {
     assert!(budget > 0, "step({}) returned zero budget for {}", now, picked);
 }
 
+/// Bug B3: `kill_by_thread` reads `self.current` even when an explicit uid is
+/// passed, because the body uses `Option::unwrap_or(self.current.ok_or(...)?)`
+/// rather than `unwrap_or_else`. `unwrap_or` is eagerly evaluated, so the
+/// `?` is applied regardless of whether the caller's `Some(uid)` would have
+/// been used. As a result, kill_by_thread(Some(uid)) returns EINVAL whenever
+/// there is no current thread — for example, during early boot or right
+/// after a kill_by_task that cleared `current`.
+#[test]
+fn regression_b3_kill_by_thread_fails_when_no_current_even_with_explicit_uid() {
+    let mut s = make_sched();
+    let (task_uid, _idle) = ensure_idle(&mut s);
+    let victim = s.insert_thread_for_test(task_uid, None).unwrap();
+    s.enqueue(0, victim).unwrap();
+    // current is None.
+    assert!(s.current().is_none());
+    let res = s.kill_by_thread(Some(victim));
+    assert!(
+        res.is_ok(),
+        "B3 reproduced: kill_by_thread(Some({})) returned {:?} with current=None",
+        victim,
+        res
+    );
+}
+
 // ---------------- Regression: minimal failing cases ----------------
 
 /// Bug B1: `Scheduler::enqueue` does NOT remove the thread from the wakeup tree
@@ -214,34 +238,51 @@ use proptest::prelude::*;
 /// A single operation that the proptest harness can apply to the scheduler.
 #[derive(Debug, Clone)]
 enum Op {
-    NewThread { rt: bool },
+    NewThread {
+        rt: Option<(u32, u32, u32)>, // (budget, period, relative_deadline)
+    },
+    NewTask,
     Enqueue { idx: u8 },
     Sleep { idx: u8, until: u64 },
     Kick { idx: u8 },
+    KickByUid { uid: u8 },
     Dequeue { idx: u8 },
     KillThread { idx: u8 },
+    KillTask { task_idx: u8 },
     Step { advance: u64 },
 }
 
 fn op_strategy() -> impl Strategy<Value = Op> {
+    // Step ops weighted higher than create/kill so we exercise time advancement.
     prop_oneof![
-        prop::bool::ANY.prop_map(|rt| Op::NewThread { rt }),
-        any::<u8>().prop_map(|idx| Op::Enqueue { idx }),
-        (any::<u8>(), 0u64..1_000_000).prop_map(|(idx, until)| Op::Sleep { idx, until }),
-        any::<u8>().prop_map(|idx| Op::Kick { idx }),
-        any::<u8>().prop_map(|idx| Op::Dequeue { idx }),
-        any::<u8>().prop_map(|idx| Op::KillThread { idx }),
-        (0u64..50_000).prop_map(|advance| Op::Step { advance }),
+        1 => Just(Op::NewThread { rt: None }),
+        1 => (1u32..200, 1u32..400, 1u32..200)
+                .prop_map(|(b, p, _rd)| {
+                    // Ensure attrs pass the spawn-time sanity checks
+                    // (budget <= deadline <= period, all non-zero).
+                    let p = p.max(b);
+                    Op::NewThread { rt: Some((b, p, b.max(1))) }
+                }),
+        1 => Just(Op::NewTask),
+        3 => any::<u8>().prop_map(|idx| Op::Enqueue { idx }),
+        3 => (any::<u8>(), 0u64..1_000_000).prop_map(|(idx, until)| Op::Sleep { idx, until }),
+        2 => any::<u8>().prop_map(|idx| Op::Kick { idx }),
+        1 => any::<u8>().prop_map(|uid| Op::KickByUid { uid }),
+        2 => any::<u8>().prop_map(|idx| Op::Dequeue { idx }),
+        1 => any::<u8>().prop_map(|idx| Op::KillThread { idx }),
+        1 => any::<u8>().prop_map(|task_idx| Op::KillTask { task_idx }),
+        4 => (0u64..50_000).prop_map(|advance| Op::Step { advance }),
     ]
 }
 
 fn ops_strategy() -> impl Strategy<Value = Vec<Op>> {
-    prop::collection::vec(op_strategy(), 0..40)
+    prop::collection::vec(op_strategy(), 0..80)
 }
 
 struct Harness {
     sched: TestSched,
     task: task::UId,
+    tasks: Vec<task::UId>,
     threads: Vec<ThreadUId>,
     now: u64,
 }
@@ -253,6 +294,7 @@ impl Harness {
         Self {
             sched,
             task,
+            tasks: vec![task],
             threads: Vec::new(),
             now: 0,
         }
@@ -266,20 +308,30 @@ impl Harness {
         }
     }
 
+    fn pick_task(&self, idx: u8) -> Option<task::UId> {
+        if self.tasks.is_empty() {
+            None
+        } else {
+            Some(self.tasks[(idx as usize) % self.tasks.len()])
+        }
+    }
+
     fn apply(&mut self, op: Op) {
         match op {
             Op::NewThread { rt } => {
-                let rtattrs = if rt {
-                    Some(RtAttrs {
-                        deadline: 100,
-                        period: 200,
-                        budget: 50,
-                    })
-                } else {
-                    None
-                };
-                if let Ok(uid) = self.sched.insert_thread_for_test(self.task, rtattrs) {
+                let rtattrs = rt.map(|(b, p, d)| RtAttrs {
+                    deadline: d as u64,
+                    period: p,
+                    budget: b,
+                });
+                let task = self.tasks.last().copied().unwrap_or(self.task);
+                if let Ok(uid) = self.sched.insert_thread_for_test(task, rtattrs) {
                     self.threads.push(uid);
+                }
+            }
+            Op::NewTask => {
+                if let Ok(t) = self.sched.insert_task_for_test() {
+                    self.tasks.push(t);
                 }
             }
             Op::Enqueue { idx } => {
@@ -292,13 +344,20 @@ impl Harness {
                     // Make this thread the current so sleep_until takes the
                     // path that triggers reschedule.
                     self.sched.set_current_for_test(Some(uid));
-                    let _ = self.sched.sleep_until(Some(uid), self.now + until + 1, self.now);
+                    let _ = self.sched.sleep_until(
+                        Some(uid),
+                        self.now.saturating_add(until).saturating_add(1),
+                        self.now,
+                    );
                 }
             }
             Op::Kick { idx } => {
                 if let Some(uid) = self.pick(idx) {
                     let _ = self.sched.kick(uid);
                 }
+            }
+            Op::KickByUid { uid } => {
+                let _ = self.sched.kick_by_uid(uid as usize);
             }
             Op::Dequeue { idx } => {
                 if let Some(uid) = self.pick(idx) {
@@ -311,10 +370,24 @@ impl Harness {
                     self.threads.retain(|&u| u != uid);
                 }
             }
+            Op::KillTask { task_idx } => {
+                if let Some(tid) = self.pick_task(task_idx) {
+                    // Never kill the kernel/idle task (id 0); it would
+                    // remove the IDLE_THREAD fallback target.
+                    if tid != self.task {
+                        let _ = self.sched.kill_by_task(tid);
+                        // Conservatively drop all threads we tracked.
+                        self.tasks.retain(|&t| t != tid);
+                        // We don't track which threads belonged to which task,
+                        // so reconcile via the scheduler's live list.
+                        let live = self.sched.live_threads();
+                        self.threads.retain(|u| live.contains(u));
+                    }
+                }
+            }
             Op::Step { advance } => {
                 self.now = self.now.saturating_add(advance);
                 let (picked, _) = self.sched.step(self.now);
-                // The picked uid must correspond to a live thread or the idle.
                 let _ = picked;
             }
         }
@@ -323,8 +396,8 @@ impl Harness {
 
 proptest! {
     #![proptest_config(ProptestConfig {
-        cases: 256,
-        max_shrink_iters: 4096,
+        cases: 1024,
+        max_shrink_iters: 8192,
         ..ProptestConfig::default()
     })]
 
@@ -386,5 +459,139 @@ proptest! {
             }
         }
         prop_assert!(seen, "T1 never picked within {} steps", steps);
+    }
+
+    /// Round-robin fairness: with N runnable non-RT threads and enough steps
+    /// to exhaust the quantum once per thread, every thread should be picked
+    /// at least once.
+    #[test]
+    fn round_robin_visits_all_threads(
+        n in 2usize..6,
+    ) {
+        let mut h = Harness::new();
+        let mut tids = Vec::new();
+        for _ in 0..n {
+            let t = h.sched.insert_thread_for_test(h.task, None).unwrap();
+            h.sched.enqueue(0, t).unwrap();
+            tids.push(t);
+        }
+        let mut seen: std::collections::HashSet<u64> =
+            std::collections::HashSet::new();
+        // Quantum = 1000 ticks. Run for n+1 quanta.
+        for i in 0..((n as u64 + 1) * 1010 / 100) {
+            let (picked, _) = h.sched.step(i * 100);
+            seen.insert(picked.as_usize() as u64);
+        }
+        for t in &tids {
+            prop_assert!(
+                seen.contains(&(t.as_usize() as u64)),
+                "thread {} never picked in {} steps; seen={:?}", t, n + 1, seen
+            );
+        }
+    }
+
+    /// RT EDF: the picked RT thread always has the earliest deadline among
+    /// the runnable RT set.
+    #[test]
+    fn edf_picks_earliest_deadline(
+        d1 in 50u64..200,
+        d2 in 50u64..200,
+        d3 in 50u64..200,
+    ) {
+        let mut h = Harness::new();
+        let mk = |d: u64| RtAttrs {
+            deadline: d,
+            period: (d as u32) * 2,
+            budget: (d / 2) as u32,
+        };
+        let t1 = h.sched.insert_thread_for_test(h.task, Some(mk(d1))).unwrap();
+        let t2 = h.sched.insert_thread_for_test(h.task, Some(mk(d2))).unwrap();
+        let t3 = h.sched.insert_thread_for_test(h.task, Some(mk(d3))).unwrap();
+        h.sched.enqueue(0, t1).unwrap();
+        h.sched.enqueue(0, t2).unwrap();
+        h.sched.enqueue(0, t3).unwrap();
+        // All three threads got on_wakeup(0): deadline = relative_deadline.
+        // The picked thread should be the one with min(d1, d2, d3).
+        let (picked, _) = h.sched.step(0);
+        let pairs = [(t1, d1), (t2, d2), (t3, d3)];
+        let min_pair = pairs.iter().min_by_key(|(_, d)| *d).unwrap();
+        // Multiple threads might share the min deadline; the picked one must
+        // have that deadline value, and ties broken by UID.
+        let picked_d = pairs.iter().find(|(t, _)| *t == picked).map(|(_, d)| *d);
+        prop_assert_eq!(
+            picked_d,
+            Some(min_pair.1),
+            "EDF picked {} (deadline {:?}); expected min deadline {}",
+            picked, picked_d, min_pair.1
+        );
+    }
+
+    /// A kicked thread that was sleeping is back to runnable on the next pick.
+    #[test]
+    fn kick_wakes_a_sleeper(
+        until in 100u64..10_000,
+    ) {
+        let mut h = Harness::new();
+        let t1 = h.sched.insert_thread_for_test(h.task, None).unwrap();
+        h.sched.enqueue(0, t1).unwrap();
+        h.sched.set_current_for_test(Some(t1));
+        h.sched.sleep_until(Some(t1), until, 0).unwrap();
+        prop_assert!(h.sched.is_waiting(t1));
+        h.sched.kick(t1).unwrap();
+        prop_assert!(!h.sched.is_waiting(t1));
+        // After kick, the thread should be among the things step can pick.
+        let (picked, _) = h.sched.step(0);
+        prop_assert_eq!(picked, t1, "kicked thread {} should be runnable", t1);
+    }
+
+    /// Immediately after kill_by_thread, the thread is no longer live.
+    /// (Note: the slot may be reused by later inserts and the new thread
+    /// will share the same .uid index — that is intentional. We only check
+    /// the state right after the kill.)
+    #[test]
+    fn kill_by_thread_immediately_removes_thread(
+        ops_before in prop::collection::vec(op_strategy(), 0..20),
+    ) {
+        let mut h = Harness::new();
+        let victim = h.sched.insert_thread_for_test(h.task, None).unwrap();
+        h.sched.enqueue(0, victim).unwrap();
+        for op in ops_before { h.apply(op); }
+        let kill_res = h.sched.kill_by_thread(Some(victim));
+        prop_assert!(kill_res.is_ok(), "kill_by_thread({}) failed: {:?}", victim, kill_res);
+        let live = h.sched.live_threads();
+        prop_assert!(
+            !live.contains(&victim),
+            "killed thread {} remained in live set", victim
+        );
+        // wakeup_min must not point at the killed thread's slot.
+        if let Some(min) = h.sched.wakeup_min() {
+            prop_assert_ne!(
+                min, victim,
+                "wakeup tree still references killed thread {}", victim
+            );
+        }
+    }
+
+    /// After kill_by_task, none of its threads remain in the scheduler.
+    #[test]
+    fn killed_task_drops_all_its_threads(
+        n in 1usize..5,
+    ) {
+        let mut h = Harness::new();
+        let t = h.sched.insert_task_for_test().unwrap();
+        let mut tids = Vec::new();
+        for _ in 0..n {
+            let tid = h.sched.insert_thread_for_test(t, None).unwrap();
+            h.sched.enqueue(0, tid).unwrap();
+            tids.push(tid);
+        }
+        h.sched.kill_by_task(t).unwrap();
+        let live = h.sched.live_threads();
+        for tid in &tids {
+            prop_assert!(
+                !live.contains(tid),
+                "after kill_by_task({}), thread {} still live", t, tid
+            );
+        }
     }
 }
