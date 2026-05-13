@@ -6,7 +6,7 @@ use crate::error::Result;
 use crate::hal;
 use crate::sync::once::OnceCell;
 
-use hal::device_tree::LedRegistryEntry;
+use hal::device_tree::{LedDefaultState, LedRegistryEntry};
 use hal::gpio::{Level, Pin};
 
 struct LedState {
@@ -71,14 +71,14 @@ impl Led {
     }
 }
 
-fn pin_of(entry: &LedRegistryEntry) -> Pin {
+const fn pin_of(entry: &LedRegistryEntry) -> Pin {
     Pin {
         port: entry.port,
         line: entry.line,
     }
 }
 
-fn level_for(entry: &LedRegistryEntry, on: bool) -> Level {
+const fn level_for(entry: &LedRegistryEntry, on: bool) -> Level {
     let active_low = entry.active_low != 0;
     if on ^ active_low {
         Level::High
@@ -98,17 +98,22 @@ pub fn init() {
         };
         let state_ref: &'static LedState = SLOTS[i].set_or_get(state);
 
-        // Drive the off level before switching to output so the line
-        // never glitches the active polarity on boot.
-        let off = level_for(entry, false);
-        match hal::gpio::configure_output(pin_of(entry), off) {
+        // Pre-MODER level from DT `default-state`; `Keep` is only
+        // meaningful on warm restart (cold reset reads 0 from analog).
+        let initial = match entry.default_state {
+            LedDefaultState::Off => level_for(entry, false),
+            LedDefaultState::On => level_for(entry, true),
+            LedDefaultState::Keep => hal::gpio::read(pin_of(entry)).unwrap_or(Level::Low),
+        };
+        match hal::gpio::configure_output(pin_of(entry), initial) {
             Ok(()) => {
                 state_ref.initialized.store(true, Ordering::Release);
                 kprintln!(
-                    "    Initialized LED {} on port 0x{:x} line {}",
+                    "    Initialized LED {} on port 0x{:x} line {} ({:?})",
                     entry.label,
                     entry.port,
-                    entry.line
+                    entry.line,
+                    entry.default_state,
                 );
             }
             Err(e) => kprintln!("    LED {}: configure_output failed: {:?}", entry.label, e),
