@@ -177,12 +177,17 @@ pub fn unregister_edge_handler(pin: Pin) -> Result<()> {
     if pin.line >= 16 {
         return Err(PosixError::EINVAL);
     }
-    // Mask + clear pending first; any in-flight `dispatch` then reads
-    // PR1=0 for this line and skips before we null the handler.
-    let rc = unsafe { bindings::exti_release(pin.line) };
     let slot = &LINES[pin.line as usize];
+
+    // IRQs masked during teardown. The handler is cleared before the
+    // line so an in-flight `dispatch` sees a null handler and skips
+    // after acking.
+    let state = super::asm::disable_irq_save();
     slot.handler.store(core::ptr::null_mut(), Ordering::Release);
     slot.ctx.store(core::ptr::null_mut(), Ordering::Release);
+    let rc = unsafe { bindings::exti_release(pin.line) };
+    super::asm::enable_irq_restr(state);
+
     ok_or_err(rc, ())
 }
 
@@ -207,9 +212,15 @@ pub fn dispatch(_ctx: *mut u8, vector: usize, _userdata: Option<usize>) {
         if h.is_null() {
             continue;
         }
+        let ctx = slot.ctx.load(Ordering::Acquire) as *mut ();
+        // A higher-priority IRQ may have called `unregister_edge_handler`
+        // between the two loads above; re-check before the call so a
+        // teardown that clears the slot is honoured.
+        if slot.handler.load(Ordering::Acquire).is_null() {
+            continue;
+        }
         // SAFETY: `register_edge_handler` only stores values of type `EdgeHandler`.
         let handler: EdgeHandler = unsafe { core::mem::transmute(h) };
-        let ctx = slot.ctx.load(Ordering::Acquire) as *mut ();
         handler(line, ctx);
     }
 }
