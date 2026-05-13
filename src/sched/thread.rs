@@ -122,23 +122,9 @@ impl Display for UId {
 
 // -------------------------------------------------------------------------
 
-/// The state of a thread.
-#[proc_macros::fmt]
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub enum RunState {
-    /// The thread is currently using the cpu.
-    Runs,
-    /// The thread is ready to run, but is not running.
-    Ready,
-    /// The thread is waiting for an event/signal to unblock it.
-    Waits,
-}
-
 #[proc_macros::fmt]
 #[derive(Clone, Copy)]
 pub struct State {
-    run_state: RunState,
     stack: Stack,
 }
 
@@ -256,11 +242,6 @@ impl Waiter {
     pub fn until(&self) -> u64 {
         self.until
     }
-
-    #[allow(dead_code)]
-    pub fn set_until(&mut self, until: u64) {
-        self.until = until;
-    }
 }
 
 impl Compare<WakupTree, UId> for Waiter {
@@ -327,7 +308,6 @@ impl Thread {
             rtattrs.map(|attrs| RtServer::new(attrs.budget, attrs.period, attrs.deadline, uid));
         Self {
             state: State {
-                run_state: RunState::Ready,
                 stack,
             },
             uid,
@@ -338,22 +318,22 @@ impl Thread {
         }
     }
 
-    pub fn set_waiter(&mut self, waiter: Option<Waiter>) {
-        self.waiter = waiter;
+    pub fn wait(&mut self, until: u64) {
+        self.waiter = Some(Waiter::new(until, self.uid));
     }
 
-    pub fn waiter(&self) -> Option<&Waiter> {
-        self.waiter.as_ref()
+    pub fn resume(&mut self) {
+        self.waiter = None;
+    }
+
+    pub fn is_waiting(&self) -> bool {
+        self.waiter.is_some()
     }
 
     pub fn save_ctx(&mut self, ctx: *mut c_void) -> Result<()> {
         let sp = self.state.stack.create_sp(ctx)?;
         self.state.stack.set_sp(sp);
         Ok(())
-    }
-
-    pub fn set_run_state(&mut self, state: RunState) {
-        self.state.run_state = state;
     }
 
     pub fn rt_server(&self) -> Option<&RtServer> {
