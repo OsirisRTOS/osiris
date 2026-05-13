@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018 Pushpal Sidhu
  *
- * SPDX-License-Identifier: Apache-2.0 
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Modified for OsirisRTOS: removed Zephyr-specific nodes and macros,
  * stripped arduino_r3_connector include.
@@ -58,11 +58,9 @@
 
 		user_button: button {
 			label = "User";
-			/* DIAG: trying ACTIVE_HIGH (internal pull-down + button to VDD)
-			 * to see if this board variant is wired opposite from the UM2179
-			 * default. */
 			gpios = <&gpioc 13 GPIO_ACTIVE_HIGH>;
 			osiris,code = <INPUT_KEY_0>;
+			debounce-interval-ms = <50>;
 		};
 	};
 
