@@ -28,6 +28,12 @@ test *args:
 proptest *args:
     PROPTEST_CASES=32768 cargo test --target host-tuple --release sched::tests {{args}}
 
+# Loom model-checking of the ISR-vs-mainline + spinlock contract. Gated behind
+# `--cfg loom` so it never enters default builds. Run before changes to the
+# locking strategy.
+loom *args:
+    RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 cargo test --target host-tuple --release --test loom_isr_mainline {{args}}
+
 cov *args:
     cargo tarpaulin --out Lcov --skip-clean --engine llvm {{args}}
 
