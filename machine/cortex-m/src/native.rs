@@ -6,6 +6,7 @@ pub mod asm;
 pub mod can;
 pub mod debug;
 pub mod excep;
+pub mod gpio;
 pub mod i2c;
 pub mod panic;
 pub mod sched;
@@ -37,12 +38,37 @@ pub type Stack = sched::ArmStack;
 
 pub struct ArmMachine;
 
+fn monotonic_overflow_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    unsafe { bindings::tim2_hndlr() };
+}
+
 impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
             bindings::init_hal();
             bindings::init_debug_uart();
             bindings::dwt_init();
+        }
+    }
+
+    fn init_irqs(register: hal_api::IrqRegister) {
+        // Monotonic timer - usually TIM2 - picked by the board via `osiris,monotonic-timer`
+        // in /chosen; vector = irqn + 16 (Cortex-M IPSR offset).
+        let Some(&(_, device_tree::PropValue::Str(path))) = device_tree::chosen::EXTRAS
+            .iter()
+            .find(|(k, _)| *k == "osiris,monotonic-timer")
+        else {
+            panic!("device tree: missing `osiris,monotonic-timer` in /chosen");
+        };
+        let Some(timer) = device_tree::peripheral_by_path(path) else {
+            panic!("device tree: `osiris,monotonic-timer` path {path} did not resolve");
+        };
+        let Some(&irqn) = timer.interrupts.first() else {
+            panic!("device tree: monotonic timer at {path} has no `interrupts` entry");
+        };
+        let vector = irqn as usize + 16;
+        if let Err(e) = register(vector, monotonic_overflow_irq, None) {
+            panic!("failed to register monotonic timer IRQ at vector {vector}: {e}");
         }
     }
 

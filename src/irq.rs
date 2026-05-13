@@ -5,7 +5,7 @@ use crate::{
 };
 
 /// The IRQ handler type. The first argument is a pointer to the context, the second argument is the IRQ vector, and the third argument is userdata.
-pub type IrqHandler = fn(*mut u8, usize, Option<usize>);
+pub use hal_api::IrqHandler;
 
 #[derive(Clone, Copy)]
 struct Handler {
@@ -43,6 +43,15 @@ pub unsafe fn register_irq(
     // If an irq happens while HANDLERS is locked this will deadlock.
     // Thats why we need to modify it in an irq free section.
     sync::atomic::irq_free(|| HANDLERS[vector].write_lock().push(handler))
+}
+
+/// `IrqRegister`-shaped wrapper around [`register_irq`] for HAL init.
+pub fn register_irq_safe(
+    vector: usize,
+    handler: IrqHandler,
+    userdata: Option<usize>,
+) -> hal_api::Result<()> {
+    unsafe { register_irq(vector, handler, userdata) }.map_err(|e| e.kind)
 }
 
 /// Unregister all IRQ handlers for the given vector.

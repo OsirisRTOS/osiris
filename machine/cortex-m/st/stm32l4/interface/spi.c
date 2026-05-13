@@ -1,6 +1,7 @@
 #include "lib.h"
 #include "export.h"
 #include "gpio.h"
+#include "hal_api.h"
 #include "stm32l4xx.h"
 #include "stm32l4xx_hal_gpio.h"
 #include "stm32l4xx_hal_rcc.h"
@@ -9,6 +10,7 @@
 #include <stm32l4xx_hal.h>
 
 #define SPI_SLOT_COUNT 4
+#define SPI_BUSY_WAIT_US 10000U
 
 struct spi_bus {
     uint8_t in_use;
@@ -16,6 +18,49 @@ struct spi_bus {
 };
 
 static struct spi_bus spi_buses[SPI_SLOT_COUNT];
+
+static int spi_hal_error(SPI_HandleTypeDef *hspi, HAL_StatusTypeDef status)
+{
+    if (status == HAL_TIMEOUT)
+    {
+        return -PosixError_ETIMEDOUT;
+    }
+
+    if (status == HAL_BUSY)
+    {
+        return -PosixError_EBUSY;
+    }
+
+    uint32_t err = HAL_SPI_GetError(hspi);
+    if ((err & HAL_SPI_ERROR_CRC) != 0)
+    {
+        return -PosixError_EBADMSG;
+    }
+
+    if ((err & HAL_SPI_ERROR_OVR) != 0)
+    {
+        return -PosixError_EOVERFLOW;
+    }
+
+    if ((err & (HAL_SPI_ERROR_MODF | HAL_SPI_ERROR_FRE)) != 0)
+    {
+        return -PosixError_EPROTO;
+    }
+
+    if ((err & HAL_SPI_ERROR_ABORT) != 0)
+    {
+        return -PosixError_ECANCELED;
+    }
+
+#if defined(HAL_SPI_ERROR_INVALID_CALLBACK)
+    if ((err & HAL_SPI_ERROR_INVALID_CALLBACK) != 0)
+    {
+        return -PosixError_EINVAL;
+    }
+#endif
+
+    return -PosixError_EIO;
+}
 
 static void spi_enable_clock(SPI_TypeDef *instance)
 {
@@ -98,34 +143,87 @@ static uint32_t spi_bus_clock_hz(SPI_TypeDef *instance)
     return HAL_RCC_GetPCLK1Freq();
 }
 
-static uint32_t spi_prescaler_for_max_hz(uint32_t pclk_hz, uint32_t max_hz)
-{
-    const uint32_t dividers[] = {2U, 4U, 8U, 16U, 32U, 64U, 128U, 256U};
-    const uint32_t prescalers[] = {
-        SPI_BAUDRATEPRESCALER_2,
-        SPI_BAUDRATEPRESCALER_4,
-        SPI_BAUDRATEPRESCALER_8,
-        SPI_BAUDRATEPRESCALER_16,
-        SPI_BAUDRATEPRESCALER_32,
-        SPI_BAUDRATEPRESCALER_64,
-        SPI_BAUDRATEPRESCALER_128,
-        SPI_BAUDRATEPRESCALER_256,
-    };
+struct spi_baudrate {
+    uint32_t divider;
+    uint32_t prescaler;
+};
 
-    for (int i = 0; i < 8; ++i)
+static const struct spi_baudrate spi_baudrates[] = {
+    {2U, SPI_BAUDRATEPRESCALER_2},
+    {4U, SPI_BAUDRATEPRESCALER_4},
+    {8U, SPI_BAUDRATEPRESCALER_8},
+    {16U, SPI_BAUDRATEPRESCALER_16},
+    {32U, SPI_BAUDRATEPRESCALER_32},
+    {64U, SPI_BAUDRATEPRESCALER_64},
+    {128U, SPI_BAUDRATEPRESCALER_128},
+    {256U, SPI_BAUDRATEPRESCALER_256},
+};
+
+static const struct spi_baudrate *spi_baudrate_for_max_hz(uint32_t pclk_hz, uint32_t max_hz)
+{
+    for (uint32_t i = 0; i < sizeof(spi_baudrates) / sizeof(spi_baudrates[0]); ++i)
     {
-        if ((pclk_hz / dividers[i]) <= max_hz)
+        if ((pclk_hz / spi_baudrates[i].divider) <= max_hz)
         {
-            return prescalers[i];
+            return &spi_baudrates[i];
         }
     }
 
-    return SPI_BAUDRATEPRESCALER_256;
+    return &spi_baudrates[sizeof(spi_baudrates) / sizeof(spi_baudrates[0]) - 1U];
+}
+
+static uint32_t spi_prescaler_for_max_hz(uint32_t pclk_hz, uint32_t max_hz)
+{
+    return spi_baudrate_for_max_hz(pclk_hz, max_hz)->prescaler;
+}
+
+static uint32_t spi_transfer_timeout_ms(
+    SPI_TypeDef *instance,
+    uint32_t max_hz,
+    int word_count,
+    uint8_t bits_per_word)
+{
+    uint32_t pclk_hz = spi_bus_clock_hz(instance);
+    uint32_t sck_hz = pclk_hz / spi_baudrate_for_max_hz(pclk_hz, max_hz)->divider;
+
+    if (sck_hz == 0)
+    {
+        return 1U;
+    }
+
+    uint32_t bit_count = (uint32_t)word_count * (uint32_t)bits_per_word;
+    uint32_t transfer_ms = (bit_count * 1000U + sck_hz - 1U) / sck_hz;
+    if (transfer_ms == 0)
+    {
+        transfer_ms = 1U;
+    }
+
+    uint32_t margin_ms = transfer_ms / 10U;
+    if (margin_ms < 2U)
+    {
+        margin_ms = 2U;
+    }
+
+    return transfer_ms + margin_ms;
 }
 
 static uint32_t spi_datasize_from_bits(uint8_t bits)
 {
     return SPI_DATASIZE_4BIT + (bits - 4U) * 0x100U;
+}
+
+static int spi_wait_not_busy(SPI_HandleTypeDef *hspi)
+{
+    for (uint32_t i = 0; i < SPI_BUSY_WAIT_US; ++i)
+    {
+        if (!__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY))
+        {
+            return 0;
+        }
+        delay_us(1U);
+    }
+
+    return -PosixError_ETIMEDOUT;
 }
 
 void *spi_init(const spi_bus_cfg_t *bus_cfg)
@@ -186,9 +284,10 @@ void *spi_init(const spi_bus_cfg_t *bus_cfg)
 
 static int spi_select_device(void *bus, const spi_device_cfg_t *dev_cfg)
 {
-    if (bus == 0 || dev_cfg == 0)
+    if (bus == 0 || dev_cfg == 0 || dev_cfg->cs.port == (uintptr_t)0 || dev_cfg->max_hz == 0 ||
+        dev_cfg->bits_per_word < 4 || dev_cfg->bits_per_word > 16)
     {
-        return -1;
+        return -PosixError_EINVAL;
     }
 
     uint32_t prescaler = spi_prescaler_for_max_hz(
@@ -206,8 +305,12 @@ static int spi_select_device(void *bus, const spi_device_cfg_t *dev_cfg)
         datasize != hspi->Init.DataSize ||
         bit_order != hspi->Init.FirstBit)
     {
+        int rc = spi_wait_not_busy(hspi);
+        if (rc != 0)
+        {
+            return rc;
+        }
 
-        while(__HAL_SPI_GET_FLAG(hspi, SPI_FLAG_BSY)) {}
         __HAL_SPI_DISABLE(hspi);
 
         LL_SPI_SetBaudRatePrescaler(hspi->Instance, prescaler);
@@ -236,26 +339,28 @@ static int spi_select_device(void *bus, const spi_device_cfg_t *dev_cfg)
 
 int spi_transfer(void *bus, const spi_device_cfg_t *dev_cfg, const struct spi_transfer *transfer)
 {
-    if (bus == 0 || dev_cfg == 0 || transfer == 0)
+    if (bus == 0 || dev_cfg == 0 || transfer == 0 || transfer->tx_words == 0 || transfer->rx_words == 0)
     {
-        return -1;
+        return -PosixError_EINVAL;
     }
 
-    if (transfer->word_count > 0xffff)
+    if (transfer->word_count <= 0 || transfer->word_count > 0xffff)
     {
-        return -1;
+        return -PosixError_EINVAL;
     }
 
-    if (spi_select_device(bus, dev_cfg) != 0)
+    int rc = spi_select_device(bus, dev_cfg);
+    if (rc != 0)
     {
-        return -1;
+        return rc;
     }
 
     struct spi_bus *spi_bus = (struct spi_bus*)bus;
-    uint32_t hz = spi_bus_clock_hz((SPI_TypeDef *)dev_cfg->instance);
-    uint32_t time_ms = (transfer->word_count * dev_cfg->bits_per_word * 1000) / hz;
-    // time_ms * margin
-    uint32_t timeout_ms = time_ms + 100U;
+    uint32_t timeout_ms = spi_transfer_timeout_ms(
+        spi_bus->hspi.Instance,
+        dev_cfg->max_hz,
+        transfer->word_count,
+        dev_cfg->bits_per_word);
 
     HAL_StatusTypeDef res = HAL_SPI_TransmitReceive(
         &spi_bus->hspi,
@@ -275,17 +380,23 @@ int spi_transfer(void *bus, const spi_device_cfg_t *dev_cfg, const struct spi_tr
 
     if (res != HAL_OK)
     {
-        return -1;
+        return spi_hal_error(&spi_bus->hspi, res);
     }
     return 0;
 }
 
 int spi_deinit(void *bus)
 {
-    struct spi_bus *spi_bus = (struct spi_bus*)bus;
-    if (HAL_SPI_DeInit(&spi_bus->hspi) != HAL_OK)
+    if (bus == 0)
     {
-        return -1;
+        return -PosixError_EINVAL;
+    }
+
+    struct spi_bus *spi_bus = (struct spi_bus*)bus;
+    HAL_StatusTypeDef res = HAL_SPI_DeInit(&spi_bus->hspi);
+    if (res != HAL_OK)
+    {
+        return spi_hal_error(&spi_bus->hspi, res);
     }
 
     spi_disable_clock(spi_bus->hspi.Instance);
@@ -295,6 +406,11 @@ int spi_deinit(void *bus)
 
 int spi_init_device(const spi_device_cfg_t *dev_cfg)
 {
+    if (dev_cfg == 0 || dev_cfg->cs.port == (uintptr_t)0)
+    {
+        return -PosixError_EINVAL;
+    }
+
     if (dev_cfg->enable.port != (uintptr_t)0)
     {
         GPIO_TypeDef *port = (GPIO_TypeDef *)dev_cfg->enable.port;

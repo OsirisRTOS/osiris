@@ -103,9 +103,12 @@ struct i2c_transfer {
 	uint8_t *rx;
 	int tx_len;
 	int rx_len;
+	uint16_t timeout;
 };
 
 void *i2c_init(const i2c_bus_cfg_t *bus_cfg);
+int i2c_bus_recovery_needed(void *bus);
+int i2c_recover_bus(void *bus);
 int i2c_write(void *bus, const i2c_device_cfg_t *dev_cfg, struct i2c_transfer *transfer);
 int i2c_read(void *bus, const i2c_device_cfg_t *dev_cfg, struct i2c_transfer *transfer);
 int i2c_write_read(void *bus, const i2c_device_cfg_t *dev_cfg, const struct i2c_transfer *transfer);
@@ -209,6 +212,24 @@ void can_diag(uint8_t slot, can_diag_t *out);
 
 void can_isr(uint8_t index);
 
+// gpio.c
+// Pull values accepted by `gpio_configure_input`.
+#define GPIO_PULL_NONE 0
+#define GPIO_PULL_UP   1
+#define GPIO_PULL_DOWN 2
+int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull);
+int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial);
+int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
+int gpio_read(void *port, uint16_t pin_mask);
+int gpio_toggle(void *port, uint16_t pin_mask);
+
+// exti.c
+// edge_mask bitfield: 0x1 = rising, 0x2 = falling (see exti.h).
+int exti_configure(void *port, uint8_t line, uint8_t edge_mask, uint8_t priority);
+int exti_release(uint8_t line);
+uint32_t exti_pending(void);
+void exti_ack(uint32_t mask);
+
 // sched.c
 void reschedule(void);
 
@@ -226,3 +247,4 @@ unsigned long long monotonic_now(void);
 unsigned long long monotonic_freq(void);
 void delay_us(uint32_t delay_us);
 void do_tick(void);
+void tim2_hndlr(void);

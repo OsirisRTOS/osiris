@@ -1,8 +1,9 @@
 //! This module provides a queue implementation.
 
+use crate::error::Result;
+
 use super::array::Vec;
 use super::boxed::Box;
-use crate::utils::KernelError;
 
 /// A ring-buffer based queue, with N elements stored inline. TODO: Make this growable.
 #[proc_macros::fmt]
@@ -28,9 +29,9 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     /// `value` - The value to push onto the back of the queue.
     ///
     /// Returns `Ok(())` if the value was pushed onto the back of the queue, or an error if the queue is full.
-    pub fn push_back(&mut self, value: T) -> Result<(), KernelError> {
+    pub fn push_back(&mut self, value: T) -> Result<()> {
         if self.len == self.data.capacity() {
-            return Err(KernelError::OutOfMemory);
+            return Err(kerr!(ENOMEM));
         }
         self.len += 1;
         if self.data.len() != self.data.capacity() {
@@ -63,15 +64,15 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     /// `value` - The value to insert.
     ///
     /// Returns `Ok(())` if the value was inserted at the given index, or an error if the index is out of bounds.
-    pub fn insert(&mut self, index: usize, value: T) -> Result<(), KernelError> {
+    pub fn insert(&mut self, index: usize, value: T) -> Result<()> {
         if index >= self.len() {
-            return Err(KernelError::InvalidAddress);
+            return Err(kerr!(EINVAL));
         }
         let real_idx = (self.front + index) % self.data.capacity();
         self.data
             .at_mut(real_idx)
             .map(|insertion_point| *insertion_point = value)
-            .ok_or(KernelError::InvalidAddress)
+            .ok_or(kerr!(EINVAL))
     }
 
     /// Returns the value at the front of the queue.
@@ -108,7 +109,7 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
     ///
     /// Returns `Ok(())` if the queue was successfully enlargened or the requested size was smaller than the current capacity.
     /// Returns An error if the queue could not be grown
-    pub fn grow_capacity(&mut self, new_size: usize) -> Result<(), KernelError> {
+    pub fn grow_capacity(&mut self, new_size: usize) -> Result<()> {
         if new_size <= self.data.capacity() {
             return Ok(());
         }
@@ -120,23 +121,18 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
             // we could do some complicated in-place swapping here instead of using a potentially expensive temporary storage
             let non_wrapping_queue_start_len = self.data.capacity() - self.front;
             let mut swap_helper = Box::new_slice_uninit(non_wrapping_queue_start_len)?;
-            BUG_ON!(swap_helper.len() != non_wrapping_queue_start_len);
+            bug_on!(swap_helper.len() != non_wrapping_queue_start_len);
 
             // we take the start of the queue (which is located at the end of the curr memory region) and copy it to temp storage
             for i in 0..swap_helper.len() {
                 // Returning an error here should never happen if the queue is in a consistant state prior. If not no guarantees about contents are made.
-                swap_helper[i].write(
-                    self.data
-                        .at(self.front + i)
-                        .copied()
-                        .ok_or(KernelError::InvalidAddress)?,
-                );
+                swap_helper[i].write(self.data.at(self.front + i).copied().ok_or(kerr!(EINVAL))?);
             }
             // One past the logically last element of the queue
             let end = (self.front + self.len) % self.data.capacity();
             // now move the logical end of the queue further back to make space for the logical start
             for i in 0..end {
-                BUG_ON!(i + non_wrapping_queue_start_len >= self.data.capacity());
+                bug_on!(i + non_wrapping_queue_start_len >= self.data.capacity());
                 self.data.swap(i, i + non_wrapping_queue_start_len);
             }
             // now copy the data back from the temp helper
@@ -156,21 +152,23 @@ impl<T: Clone + Copy, const N: usize> Queue<T, N> {
 
 #[cfg(test)]
 mod tests {
+    use hal_api::mem::PhysAddr;
+
     use super::*;
     use crate::mem::GLOBAL_ALLOCATOR;
     use core::ops::Range;
 
-    fn alloc_range(length: usize) -> Range<usize> {
+    fn alloc_range(length: usize) -> Range<PhysAddr> {
         let alloc_range = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
         let ptr = unsafe { std::alloc::alloc(alloc_range) };
-        ptr as usize..ptr as usize + length
+        PhysAddr::new(ptr as usize)..PhysAddr::new(ptr as usize) + length
     }
 
     fn setup_memory(mem_size: usize) {
         unsafe {
             GLOBAL_ALLOCATOR
                 .lock()
-                .add_range(alloc_range(mem_size))
+                .add_range(&alloc_range(mem_size))
                 .unwrap()
         };
     }
@@ -197,7 +195,7 @@ mod tests {
             assert_eq!(queue.push_back(i), Ok(()));
         }
         // sanity check that queue really is full
-        assert_eq!(queue.push_back(1), Err(KernelError::OutOfMemory));
+        assert_eq!(queue.push_back(1), Err(kerr!(ENOMEM)));
         assert_eq!(queue.len(), 10);
 
         // pop and subsequently push more elements to make queue wrap
@@ -232,7 +230,7 @@ mod tests {
         assert_eq!(queue.len(), 10);
         queue.grow_capacity(1).unwrap();
         assert_eq!(queue.len(), 10);
-        assert_eq!(queue.push_back(1), Err(KernelError::OutOfMemory));
+        assert_eq!(queue.push_back(1), Err(kerr!(ENOMEM)));
     }
 
     #[test]
@@ -293,7 +291,7 @@ mod verification {
             assert_eq!(queue.push_back(i), Ok(()));
         }
         // sanity check that queue really is full
-        assert_eq!(queue.push_back(1), Err(KernelError::OutOfMemory));
+        assert_eq!(queue.push_back(1), Err(kerr!(ENOMEM)));
         assert_eq!(queue.len(), 10);
 
         // pop and subsequently push more elements to make queue wrap

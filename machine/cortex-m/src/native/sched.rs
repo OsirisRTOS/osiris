@@ -3,7 +3,7 @@
 use core::{
     ffi::c_void,
     num::NonZero,
-    ops::{Add, AddAssign, Range},
+    ops::{Add, AddAssign},
     ptr::NonNull,
 };
 

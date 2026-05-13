@@ -28,6 +28,7 @@ pub use hal_cortex_m::*;
 // Add new hals here. No cfg needed.
 
 pub use hal::Machinelike;
+pub use hal_api::error::*;
 pub use proc_macros::app_main;
 
 /// The kernel initialization function.
@@ -39,6 +40,7 @@ pub use proc_macros::app_main;
 pub unsafe extern "C" fn kernel_init() -> ! {
     // Initialize basic hardware and the logging system.
     hal::Machine::init();
+    hal::Machine::init_irqs(irq::register_irq_safe);
     hal::Machine::bench_start();
 
     print::print_header();

@@ -16,7 +16,6 @@ use crate::hal::{self, Schedable};
 use crate::{
     error::Result,
     mem,
-    sched::thread::Waiter,
     sync::{self, atomic::AtomicU64, spinlock::SpinLocked},
     time::{self},
     types::{
@@ -59,8 +58,8 @@ unsafe impl<const N: usize> Send for Scheduler<N> {}
 // Safety: The scheduler does only allow access to its data through &mut self, which is synchronized by the SCHED spinlock.
 unsafe impl<const N: usize> Sync for Scheduler<N> {}
 
-/// We define dequeue as a macro in order to avoid borrow checker issues.
-macro_rules! dequeue {
+/// We define kill as a macro in order to avoid borrow checker issues.
+macro_rules! kill {
     ($self:expr, $uid:expr) => {
         rt::ServerView::<N>::with(&mut $self.threads, |view| {
             $self.rt_scheduler.dequeue($uid, view)
@@ -152,12 +151,12 @@ impl<const N: usize> Scheduler<N> {
 
     fn do_wakeups(&mut self, now: u64) {
         while let Some(uid) = self.wakeup.min() {
-            let mut done = false;
+            let mut stop = false;
             WaiterView::<N>::with(&mut self.threads, |view| {
                 if let Some(waiter) = view.get(uid) {
                     if waiter.until() > now {
                         Self::next_resched(now, waiter.until());
-                        done = true;
+                        stop = true;
                         return;
                     }
 
@@ -169,8 +168,15 @@ impl<const N: usize> Scheduler<N> {
                 }
             });
 
-            if done {
+            if stop {
                 break;
+            }
+
+            if let Some(thread) = self.threads.get_mut(uid) {
+                thread.resume();
+            } else {
+                // This should not be possible. The thread is in the wakeup tree, so it must exist.
+                bug!("failed to wake thread {}. Does not exist.", uid);
             }
 
             if self.enqueue(now, uid).is_err() {
@@ -179,8 +185,8 @@ impl<const N: usize> Scheduler<N> {
         }
     }
 
-    /// Syncs the new state after the last do_sched call to the scheduler, and returns whether we need to immediately reschedule.
-    fn sync_to_sched(&mut self, now: u64) -> bool {
+    /// Syncs the scheduler state at the beginning of a reschedule.
+    fn sync_to_sched(&mut self, now: u64) {
         let dt = now - self.last_tick;
         self.last_tick = now;
 
@@ -190,15 +196,16 @@ impl<const N: usize> Scheduler<N> {
             });
 
             if let Some(throttle) = throttle {
-                let _ = self.sleep_until(throttle, now);
-                return true;
+                // This ensures that sleep_until will not trigger a reschedule.
+                self.current = None;
+                let _ = self.sleep_until(Some(old), throttle, now);
+                self.current = Some(old);
+            } else {
+                self.rr_scheduler.put(old, dt as u32);
             }
-
-            self.rr_scheduler.put(old, dt as u32);
         }
 
         self.do_wakeups(now);
-        false
     }
 
     fn select_next(&mut self) -> (thread::UId, u32) {
@@ -210,10 +217,7 @@ impl<const N: usize> Scheduler<N> {
     /// Picks the next thread to run and returns its context and task. This should only be called by sched_enter after land.
     fn do_sched(&mut self, now: u64) -> Option<(*mut c_void, &mut task::Task)> {
         // Sync the new state to the scheduler.
-        if self.sync_to_sched(now) {
-            // Trigger reschedule after interrupts are enabled.
-            return None;
-        }
+        self.sync_to_sched(now);
 
         // Pick the next thread to run.
         let (new, budget) = self.select_next();
@@ -234,40 +238,52 @@ impl<const N: usize> Scheduler<N> {
         Some((ctx, task))
     }
 
-    /// Puts the current thread to sleep until the specified timepoint. This will trigger a reschedule.
+    /// Puts a thread to sleep until the specified timepoint. This will trigger a reschedule if the thread is currently running.
     ///
+    /// `uid` - The UID of the thread to put to sleep, or None to put the current thread to sleep.
     /// `until` - The timepoint to sleep until, in ticks. This is an absolute time, not a relative time.
     /// `now` - The current timepoint, in ticks.
     ///
     /// Returns an error if there is no current thread, it is not enqueued, or if the specified timepoint is in the past.
-    pub fn sleep_until(&mut self, until: u64, now: u64) -> Result<()> {
+    pub fn sleep_until(&mut self, uid: Option<thread::UId>, until: u64, now: u64) -> Result<()> {
         if until <= now {
             return Ok(());
         }
-        let uid = self.current.ok_or(kerr!(EINVAL))?;
+        let uid = match uid {
+            Some(uid) => uid,
+            None => self.current.ok_or(kerr!(EINVAL))?,
+        };
+        // Make the thread not runnable. Triggers a reschedule if the thread is currently running.
+        // If it fails, it means the thread was not enqueued, which is fine.
+        let _ = self.dequeue(uid);
 
-        if let Some(thread) = self.threads.get_mut(uid) {
-            thread.set_waiter(Some(Waiter::new(until, uid)));
-        } else {
-            // This should not be possible. The thread must exist since it's the current thread.
-            bug!(
-                "failed to put current thread {} to sleep. Does not exist.",
-                uid
-            );
+        // Check if the thread is already sleeping.
+        let already = match self.threads.get_mut(uid) {
+            Some(thread) if thread.is_waiting() => true,
+            Some(_) => false,
+            None => return Err(kerr!(EINVAL)),
+        };
+
+        // If the thread already sleeps, remove it from the wakeup tree.
+        if already {
+            WaiterView::with(&mut self.threads, |view| self.wakeup.remove(uid, view))?;
         }
 
-        dequeue!(self, uid)?;
+        // Put the thread to sleep until the specified timepoint.
+        if let Some(thread) = self.threads.get_mut(uid) {
+            thread.wait(until);
+        } else {
+            // This should not be possible. The thread was just checked to exist.
+            bug!("failed to set thread {} to waiting. Does not exist.", uid);
+        }
 
-        if self
-            .wakeup
-            .insert(uid, &mut WaiterView::<N>::new(&mut self.threads))
-            .is_err()
-        {
-            // This should not be possible. The thread exists.
+        // Insert the thread into the wakeup tree.
+        let res = WaiterView::with(&mut self.threads, |view| self.wakeup.insert(uid, view));
+
+        if res.is_err() {
+            // This should not be possible. The thread was just checked to exist.
             bug!("failed to insert thread {} into wakeup tree.", uid);
         }
-
-        reschedule();
         Ok(())
     }
 
@@ -281,30 +297,39 @@ impl<const N: usize> Scheduler<N> {
         self.current.map(|uid| uid.as_usize())
     }
 
-    /// If the thread is currently sleeping, this will trigger a wakeup on the next reschedule. Note this does not trigger an immediate reschedule.
+    /// If the thread is currently sleeping, this will trigger a wakeup on the immediately following reschedule.
     ///
     /// Returns an error if the thread does not exist, or if the thread is not currently sleeping.
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
-        WaiterView::<N>::with(&mut self.threads, |view| {
-            self.wakeup.remove(uid, view)?;
-            let thread = view.get_mut(uid).unwrap_or_else(|| {
-                // This should not be possible. The thread must exist since it's in the wakeup tree.
-                bug!("failed to get thread {} from wakeup tree.", uid);
-            });
-            thread.set_until(0);
-            self.wakeup.insert(uid, view).unwrap_or_else(|_| {
-                // This should not be possible. The thread exists and we just removed it from the wakeup tree, so it must be able to be re-inserted.
-                bug!("failed to re-insert thread {} into wakeup tree.", uid);
-            });
-            Ok(())
-        })
+        let now = time::tick();
+        let res = WaiterView::with(&mut self.threads, |view| self.wakeup.remove(uid, view));
+
+        if let Some(thread) = self.threads.get_mut(uid) {
+            thread.resume();
+        } else {
+            return Err(kerr!(EINVAL)); // Thread does not exist.
+        }
+
+        if res.is_ok() {
+            self.enqueue(now, uid)?;
+        }
+        Ok(())
     }
 
-    /// This will just remove the thread from the scheduler, but it will not trigger a reschedule, even if the thread is currently running.
+    /// This will make the thread not runnable, but it will not remove it from other lists.
+    /// If the thread is currently running, reschedule will be triggered.
     ///
     /// Returns an error if the thread does not exist, or if the thread is not currently enqueued in any scheduler.
     pub fn dequeue(&mut self, uid: thread::UId) -> Result<()> {
-        dequeue!(self, uid)
+        rt::ServerView::<N>::with(&mut self.threads, |view| {
+            self.rt_scheduler.dequeue(uid, view)
+        })
+        .or_else(|_| self.rr_scheduler.dequeue(uid, &mut self.threads))?;
+
+        if Some(uid) == self.current {
+            reschedule();
+        }
+        Ok(())
     }
 
     pub fn create_task(&mut self, attrs: task::Attributes) -> Result<task::UId> {
@@ -321,7 +346,7 @@ impl<const N: usize> Scheduler<N> {
         let task = self.tasks.get_mut(uid).ok_or(kerr!(EINVAL))?;
 
         while let Some(id) = task.threads().head() {
-            dequeue!(self, id)?;
+            kill!(self, id)?;
 
             if task.threads_mut().remove(id, &mut self.threads).is_err() {
                 // This should not be possible. The thread ID is from the thread list of the task, so it must exist.
@@ -374,7 +399,7 @@ impl<const N: usize> Scheduler<N> {
     /// If the thread does not exist, or if `uid` is None and there is no current thread, an error will be returned.
     pub fn kill_by_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
         let uid = uid.unwrap_or(self.current.ok_or(kerr!(EINVAL))?);
-        self.dequeue(uid)?;
+        kill!(self, uid)?;
 
         self.tasks
             .get_mut(uid.tid().owner())
@@ -482,4 +507,15 @@ pub extern "C" fn sched_enter(mut ctx: *mut c_void) -> *mut c_void {
 
         ctx
     })
+}
+
+extern "C" fn thread_finalizer() -> ! {
+    with(|sched| {
+        if sched.kill_by_thread(None).is_err() {
+            bug!("failed to terminate returned thread.");
+        }
+    });
+    loop {
+        hal::asm::nop!();
+    }
 }
