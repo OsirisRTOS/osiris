@@ -5,10 +5,9 @@ use hal_api::{
     stack::{Descriptor, Stacklike},
 };
 
-/// A stub stack. The real Cortex-M implementation pushes a synthetic exception
-/// frame onto a real stack. In host-test land we only need something that does
-/// not panic and round-trips a stack pointer, so we use a single AtomicUsize-sized
-/// cell as the "stack pointer" storage.
+/// Host-test stand-in for the real Cortex-M stack. The scheduler tests never
+/// dereference `sp`, so we just round-trip a pointer and return a non-null
+/// sentinel from `new` to keep null-pointer checks happy.
 #[derive(Debug, Clone, Copy)]
 pub struct StubStack {
     sp: *mut c_void,
@@ -25,16 +24,12 @@ impl Stacklike for StubStack {
     where
         Self: Sized,
     {
-        // Host tests never dereference the stack pointer. We give back a
-        // non-null sentinel so any code that checks for null pointers behaves.
         Ok(Self {
             sp: 0x1 as *mut c_void,
         })
     }
 
     fn create_sp(&self, ptr: *mut c_void) -> Result<Self::StackPtr> {
-        // The real implementation builds a synthetic exception frame. In tests
-        // we just round-trip the pointer so save_ctx/ctx behave sensibly.
         Ok(ptr)
     }
 

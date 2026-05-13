@@ -61,15 +61,13 @@ unsafe impl<const N: usize> Send for Scheduler<N> {}
 // Safety: The scheduler does only allow access to its data through &mut self, which is synchronized by the SCHED spinlock.
 unsafe impl<const N: usize> Sync for Scheduler<N> {}
 
-/// We define kill as a macro in order to avoid borrow checker issues.
+/// Macro rather than method to keep the borrow checker happy about &mut self
+/// being held while we re-borrow `self.threads` through multiple views.
 ///
-/// A live thread may simultaneously be linked into:
-///   - exactly one runnable scheduler (RT xor RR),
-///   - the wakeup tree (when sleeping),
-///   - or no structure at all (freshly created, or just dequeued).
-///
-/// Killing must therefore attempt removal from all three; we don't fail if
-/// the thread happens to live in zero structures.
+/// A thread may be linked into at most one runnable scheduler (RT xor RR) and
+/// may additionally be in the wakeup tree. Removal must be exhaustive; failing
+/// in any one structure must not skip the others (or kill_by_thread leaks
+/// stale tree links into a freed slot — see regression_b1).
 macro_rules! kill {
     ($self:expr, $uid:expr) => {{
         let _ = rt::ServerView::<N>::with(&mut $self.threads, |view| {
@@ -79,8 +77,6 @@ macro_rules! kill {
         let _ = $self
             .wakeup
             .remove($uid, &mut WaiterView::<N>::new(&mut $self.threads));
-        // Clearing the waiter keeps the thread's projection consistent if it
-        // later gets re-used (defensive; the slot is normally freed shortly).
         if let Some(thread) = $self.threads.get_mut($uid) {
             thread.resume();
         }
@@ -259,48 +255,38 @@ impl<const N: usize> Scheduler<N> {
     /// `until` - The timepoint to sleep until, in ticks. This is an absolute time, not a relative time.
     /// `now` - The current timepoint, in ticks.
     ///
-    /// If `until` is in the past, the thread is still removed from any
-    /// scheduler queue and parked in the wakeup tree; `do_wakeups` on the
-    /// following pick will resume it immediately. This is essential for the
-    /// RT throttle path, which calls this with `until == now` when an RT
-    /// thread's budget runs out exactly at its deadline.
+    /// If `until` is in the past (or equals `now`), the thread is still parked
+    /// in the wakeup tree; the next `do_wakeups` wakes it immediately. The RT
+    /// throttle path depends on this when a budget runs out at the deadline.
     ///
     /// Returns an error if the thread does not exist.
     pub fn sleep_until(&mut self, uid: Option<thread::UId>, until: u64, now: u64) -> Result<()> {
-        let _ = now; // kept in the signature for symmetry with the other paths
+        let _ = now;
         let uid = match uid {
             Some(uid) => uid,
             None => self.current.ok_or(kerr!(EINVAL))?,
         };
-        // Make the thread not runnable. Triggers a reschedule if the thread is currently running.
-        // If it fails, it means the thread was not enqueued, which is fine.
+        // Tolerate ENOENT: a detached thread isn't in any runnable scheduler.
         let _ = self.dequeue(uid);
 
-        // Check if the thread is already sleeping.
         let already = match self.threads.get_mut(uid) {
             Some(thread) if thread.is_waiting() => true,
             Some(_) => false,
             None => return Err(kerr!(EINVAL)),
         };
 
-        // If the thread already sleeps, remove it from the wakeup tree.
         if already {
             WaiterView::with(&mut self.threads, |view| self.wakeup.remove(uid, view))?;
         }
 
-        // Put the thread to sleep until the specified timepoint.
         if let Some(thread) = self.threads.get_mut(uid) {
             thread.wait(until);
         } else {
-            // This should not be possible. The thread was just checked to exist.
             bug!("failed to set thread {} to waiting. Does not exist.", uid);
         }
 
-        // Insert the thread into the wakeup tree.
         let res = WaiterView::with(&mut self.threads, |view| self.wakeup.insert(uid, view));
-
         if res.is_err() {
-            // This should not be possible. The thread was just checked to exist.
             bug!("failed to insert thread {} into wakeup tree.", uid);
         }
         Ok(())
@@ -411,25 +397,21 @@ impl<const N: usize> Scheduler<N> {
             })
     }
 
-    /// Returns the current running thread, if any. Test/inspection only.
     #[cfg(test)]
     pub fn current(&self) -> Option<thread::UId> {
         self.current
     }
 
-    /// Force-set the current thread. Test only.
     #[cfg(test)]
     pub fn set_current_for_test(&mut self, uid: Option<thread::UId>) {
         self.current = uid;
     }
 
-    /// Test-only direct accessor for the wakeup tree.
     #[cfg(test)]
     pub fn wakeup_min(&self) -> Option<thread::UId> {
         self.wakeup.min()
     }
 
-    /// Test-only: returns the uids of all live threads.
     #[cfg(test)]
     pub fn live_threads(&self) -> std::vec::Vec<thread::UId> {
         use crate::types::traits::Get;
@@ -445,18 +427,14 @@ impl<const N: usize> Scheduler<N> {
         out
     }
 
-    /// Test-only: returns true if `uid` is currently sleeping (has a waiter).
     #[cfg(test)]
     pub fn is_waiting(&self, uid: thread::UId) -> bool {
         use crate::types::traits::Get;
         self.threads.get(uid).map_or(false, |t| t.is_waiting())
     }
 
-    /// Test-only: drive `sync_to_sched` and `select_next` without going through the
-    /// `sched_enter` plumbing. Returns the picked thread's uid and budget.
-    ///
-    /// Mirrors do_sched: sync time, pick, then assign self.current. The
-    /// next_resched bookkeeping isn't useful in tests so we skip it.
+    /// Test mirror of `do_sched`: sync time, pick, then update `current`.
+    /// next_resched bookkeeping is omitted because there's no ISR to wake.
     #[cfg(test)]
     pub fn step(&mut self, now: u64) -> (thread::UId, u32) {
         self.sync_to_sched(now);
@@ -465,23 +443,20 @@ impl<const N: usize> Scheduler<N> {
         (new, budget)
     }
 
-    /// Test-only: ask the scheduler to advance time and update internal state
-    /// without picking a new thread.
     #[cfg(test)]
     pub fn tick_for_test(&mut self, now: u64) {
         self.sync_to_sched(now);
     }
 
-    /// Test-only: insert a fresh task into the scheduler without going through
-    /// `create_task` (which requires a memory subsystem).
+    /// Bypasses `create_task` so tests don't need the memory subsystem.
     #[cfg(test)]
     pub fn insert_task_for_test(&mut self) -> Result<task::UId> {
         self.tasks
             .insert_with(|idx| Ok((task::UId::new(idx), task::Task::new_for_test(task::UId::new(idx)))))
     }
 
-    /// Test-only: insert a thread into the scheduler without allocating a real
-    /// stack. The thread starts detached (not enqueued, not waiting).
+    /// Bypasses `create_thread`: no stack is allocated and the thread starts
+    /// detached (not enqueued, not waiting).
     #[cfg(test)]
     pub fn insert_thread_for_test(
         &mut self,
@@ -520,9 +495,8 @@ impl<const N: usize> Scheduler<N> {
     ///
     /// If the thread does not exist, or if `uid` is None and there is no current thread, an error will be returned.
     pub fn kill_by_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
-        // NOTE: must be unwrap_or_else, not unwrap_or — the latter eagerly
-        // evaluates its argument, which would propagate EINVAL whenever
-        // `self.current` is None even if the caller passed `Some(uid)`.
+        // Must lazy-match; Option::unwrap_or eagerly evaluates its argument and
+        // would propagate EINVAL when current is None even with Some(uid).
         let uid = match uid {
             Some(uid) => uid,
             None => self.current.ok_or(kerr!(EINVAL))?,

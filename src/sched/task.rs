@@ -141,12 +141,10 @@ impl Task {
 
 #[cfg(test)]
 impl Task {
-    /// Build a Task without invoking the page-frame allocator.
-    /// Only used in unit / property tests where memory subsystem isn't initialized.
+    /// Bypasses the page-frame allocator for tests. The zeroed AddressSpace is
+    /// safe only as long as nothing calls `allocate_stack`; the scheduler
+    /// tests never do.
     pub fn new_for_test(id: UId) -> Self {
-        // We construct an `AddressSpace` from raw fields without touching pfa.
-        // The test scheduler never calls `allocate_stack`, which is the only
-        // path that uses the address space.
         let address_space = unsafe { core::mem::zeroed() };
         Self {
             id,

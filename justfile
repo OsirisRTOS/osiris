@@ -22,6 +22,12 @@ verify *args:
 test *args:
     cargo test --target host-tuple {{args}}
 
+# Heavy-duty proptest run: 32k cases per harness. Use before merging changes
+# that touch the scheduler. Regular `just test` already executes the proptest
+# harness with its default 1024 cases.
+proptest *args:
+    PROPTEST_CASES=32768 cargo test --target host-tuple --release sched::tests {{args}}
+
 cov *args:
     cargo tarpaulin --out Lcov --skip-clean --engine llvm {{args}}
 

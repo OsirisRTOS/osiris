@@ -279,7 +279,6 @@ mod verification {
         m
     }
 
-    /// Push then remove restores the list to empty for N=2.
     #[kani::proof]
     #[kani::unwind(4)]
     fn push_back_then_remove_is_empty() {
@@ -297,33 +296,29 @@ mod verification {
         assert_eq!(list.tail(), None);
     }
 
-    /// After push_back(a) then push_back(b), the head is a and tail is b, regardless
-    /// of a and b being distinct or equal.
     #[kani::proof]
     #[kani::unwind(4)]
     fn two_pushes_have_correct_head_tail() {
         let mut s = storage::<2>();
         let mut list: List<TestTag, Id> = List::new();
-        let a = Id(0);
-        let b = Id(1);
-        list.push_back(a, &mut s).unwrap();
-        list.push_back(b, &mut s).unwrap();
-        assert_eq!(list.head(), Some(a));
-        assert_eq!(list.tail(), Some(b));
+        list.push_back(Id(0), &mut s).unwrap();
+        list.push_back(Id(1), &mut s).unwrap();
+        assert_eq!(list.head(), Some(Id(0)));
+        assert_eq!(list.tail(), Some(Id(1)));
         assert_eq!(list.len(), 2);
     }
 
-    /// Re-pushing the same id is a no-op on length, head, and tail.
+    /// push_back of an already-linked id moves it (via detach_links) rather
+    /// than duplicating it.
     #[kani::proof]
     #[kani::unwind(4)]
     fn push_back_same_id_is_idempotent() {
         let mut s = storage::<2>();
         let mut list: List<TestTag, Id> = List::new();
-        let a = Id(0);
-        list.push_back(a, &mut s).unwrap();
-        list.push_back(a, &mut s).unwrap();
-        assert_eq!(list.head(), Some(a));
-        assert_eq!(list.tail(), Some(a));
+        list.push_back(Id(0), &mut s).unwrap();
+        list.push_back(Id(0), &mut s).unwrap();
+        assert_eq!(list.head(), Some(Id(0)));
+        assert_eq!(list.tail(), Some(Id(0)));
         assert_eq!(list.len(), 1);
     }
 }
