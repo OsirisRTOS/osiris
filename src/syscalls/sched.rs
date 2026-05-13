@@ -10,7 +10,7 @@ use crate::{sched, time, uapi::sched::RtAttrs};
 fn sleep(until_hi: u32, until_lo: u32) -> c_int {
     let until = ((until_hi as u64) << 32) | (until_lo as u64);
     sched::with(|sched| {
-        if sched.sleep_until(until, time::tick()).is_err() {
+        if sched.sleep_until(None, until, time::tick()).is_err() {
             bug!("no current thread set.");
         }
     });
@@ -22,9 +22,8 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
     let duration = ((duration_hi as u64) << 32) | (duration_lo as u64);
     sched::with(|sched| {
         let now = time::tick();
-        // Saturate so userland passing u64::MAX doesn't wrap the deadline.
         if sched
-            .sleep_until(now.saturating_add(duration), now)
+            .sleep_until(None, now.saturating_add(duration), now)
             .is_err()
         {
             bug!("no current thread set.");

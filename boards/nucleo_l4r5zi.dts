@@ -27,6 +27,7 @@
 		osiris,sram = &sram0;
 		osiris,flash = &flash0;
         osiris,entropy = &rng;
+        osiris,monotonic-timer = &timers2;
 	};
 
 	sram1: memory@20030000 {

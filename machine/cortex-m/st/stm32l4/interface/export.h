@@ -247,3 +247,4 @@ unsigned long long monotonic_now(void);
 unsigned long long monotonic_freq(void);
 void delay_us(uint32_t delay_us);
 void do_tick(void);
+void tim2_hndlr(void);
