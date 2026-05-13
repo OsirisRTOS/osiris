@@ -45,7 +45,9 @@ fn main() {
                 count = count.wrapping_add(1) & 0b111;
                 apply(&leds, count);
             }
-            Ok(_) => {}
+            Ok(_) => {
+                // Ignore button release
+            }
             Err(e) => {
                 print::print(format_args!("btn.wait error: {:?}\n", e));
                 return;
