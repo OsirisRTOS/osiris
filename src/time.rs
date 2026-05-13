@@ -5,19 +5,18 @@ use crate::{sched, sync};
 static TICKS: sync::atomic::AtomicU64 = sync::atomic::AtomicU64::new(0);
 
 extern "C" fn update_time() {
-    let interval: u64 = mono_freq() / 10; // ~100 seconds in ticks
+    let interval: u64 = 100_000; // ~100 seconds in ticks
     kprintln!(
         "Time thread started with tick interval {} at {}",
         interval,
-        get_actual_time()
+        walltime()
     );
     loop {
         let tick = tick();
-
         sched::with(|sched| {
-            kprintln!("time is now {}", get_actual_time());
             let _ = sched.sleep_until(tick + interval, tick);
         });
+        kprintln!("time is now {}", walltime());
     }
 }
 
@@ -39,26 +38,39 @@ pub fn init() {
     })
 }
 
-pub fn get_rtc_backup_register(index: u8) -> u32 {
+pub fn rtc_backup_register(index: u8) -> u32 {
     assert!(index < 32, "RTC backup register index out of bounds");
-    assert!(index == 0, "RTC uses this register for restart continuity");
-    hal::Machine::get_rtc_backup_register(index)
+    assert!(index != 0, "RTC uses this register for restart continuity");
+    hal::Machine::rtc_backup_register(index)
 }
 
 pub fn set_rtc_backup_register(index: u8, value: u32) {
     assert!(index < 32, "RTC backup register index out of bounds");
-    assert!(index == 0, "RTC uses this register for restart continuity");
+    assert!(index != 0, "RTC uses this register for restart continuity");
     hal::Machine::set_rtc_backup_register(index, value)
 }
 
-pub fn get_actual_time() -> u64 {
-    let raw = sync::atomic::irq_free(|| hal::Machine::get_rtc_raw());
+pub fn walltime() -> u64 {
+    let raw = hal::Machine::rtc_raw();
+    if raw == -1i64 as u64 {
+        kprintln!("failed to read RTC time");
+        return 0;
+    }
+    if raw == -2i64 as u64 {
+        kprintln!("failed to read RTC date");
+        return 0;
+    }
     rtc_raw_to_unix(raw)
 }
 
-pub fn set_actual_time(time: u64) {
+pub fn set_walltime(time: u64) {
     let raw = unix_to_rtc_raw(time);
-    sync::atomic::irq_free(|| hal::Machine::set_rtc_raw(raw))
+    match hal::Machine::set_rtc_raw(raw) {
+        0 => (),
+        -1 => kprintln!("failed to set RTC time"),
+        -2 => kprintln!("failed to set RTC date"),
+        _ => kprintln!("unknown error setting RTC time"),
+    }
 }
 
 const fn bcd_to_bin(value: u8) -> u8 {
@@ -98,7 +110,6 @@ fn rtc_raw_to_unix(raw: u64) -> u64 {
     let hours = bcd_to_bin((raw & 0xff) as u8) as u64;
     let minutes = bcd_to_bin(((raw >> 8) & 0xff) as u8) as u64;
     let seconds = bcd_to_bin(((raw >> 16) & 0xff) as u8) as u64;
-    let weekday = ((raw >> 32) & 0xff) as u8;
     let year = 2000 + u32::from(bcd_to_bin(((raw >> 56) & 0xff) as u8));
     let month = u32::from(bcd_to_bin(((raw >> 40) & 0xff) as u8));
     let day = u32::from(bcd_to_bin(((raw >> 48) & 0xff) as u8));
