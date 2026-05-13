@@ -164,26 +164,30 @@ impl Device {
         self.desc.index()
     }
 
-    /// Park `uid` as the single waiter on this controller. A second call
-    /// overwrites the first.
-    pub fn register_waiter(&self, uid: u32) {
-        self.with_bus(|bus| bus.waiter.arm(uid));
+    /// Park `uid` as the single waiter on this controller. Returns
+    /// `EBUSY` if another thread is already armed — callers must not
+    /// share a single CAN device across concurrent receivers.
+    pub fn register_waiter(&self, uid: u32) -> Result<()> {
+        // `with_bus` yields the inner `arm` Result (kernel `Error`); we
+        // collapse both layers into the CAN driver's `PosixError` alias.
+        self.with_bus(|bus| bus.waiter.arm(uid))?
+            .map_err(|e| e.kind)
     }
 
     pub fn unregister_waiter(&self) {
-        self.with_bus(|bus| bus.waiter.disarm());
+        let _ = self.with_bus(|bus| bus.waiter.disarm());
     }
 
-    fn with_bus<F: FnOnce(&Bus)>(&self, f: F) {
+    fn with_bus<R, F: FnOnce(&Bus) -> R>(&self, f: F) -> Result<R> {
         let target_slot = self.desc.index();
         for cell in SLOTS.iter() {
             if let Some(bus) = cell.get() {
                 if bus.slot() == target_slot {
-                    f(bus);
-                    return;
+                    return Ok(f(bus));
                 }
             }
         }
+        Err(PosixError::ENODEV)
     }
 }
 

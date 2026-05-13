@@ -100,7 +100,8 @@ impl Key {
     }
 
     /// Block until the next edge, then return the event built from the
-    /// current line level.
+    /// current line level. Returns `EBUSY` if another thread is already
+    /// waiting on the same key.
     pub fn wait(&self) -> Result<KeyEvent> {
         let uid = crate::sched::with(|s| s.current_uid())
             .ok_or_else(|| kerr!(EINVAL, "key::wait with no current thread"))?
@@ -109,15 +110,7 @@ impl Key {
             return Err(kerr!(EINVAL, "idle thread cannot wait on a key"));
         }
 
-        // Mask IRQs around arm+park: an edge that fires between the two
-        // would otherwise kick a thread that's not yet in the wakeup tree.
-        crate::sync::atomic::irq_free(|| {
-            self.state.waiter.arm(uid);
-            crate::sched::with(|s| {
-                let _ = s.sleep_until(u64::MAX, crate::time::tick());
-            });
-        });
-        self.state.waiter.disarm();
+        self.state.waiter.park(uid)?;
 
         let level = hal::gpio::read(self.state.pin())?;
         Ok(self.event_from_level(level))
@@ -161,72 +154,63 @@ fn debounce_to_ticks(debounce_ms: u32) -> u64 {
 }
 
 pub fn init() {
-    let n = hal::device_tree::KEY_REGISTRY.len();
-    kprintln!("Found {n} gpio-key entries");
+    let entries = hal::device_tree::KEY_REGISTRY;
+    kprintln!("Found {} gpio-key entries", entries.len());
 
-    // One dispatcher registration per shared NVIC slot — EXTI9_5 and
-    // EXTI15_10 are aggregates over multiple lines.
+    if entries.len() > KEY_MAX {
+        kprintln!("    Key registry exceeds KEY_MAX={KEY_MAX}; truncating");
+    }
+
+    // One dispatcher registration per shared NVIC slot. EXTI9_5 and
+    // EXTI15_10 are aggregates over multiple lines, so several keys can
+    // map to the same vector. All Cortex-M EXTI vectors fit in u64.
     let mut seen_slots: u64 = 0;
 
-    for (i, entry) in hal::device_tree::KEY_REGISTRY.iter().enumerate() {
-        if i >= KEY_MAX {
-            kprintln!("    Key registry exceeds KEY_MAX={KEY_MAX}");
-            break;
+    for (i, entry) in entries.iter().take(KEY_MAX).enumerate() {
+        if let Err(e) = init_entry(i, entry, &mut seen_slots) {
+            kprintln!("    Key {}: init failed: {:?}", entry.label, e);
         }
-
-        let state = KeyState {
-            entry,
-            waiter: ParkedWaiter::new(),
-            last_event_mono: AtomicU64::new(0),
-            debounce_ticks: debounce_to_ticks(entry.debounce_ms),
-        };
-        let state_ref: &'static KeyState = SLOTS[i].set_or_get(state);
-        let pin = state_ref.pin();
-
-        let Some(vector) = hal::gpio::nvic_vector_for_line(entry.line) else {
-            kprintln!("    Key {} has invalid line {}", entry.label, entry.line);
-            continue;
-        };
-        let bit = 1u64 << (vector & 63);
-        if seen_slots & bit == 0 {
-            seen_slots |= bit;
-            if let Err(e) =
-                unsafe { crate::irq::register_irq(vector, hal::gpio::dispatch, None) }
-            {
-                kprintln!("    register_irq({vector}) failed: {:?}", e);
-                continue;
-            }
-        }
-
-        // Pull complements the active level so the idle state is unambiguous.
-        let pull = if entry.active_low != 0 {
-            Pull::Up
-        } else {
-            Pull::Down
-        };
-        if let Err(e) = hal::gpio::configure_input(pin, pull) {
-            kprintln!("    configure_input({}): {:?}", entry.label, e);
-            continue;
-        }
-
-        let ctx = state_ref as *const KeyState as *mut ();
-        // Both edges so press and release both surface as events.
-        if let Err(e) = hal::gpio::register_edge_handler(
-            pin,
-            Edges::BOTH,
-            on_edge,
-            ctx,
-            KEY_NVIC_PRIORITY,
-        ) {
-            kprintln!("    register_edge_handler({}): {:?}", entry.label, e);
-            continue;
-        }
-
-        kprintln!(
-            "    Initialized key {} on port 0x{:x} line {}",
-            entry.label,
-            entry.port,
-            entry.line
-        );
     }
+}
+
+fn init_entry(slot_idx: usize, entry: &'static KeyRegistryEntry, seen_slots: &mut u64) -> Result<()> {
+    let state = KeyState {
+        entry,
+        waiter: ParkedWaiter::new(),
+        last_event_mono: AtomicU64::new(0),
+        debounce_ticks: debounce_to_ticks(entry.debounce_ms),
+    };
+    let state_ref: &'static KeyState = SLOTS[slot_idx].set_or_get(state);
+    let pin = state_ref.pin();
+
+    let line = entry.line;
+    let vector = hal::gpio::nvic_vector_for_line(line)
+        .ok_or_else(|| kerr!(EINVAL, "invalid line {line}"))?;
+    debug_assert!(vector < 64, "EXTI vector outside u64 dedup mask");
+
+    let bit = 1u64 << vector;
+    if *seen_slots & bit == 0 {
+        unsafe { crate::irq::register_irq(vector, hal::gpio::dispatch, None) }?;
+        *seen_slots |= bit;
+    }
+
+    // Pull complements the active level so the idle state is unambiguous.
+    let pull = if entry.active_low != 0 {
+        Pull::Up
+    } else {
+        Pull::Down
+    };
+    hal::gpio::configure_input(pin, pull)?;
+
+    let ctx = state_ref as *const KeyState as *mut ();
+    // Both edges so press and release both surface as events.
+    hal::gpio::register_edge_handler(pin, Edges::BOTH, on_edge, ctx, KEY_NVIC_PRIORITY)?;
+
+    kprintln!(
+        "    Initialized key {} on port 0x{:x} line {}",
+        entry.label,
+        entry.port,
+        entry.line
+    );
+    Ok(())
 }

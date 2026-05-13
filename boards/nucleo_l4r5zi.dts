@@ -58,9 +58,10 @@
 
 		user_button: button {
 			label = "User";
-			/* B1 on the Nucleo-L4R5ZI pulls PC13 to GND when pressed
-			 * (UM2179 §6.5); matches Zephyr's upstream binding. */
-			gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
+			/* DIAG: trying ACTIVE_HIGH (internal pull-down + button to VDD)
+			 * to see if this board variant is wired opposite from the UM2179
+			 * default. */
+			gpios = <&gpioc 13 GPIO_ACTIVE_HIGH>;
 			osiris,code = <INPUT_KEY_0>;
 		};
 	};
