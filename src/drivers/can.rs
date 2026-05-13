@@ -168,7 +168,7 @@ impl Device {
     /// Park `uid` as the single waiter on this controller. Returns
     /// `EBUSY` if another thread is already armed — callers must not
     /// share a single CAN device across concurrent receivers.
-    pub fn register_waiter(&self, uid: u32) -> Result<()> {
+    pub fn register_waiter(&self, uid: usize) -> Result<()> {
         // `with_bus` yields the inner `arm` Result (kernel `Error`); we
         // collapse both layers into the CAN driver's `PosixError` alias.
         self.with_bus(|bus| bus.waiter.arm(uid))?
