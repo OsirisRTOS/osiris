@@ -122,23 +122,9 @@ impl Display for UId {
 
 // -------------------------------------------------------------------------
 
-/// The state of a thread.
-#[proc_macros::fmt]
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub enum RunState {
-    /// The thread is currently using the cpu.
-    Runs,
-    /// The thread is ready to run, but is not running.
-    Ready,
-    /// The thread is waiting for an event/signal to unblock it.
-    Waits,
-}
-
 #[proc_macros::fmt]
 #[derive(Clone, Copy)]
 pub struct State {
-    run_state: RunState,
     stack: Stack,
 }
 
@@ -178,8 +164,8 @@ impl RtServer {
     }
 
     fn violates_sched(&self, now: u64) -> bool {
-        self.budget_left as u64 * self.period as u64
-            > self.budget as u64 * (self.deadline.saturating_sub(now))
+        (self.budget_left as u64).saturating_mul(self.period as u64)
+            > (self.budget as u64).saturating_mul(self.deadline.saturating_sub(now))
     }
 
     pub fn on_wakeup(&mut self, now: u64) {
@@ -190,8 +176,8 @@ impl RtServer {
     }
 
     pub fn replenish(&mut self) {
-        self.deadline = self.deadline + self.period as u64;
-        self.budget_left += self.budget;
+        self.deadline = self.deadline.saturating_add(self.period as u64);
+        self.budget_left = self.budget_left.saturating_add(self.budget);
     }
 
     pub fn consume(&mut self, dt: u64) -> Option<u64> {
@@ -255,11 +241,6 @@ impl Waiter {
 
     pub fn until(&self) -> u64 {
         self.until
-    }
-
-    #[allow(dead_code)]
-    pub fn set_until(&mut self, until: u64) {
-        self.until = until;
     }
 }
 
@@ -326,10 +307,7 @@ impl Thread {
         let server =
             rtattrs.map(|attrs| RtServer::new(attrs.budget, attrs.period, attrs.deadline, uid));
         Self {
-            state: State {
-                run_state: RunState::Ready,
-                stack,
-            },
+            state: State { stack },
             uid,
             rt_server: server,
             waiter: None,
@@ -338,22 +316,22 @@ impl Thread {
         }
     }
 
-    pub fn set_waiter(&mut self, waiter: Option<Waiter>) {
-        self.waiter = waiter;
+    pub fn wait(&mut self, until: u64) {
+        self.waiter = Some(Waiter::new(until, self.uid));
     }
 
-    pub fn waiter(&self) -> Option<&Waiter> {
-        self.waiter.as_ref()
+    pub fn resume(&mut self) {
+        self.waiter = None;
+    }
+
+    pub fn is_waiting(&self) -> bool {
+        self.waiter.is_some()
     }
 
     pub fn save_ctx(&mut self, ctx: *mut c_void) -> Result<()> {
         let sp = self.state.stack.create_sp(ctx)?;
         self.state.stack.set_sp(sp);
         Ok(())
-    }
-
-    pub fn set_run_state(&mut self, state: RunState) {
-        self.state.run_state = state;
     }
 
     pub fn rt_server(&self) -> Option<&RtServer> {
