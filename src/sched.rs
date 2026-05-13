@@ -202,7 +202,7 @@ impl<const N: usize> Scheduler<N> {
                 self.current = Some(old);
             } else {
                 self.rr_scheduler.put(old, dt as u32);
-            }            
+            }
         }
 
         self.do_wakeups(now);
@@ -262,9 +262,7 @@ impl<const N: usize> Scheduler<N> {
 
         // If the thread already sleeps, remove it from the wakeup tree.
         if already {
-            WaiterView::with(&mut self.threads, |view| {
-                self.wakeup.remove(uid, view)
-            })?;
+            WaiterView::with(&mut self.threads, |view| self.wakeup.remove(uid, view))?;
         }
 
         // Put the thread to sleep until the specified timepoint.
@@ -276,9 +274,7 @@ impl<const N: usize> Scheduler<N> {
         }
 
         // Insert the thread into the wakeup tree.
-        let res = WaiterView::with(&mut self.threads, |view| {
-            self.wakeup.insert(uid, view)
-        });
+        let res = WaiterView::with(&mut self.threads, |view| self.wakeup.insert(uid, view));
 
         if res.is_err() {
             // This should not be possible. The thread was just checked to exist.
@@ -302,9 +298,7 @@ impl<const N: usize> Scheduler<N> {
     /// Returns an error if the thread does not exist, or if the thread is not currently sleeping.
     pub fn kick(&mut self, uid: thread::UId) -> Result<()> {
         let now = time::tick();
-        let res = WaiterView::with(&mut self.threads, |view| {
-            self.wakeup.remove(uid, view)
-        });
+        let res = WaiterView::with(&mut self.threads, |view| self.wakeup.remove(uid, view));
 
         if let Some(thread) = self.threads.get_mut(uid) {
             thread.resume();

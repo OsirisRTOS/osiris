@@ -307,9 +307,7 @@ impl Thread {
         let server =
             rtattrs.map(|attrs| RtServer::new(attrs.budget, attrs.period, attrs.deadline, uid));
         Self {
-            state: State {
-                stack,
-            },
+            state: State { stack },
             uid,
             rt_server: server,
             waiter: None,
