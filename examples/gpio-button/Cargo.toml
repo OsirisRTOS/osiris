@@ -1,0 +1,17 @@
+[package]
+name = "gpio-button"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "gpio-button"
+path = "src/main.rs"
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+osiris = { workspace = true }
+
+[build-dependencies]
+cfg_aliases = "0.2.1"

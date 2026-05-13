@@ -212,6 +212,24 @@ void can_diag(uint8_t slot, can_diag_t *out);
 
 void can_isr(uint8_t index);
 
+// gpio.c
+// Pull values accepted by `gpio_configure_input`.
+#define GPIO_PULL_NONE 0
+#define GPIO_PULL_UP   1
+#define GPIO_PULL_DOWN 2
+int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull);
+int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial);
+int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
+int gpio_read(void *port, uint16_t pin_mask);
+int gpio_toggle(void *port, uint16_t pin_mask);
+
+// exti.c
+// edge_mask bitfield: 0x1 = rising, 0x2 = falling (see exti.h).
+int exti_configure(void *port, uint8_t line, uint8_t edge_mask, uint8_t priority);
+int exti_release(uint8_t line);
+uint32_t exti_pending(void);
+void exti_ack(uint32_t mask);
+
 // sched.c
 void reschedule(void);
 

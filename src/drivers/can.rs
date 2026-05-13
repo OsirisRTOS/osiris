@@ -1,8 +1,7 @@
-use core::sync::atomic::{AtomicU32, Ordering};
-
 use crate::error::PosixError;
 use crate::hal;
 use crate::sync::once::{LazyLock, OnceCell};
+use crate::sync::waiter::ParkedWaiter;
 
 pub use hal::can::{BusState, BusStatus, Diag, Filter, Frame, Mode};
 
@@ -13,9 +12,9 @@ const CAN_BUS_MAX: usize = 2;
 
 pub struct Bus {
     desc: hal::can::Device,
-    /// 0 = no waiter; otherwise the parked thread's uid. Single consumer
-    /// per controller — a second `register_waiter` overwrites the first.
-    waiter: AtomicU32,
+    /// Single consumer per controller; concurrent `register_waiter`
+    /// calls are rejected with `EBUSY`.
+    waiter: ParkedWaiter,
 }
 
 impl Bus {
@@ -49,7 +48,7 @@ static BUSES: LazyLock<[Option<BusInit>; CAN_BUS_MAX]> = LazyLock::new(|| {
         }
         let bus = Bus {
             desc: hal::can::Device::from_entry(entry),
-            waiter: AtomicU32::new(0),
+            waiter: ParkedWaiter::new(),
         };
         let bus_ref: &'static Bus = SLOTS[i].set_or_get(bus);
         // Wire IRQs before `hal::can::init` — it enables interrupts at the
@@ -99,13 +98,7 @@ extern "C" fn kernel_dispatch(kind: hal::can::Irq, ctx: *mut ()) {
     }
     // SAFETY: ctx is the `&'static Bus` set by `wire_irqs`, backed by SLOTS.
     let bus = unsafe { &*(ctx as *const Bus) };
-    let uid = bus.waiter.load(Ordering::Acquire);
-    if uid != 0 {
-        crate::sched::with(|s| {
-            let _ = s.kick_by_uid(uid as usize);
-        });
-        crate::sched::reschedule();
-    }
+    bus.waiter.wake();
 }
 
 fn rx_kernel_handler(_ctx: *mut u8, _vector: usize, userdata: Option<usize>) {
@@ -172,26 +165,30 @@ impl Device {
         self.desc.index()
     }
 
-    /// Park `uid` as the single waiter on this controller. A second call
-    /// overwrites the first.
-    pub fn register_waiter(&self, uid: u32) {
-        self.with_bus(|bus| bus.waiter.store(uid, Ordering::Release));
+    /// Park `uid` as the single waiter on this controller. Returns
+    /// `EBUSY` if another thread is already armed — callers must not
+    /// share a single CAN device across concurrent receivers.
+    pub fn register_waiter(&self, uid: usize) -> Result<()> {
+        // `with_bus` yields the inner `arm` Result (kernel `Error`); we
+        // collapse both layers into the CAN driver's `PosixError` alias.
+        self.with_bus(|bus| bus.waiter.arm(uid))?
+            .map_err(|e| e.kind)
     }
 
-    pub fn unregister_waiter(&self) {
-        self.with_bus(|bus| bus.waiter.store(0, Ordering::Release));
+    pub fn unregister_waiter(&self) -> Result<()> {
+        self.with_bus(|bus| bus.waiter.disarm())
     }
 
-    fn with_bus<F: FnOnce(&Bus)>(&self, f: F) {
+    fn with_bus<R, F: FnOnce(&Bus) -> R>(&self, f: F) -> Result<R> {
         let target_slot = self.desc.index();
         for cell in SLOTS.iter() {
             if let Some(bus) = cell.get() {
                 if bus.slot() == target_slot {
-                    f(bus);
-                    return;
+                    return Ok(f(bus));
                 }
             }
         }
+        Err(PosixError::ENODEV)
     }
 }
 

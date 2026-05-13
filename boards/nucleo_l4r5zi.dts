@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018 Pushpal Sidhu
  *
- * SPDX-License-Identifier: Apache-2.0 
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Modified for OsirisRTOS: removed Zephyr-specific nodes and macros,
  * stripped arduino_r3_connector include.
@@ -61,6 +61,8 @@
 			label = "User";
 			gpios = <&gpioc 13 GPIO_ACTIVE_HIGH>;
 			osiris,code = <INPUT_KEY_0>;
+			osiris,irq-priority = <5>;
+			debounce-interval-ms = <50>;
 		};
 	};
 

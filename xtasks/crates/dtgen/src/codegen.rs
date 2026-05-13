@@ -4,9 +4,13 @@ use quote::quote;
 
 mod can;
 mod i2c;
+mod key;
+mod led;
 mod spi;
 
 pub fn generate_rust(dt: &DeviceTree) -> String {
+    enforce_unique_gpio_pins(dt);
+
     let segments: &[TokenStream] = &[
         emit_prop_value_type(),
         emit_topology_type(),
@@ -20,7 +24,11 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         spi::emit_query_api(),
         can::emit_registry(dt),
         can::emit_query_api(),
+        led::emit_registry(dt),
+        key::emit_registry(dt),
         emit_aliases_module(dt),
+        led::emit_query_api(),
+        key::emit_query_api(),
         emit_memory_module(dt),
         emit_chosen_module(dt),
     ];
@@ -439,7 +447,8 @@ fn decode_gpio_pins<'a>(dt: &'a DeviceTree, gpios: &[u32]) -> Vec<(&'a crate::ir
             panic!("Invalid GPIO spec - expected groups of 3 u32 values (phandle, pin, flags)");
         }
         let phandle = chunk[0];
-        let pin = chunk[1] as u8;
+        let pin = u8::try_from(chunk[1])
+            .unwrap_or_else(|_| panic!("GPIO pin number {} out of u8 range", chunk[1]));
         let flags = chunk[2];
         let active_low = (flags & 1) != 0;
 
@@ -449,6 +458,103 @@ fn decode_gpio_pins<'a>(dt: &'a DeviceTree, gpios: &[u32]) -> Vec<(&'a crate::ir
         pins.push((&dt.nodes[idx], pin, active_low as u8));
     }
     pins
+}
+
+/// One decoded child of a `compatible = "gpio-*"` parent — the part
+/// every single-GPIO binding (`gpio-keys`, `gpio-leds`) extracts the
+/// same way. Per-binding extras live in the caller.
+pub(crate) struct GpioChild<'a> {
+    pub child_idx: usize,
+    pub child: &'a crate::ir::Node,
+    pub port: usize,
+    pub line: u8,
+    pub active_low: u8,
+    pub label: String,
+}
+
+/// Walk every enabled parent whose `compatible` matches, then for each
+/// enabled child decode its required single `gpios` cell and optional
+/// `label`. Panics on a malformed binding — codegen runs at build time,
+/// so a bad DT should fail the build loudly.
+pub(crate) fn collect_gpio_children<'a>(
+    dt: &'a DeviceTree,
+    parent_compatible: &str,
+) -> Vec<GpioChild<'a>> {
+    let mut out = Vec::new();
+    for parent in dt.nodes.iter().filter(|p| is_enabled(p)) {
+        if parent.compatible.iter().all(|c| c != parent_compatible) {
+            continue;
+        }
+        for &child_idx in &parent.children {
+            let child = &dt.nodes[child_idx];
+            if !is_enabled(child) {
+                continue;
+            }
+
+            let gpios = match child.extra.get("gpios") {
+                Some(PropValue::U32Array(v)) => v.as_slice(),
+                _ => panic!(
+                    "{parent_compatible} child {} missing required `gpios` property",
+                    child.name
+                ),
+            };
+
+            let pins = decode_gpio_pins(dt, gpios);
+            if pins.len() != 1 {
+                panic!(
+                    "{parent_compatible} child {} must specify exactly one GPIO ({} found)",
+                    child.name,
+                    pins.len()
+                );
+            }
+            let (ctrl, line, active_low) = pins[0];
+            let port = ctrl
+                .reg
+                .and_then(|(base, _)| usize::try_from(base).ok())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{parent_compatible} child {} references controller {} with no valid reg base",
+                        child.name, ctrl.name,
+                    )
+                });
+
+            let label = match child.extra.get("label") {
+                Some(PropValue::Str(s)) => s.clone(),
+                _ => String::new(),
+            };
+
+            out.push(GpioChild {
+                child_idx,
+                child,
+                port,
+                line,
+                active_low,
+                label,
+            });
+        }
+    }
+    out
+}
+
+/// Fail the build if any GPIO pin is claimed by more than one
+/// single-GPIO binding (e.g. one `gpio-keys` and one `gpio-leds` child
+/// pointing at the same pin, or two children of the same parent on the
+/// same pin).
+fn enforce_unique_gpio_pins(dt: &DeviceTree) {
+    let mut claimed: Vec<(usize, u8, &'static str, String)> = Vec::new();
+    for binding in ["gpio-keys", "gpio-leds"] {
+        for c in collect_gpio_children(dt, binding) {
+            for (prev_port, prev_line, prev_binding, prev_name) in &claimed {
+                if *prev_port == c.port && *prev_line == c.line {
+                    panic!(
+                        "GPIO pin (port {:#x}, line {}) is claimed by both {} `{}` and {} `{}`",
+                        c.port, c.line, prev_binding, prev_name, binding, c.child.name,
+                    );
+                }
+            }
+            claimed.push((c.port, c.line, binding, c.child.name.clone()));
+        }
+    }
 }
 
 fn resolve_path(dt: &DeviceTree, path: &str) -> Option<usize> {

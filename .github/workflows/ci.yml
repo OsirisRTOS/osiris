@@ -97,6 +97,42 @@ jobs:
           path: target/${{ matrix.config.target }}/doc
 
 
+  examples:
+    name: example ${{ matrix.example }} (${{ matrix.preset }})
+    runs-on: ubuntu-latest
+    needs: [container]
+    strategy:
+      fail-fast: false
+      matrix:
+        preset:
+          - stm32l4r5zi
+        example:
+          - hello-world
+          - gpio-button
+          - blinkyworld
+        include:
+          - preset: stm32l4r5zi
+            config:
+              name: stm32l4r5zi_def
+              target: thumbv7em-none-eabi
+    container:
+      image: ${{ needs.container.outputs.container_name }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Load config
+        run: just config load ${{ matrix.config.name }} --no-confirm
+
+      - name: Build example
+        run: just example ${{ matrix.example }}
+
+
   fmt:
     name: Check formatting
     runs-on: ubuntu-latest
