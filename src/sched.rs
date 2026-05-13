@@ -60,17 +60,19 @@ unsafe impl<const N: usize> Sync for Scheduler<N> {}
 
 /// We define kill as a macro in order to avoid borrow checker issues.
 macro_rules! kill {
-    ($self:expr, $uid:expr) => {
-        rt::ServerView::<N>::with(&mut $self.threads, |view| {
+    ($self:expr, $uid:expr) => {{
+        let _ = rt::ServerView::<N>::with(&mut $self.threads, |view| {
             $self.rt_scheduler.dequeue($uid, view)
-        })
-        .or_else(|_| $self.rr_scheduler.dequeue($uid, &mut $self.threads))
-        .or_else(|_| {
-            $self
-                .wakeup
-                .remove($uid, &mut WaiterView::<N>::new(&mut $self.threads))
-        })
-    };
+        });
+        let _ = $self.rr_scheduler.dequeue($uid, &mut $self.threads);
+        let _ = $self
+            .wakeup
+            .remove($uid, &mut WaiterView::<N>::new(&mut $self.threads));
+        if let Some(thread) = $self.threads.get_mut($uid) {
+            thread.resume();
+        }
+        Ok::<(), crate::error::Error>(())
+    }};
 }
 
 impl<const N: usize> Scheduler<N> {
@@ -196,10 +198,17 @@ impl<const N: usize> Scheduler<N> {
             });
 
             if let Some(throttle) = throttle {
-                // This ensures that sleep_until will not trigger a reschedule.
-                self.current = None;
-                let _ = self.sleep_until(Some(old), throttle, now);
-                self.current = Some(old);
+                if throttle <= now {
+                    rt::ServerView::<N>::with(&mut self.threads, |view| {
+                        let _ = self.rt_scheduler.dequeue(old, view);
+                        let _ = self.rt_scheduler.enqueue(old, now, view);
+                    });
+                } else {
+                    // This ensures that sleep_until will not trigger a reschedule.
+                    self.current = None;
+                    let _ = self.sleep_until(Some(old), throttle, now);
+                    self.current = Some(old);
+                }
             } else {
                 self.rr_scheduler.put(old, dt as u32);
             }
@@ -398,7 +407,10 @@ impl<const N: usize> Scheduler<N> {
     ///
     /// If the thread does not exist, or if `uid` is None and there is no current thread, an error will be returned.
     pub fn kill_by_thread(&mut self, uid: Option<thread::UId>) -> Result<()> {
-        let uid = uid.unwrap_or(self.current.ok_or(kerr!(EINVAL))?);
+        let uid = match uid {
+            Some(uid) => uid,
+            None => self.current.ok_or(kerr!(EINVAL))?,
+        };
         kill!(self, uid)?;
 
         self.tasks
