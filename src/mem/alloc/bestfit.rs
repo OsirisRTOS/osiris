@@ -491,6 +491,9 @@ mod metrics_tests {
         use crate::hal::mem::PhysAddr;
         let layout = std::alloc::Layout::from_size_align(length, align_of::<u128>()).unwrap();
         let ptr = unsafe { std::alloc::alloc(layout) };
+        if ptr.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
         PhysAddr::new(ptr as usize)..PhysAddr::new(ptr as usize + length)
     }
 
