@@ -476,41 +476,17 @@ impl<const N: usize> Scheduler<N> {
     /// Called on every reschedule; only the thread that just ran needs updating.
     #[cfg(any(feature = "metrics", metrics))]
     fn mirror_stats(&self) {
-        let global = crate::mem::global_metrics();
-        crate::metrics::store::write_global_heap(crate::metrics::store::HeapSnapshot {
-            total_bytes: global.total_bytes,
-            free_bytes: global.free_bytes,
-            used_bytes: global.allocated_bytes(),
-            alloc_count: global.alloc_count,
-            free_count: global.free_count,
-        });
+        use crate::metrics::store;
+
+        store::write_global_heap(crate::mem::global_metrics().into());
 
         if let Some(uid) = self.current {
             if let Some(thread) = self.threads.get(uid) {
-                let m = thread.stack_metrics();
-                crate::metrics::store::write_thread_stack(
-                    uid.as_usize(),
-                    crate::metrics::store::StackSnapshot {
-                        total_bytes: m.total_bytes,
-                        used_bytes: m.used_bytes,
-                        free_bytes: m.free_bytes,
-                        peak_used_bytes: m.peak_used_bytes,
-                    },
-                );
+                store::write_thread_stack(uid.as_usize(), thread.stack_metrics().into());
 
                 let task_id = thread.task_id();
                 if let Some(task) = self.tasks.get(task_id) {
-                    let m = task.allocator_metrics();
-                    crate::metrics::store::write_task_heap(
-                        task_id.as_usize(),
-                        crate::metrics::store::HeapSnapshot {
-                            total_bytes: m.total_bytes,
-                            free_bytes: m.free_bytes,
-                            used_bytes: m.allocated_bytes(),
-                            alloc_count: m.alloc_count,
-                            free_count: m.free_count,
-                        },
-                    );
+                    store::write_task_heap(task_id.as_usize(), task.allocator_metrics().into());
                 }
             }
         }

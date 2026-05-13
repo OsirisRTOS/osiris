@@ -1,4 +1,29 @@
+use crate::hal::stack::StackMetrics;
+use crate::mem::alloc::Metrics as AllocMetrics;
 use crate::sync::seqlock::Seqlock;
+
+impl From<AllocMetrics> for HeapSnapshot {
+    fn from(m: AllocMetrics) -> Self {
+        Self {
+            total_bytes: m.total_bytes,
+            free_bytes: m.free_bytes,
+            used_bytes: m.allocated_bytes(),
+            alloc_count: m.alloc_count,
+            free_count: m.free_count,
+        }
+    }
+}
+
+impl From<StackMetrics> for StackSnapshot {
+    fn from(m: StackMetrics) -> Self {
+        Self {
+            total_bytes: m.total_bytes,
+            used_bytes: m.used_bytes,
+            free_bytes: m.free_bytes,
+            peak_used_bytes: m.peak_used_bytes,
+        }
+    }
+}
 
 pub(crate) const SLOTS: usize = crate::sched::THREAD_COUNT;
 
