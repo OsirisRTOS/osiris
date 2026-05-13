@@ -7,7 +7,7 @@ edition = "2024"
 metrics = []
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(osiris_metrics)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrics)'] }
 
 [dependencies]
 seq-macro = "0.3.6"

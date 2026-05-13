@@ -14,7 +14,7 @@ pub struct Descriptor {
 
 /// Per-stack resource snapshot. Available when the `metrics` feature is enabled.
 /// Backends that do not override `Stacklike::metrics` return all-zero values.
-#[cfg(any(feature = "metrics", osiris_metrics))]
+#[cfg(any(feature = "metrics", metrics))]
 #[derive(Debug, Clone, Copy)]
 pub struct StackMetrics {
     /// Total bytes allocated for this stack.
@@ -42,7 +42,7 @@ pub trait Stacklike {
 
     /// Returns a metrics snapshot for this stack.
     /// Backends that do not implement full metrics tracking return all-zero values.
-    #[cfg(any(feature = "metrics", osiris_metrics))]
+    #[cfg(any(feature = "metrics", metrics))]
     fn metrics(&self) -> StackMetrics {
         StackMetrics {
             total_bytes: 0,

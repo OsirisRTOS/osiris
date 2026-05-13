@@ -54,7 +54,7 @@ rand = "0.8.5"
 cfg_aliases = "0.2.1"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(osiris_metrics)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(metrics)'] }
 
 [profile.dev]
 panic = "abort"

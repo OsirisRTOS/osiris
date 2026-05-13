@@ -28,4 +28,4 @@ panic-uart = []
 metrics = ["hal-api/metrics"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cortex_m)', 'cfg(disabled)', 'cfg(osiris_metrics)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cortex_m)', 'cfg(disabled)', 'cfg(metrics)'] }

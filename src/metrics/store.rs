@@ -53,14 +53,14 @@ pub(crate) fn clear_thread_stack(slot: usize) {
     }
 }
 
-pub fn read_global_heap() -> Option<HeapSnapshot> {
+pub fn global_heap() -> Option<HeapSnapshot> {
     GLOBAL_HEAP.read()
 }
 
-pub fn read_task_heap(slot: usize) -> Option<HeapSnapshot> {
+pub fn task_heap(slot: usize) -> Option<HeapSnapshot> {
     if slot < SLOTS { TASK_HEAPS[slot].read() } else { None }
 }
 
-pub fn read_thread_stack(slot: usize) -> Option<StackSnapshot> {
+pub fn thread_stack(slot: usize) -> Option<StackSnapshot> {
     if slot < SLOTS { THREAD_STACKS[slot].read() } else { None }
 }

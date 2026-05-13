@@ -342,7 +342,7 @@ impl Thread {
         self.state.stack.sp()
     }
 
-    #[cfg(any(feature = "metrics", osiris_metrics))]
+    #[cfg(any(feature = "metrics", metrics))]
     pub fn stack_metrics(&self) -> crate::hal::stack::StackMetrics {
         self.state.stack.metrics()
     }

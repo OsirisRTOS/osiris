@@ -142,8 +142,8 @@ impl Task {
         &self.threads
     }
 
-    #[cfg(any(feature = "metrics", osiris_metrics))]
-    pub(crate) fn allocator_metrics(&self) -> crate::mem::alloc::bestfit::AllocatorMetrics {
+    #[cfg(any(feature = "metrics", metrics))]
+    pub(crate) fn allocator_metrics(&self) -> crate::mem::alloc::Metrics {
         self.address_space.metrics()
     }
 }

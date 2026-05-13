@@ -20,7 +20,7 @@ mod sync;
 mod syscalls;
 mod time;
 
-#[cfg(any(feature = "metrics", osiris_metrics))]
+#[cfg(any(feature = "metrics", metrics))]
 pub mod metrics;
 
 // Public, for now.

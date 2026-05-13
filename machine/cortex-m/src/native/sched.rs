@@ -63,7 +63,7 @@ pub struct ArmStack {
     /// The size of the stack
     size: NonZero<usize>,
     /// High-water mark: largest sp offset ever recorded via set_sp.
-    #[cfg(any(feature = "metrics", osiris_metrics))]
+    #[cfg(any(feature = "metrics", metrics))]
     peak_offset: usize,
 }
 
@@ -181,7 +181,7 @@ impl ArmStack {
     }
 }
 
-#[cfg(all(test, any(feature = "metrics", osiris_metrics)))]
+#[cfg(all(test, any(feature = "metrics", metrics)))]
 mod metrics_tests {
     use super::*;
     use core::num::NonZero;
@@ -286,7 +286,7 @@ impl hal_api::stack::Stacklike for ArmStack {
             top,
             sp: StackPtr { offset: 0 },
             size,
-            #[cfg(any(feature = "metrics", osiris_metrics))]
+            #[cfg(any(feature = "metrics", metrics))]
             peak_offset: 0,
         };
 
@@ -303,14 +303,14 @@ impl hal_api::stack::Stacklike for ArmStack {
     }
 
     fn set_sp(&mut self, sp: StackPtr) {
-        #[cfg(any(feature = "metrics", osiris_metrics))]
+        #[cfg(any(feature = "metrics", metrics))]
         if sp.offset > self.peak_offset {
             self.peak_offset = sp.offset;
         }
         self.sp = sp;
     }
 
-    #[cfg(any(feature = "metrics", osiris_metrics))]
+    #[cfg(any(feature = "metrics", metrics))]
     fn metrics(&self) -> hal_api::stack::StackMetrics {
         let word = core::mem::size_of::<u32>();
         let total_bytes = self.size.get() * word;
@@ -318,7 +318,7 @@ impl hal_api::stack::Stacklike for ArmStack {
         hal_api::stack::StackMetrics {
             total_bytes,
             used_bytes,
-            free_bytes: total_bytes - used_bytes,
+            free_bytes: total_bytes.saturating_sub(used_bytes),
             peak_used_bytes: self.peak_offset * word,
         }
     }

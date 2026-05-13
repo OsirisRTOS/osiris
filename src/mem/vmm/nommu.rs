@@ -17,9 +17,9 @@ pub struct AddressSpace {
     allocator: bestfit::BestFitAllocator,
 }
 
-#[cfg(any(feature = "metrics", osiris_metrics))]
+#[cfg(any(feature = "metrics", metrics))]
 impl AddressSpace {
-    pub(crate) fn metrics(&self) -> crate::mem::alloc::bestfit::AllocatorMetrics {
+    pub(crate) fn metrics(&self) -> crate::mem::alloc::Metrics {
         self.allocator.metrics()
     }
 }

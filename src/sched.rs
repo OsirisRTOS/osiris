@@ -347,13 +347,13 @@ impl<const N: usize> Scheduler<N> {
             task.map(|t| (task::UId::new(idx), t))
         })?;
 
-        #[cfg(any(feature = "metrics", osiris_metrics))]
+        #[cfg(any(feature = "metrics", metrics))]
         if let Some(task) = self.tasks.get(task_id) {
             let m = task.allocator_metrics();
             crate::metrics::store::write_task_heap(task_id.as_usize(), crate::metrics::store::HeapSnapshot {
                 total_bytes: m.total_bytes,
                 free_bytes: m.free_bytes,
-                used_bytes: m.allocated_bytes,
+                used_bytes: m.allocated_bytes(),
                 alloc_count: m.alloc_count,
                 free_count: m.free_count,
             });
@@ -381,7 +381,7 @@ impl<const N: usize> Scheduler<N> {
                 bug!("failed to remove thread {} from thread list.", id);
             }
 
-            #[cfg(any(feature = "metrics", osiris_metrics))]
+            #[cfg(any(feature = "metrics", metrics))]
             crate::metrics::store::clear_thread_stack(id.as_usize());
 
             if Some(id) == self.current {
@@ -392,7 +392,7 @@ impl<const N: usize> Scheduler<N> {
 
         self.tasks.remove(&uid).ok_or(kerr!(EINVAL))?;
 
-        #[cfg(any(feature = "metrics", osiris_metrics))]
+        #[cfg(any(feature = "metrics", metrics))]
         crate::metrics::store::clear_task_heap(uid.as_usize());
 
         Ok(())
@@ -421,7 +421,7 @@ impl<const N: usize> Scheduler<N> {
                 Ok(k)
             })?;
 
-        #[cfg(any(feature = "metrics", osiris_metrics))]
+        #[cfg(any(feature = "metrics", metrics))]
         if let Some(thread) = self.threads.get(uid) {
             let m = thread.stack_metrics();
             crate::metrics::store::write_thread_stack(uid.as_usize(), crate::metrics::store::StackSnapshot {
@@ -455,7 +455,7 @@ impl<const N: usize> Scheduler<N> {
 
         self.threads.remove(&uid).ok_or(kerr!(EINVAL))?;
 
-        #[cfg(any(feature = "metrics", osiris_metrics))]
+        #[cfg(any(feature = "metrics", metrics))]
         crate::metrics::store::clear_thread_stack(uid.as_usize());
 
         if Some(uid) == self.current {
@@ -465,40 +465,42 @@ impl<const N: usize> Scheduler<N> {
         Ok(())
     }
 
-    /// Copies live stats from all threads and tasks into the lock-free mirror.
-    /// Called on every reschedule so external readers can access metrics without
-    /// acquiring the scheduler lock.
-    #[cfg(any(feature = "metrics", osiris_metrics))]
+    /// Updates the lock-free mirror for the currently scheduled thread and its task.
+    /// Called on every reschedule; only the thread that just ran needs updating.
+    #[cfg(any(feature = "metrics", metrics))]
     fn mirror_stats(&self) {
         let global = crate::mem::global_metrics();
         crate::metrics::store::write_global_heap(crate::metrics::store::HeapSnapshot {
             total_bytes: global.total_bytes,
             free_bytes: global.free_bytes,
-            used_bytes: global.allocated_bytes,
+            used_bytes: global.allocated_bytes(),
             alloc_count: global.alloc_count,
             free_count: global.free_count,
         });
 
-        self.tasks.for_each(|slot, task| {
-            let m = task.allocator_metrics();
-            crate::metrics::store::write_task_heap(slot, crate::metrics::store::HeapSnapshot {
-                total_bytes: m.total_bytes,
-                free_bytes: m.free_bytes,
-                used_bytes: m.allocated_bytes,
-                alloc_count: m.alloc_count,
-                free_count: m.free_count,
-            });
-        });
+        if let Some(uid) = self.current {
+            if let Some(thread) = self.threads.get(uid) {
+                let m = thread.stack_metrics();
+                crate::metrics::store::write_thread_stack(uid.as_usize(), crate::metrics::store::StackSnapshot {
+                    total_bytes: m.total_bytes,
+                    used_bytes: m.used_bytes,
+                    free_bytes: m.free_bytes,
+                    peak_used_bytes: m.peak_used_bytes,
+                });
 
-        self.threads.for_each(|slot, thread| {
-            let m = thread.stack_metrics();
-            crate::metrics::store::write_thread_stack(slot, crate::metrics::store::StackSnapshot {
-                total_bytes: m.total_bytes,
-                used_bytes: m.used_bytes,
-                free_bytes: m.free_bytes,
-                peak_used_bytes: m.peak_used_bytes,
-            });
-        });
+                let task_id = thread.task_id();
+                if let Some(task) = self.tasks.get(task_id) {
+                    let m = task.allocator_metrics();
+                    crate::metrics::store::write_task_heap(task_id.as_usize(), crate::metrics::store::HeapSnapshot {
+                        total_bytes: m.total_bytes,
+                        free_bytes: m.free_bytes,
+                        used_bytes: m.allocated_bytes(),
+                        alloc_count: m.alloc_count,
+                        free_count: m.free_count,
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -583,15 +585,18 @@ pub extern "C" fn sched_enter(mut ctx: *mut c_void) -> *mut c_void {
         let old = sched.current.map(|c| c.owner());
         sched.land(ctx);
 
+        // Mirror stats while self.current still points to the outgoing thread —
+        // its stack context was just saved by land() and its task reflects any
+        // allocations made since the last reschedule.
+        #[cfg(any(feature = "metrics", metrics))]
+        sched.mirror_stats();
+
         if let Some((new, task)) = sched.do_sched(time::tick()) {
             if old != Some(task.id) {
                 dispch::prepare(task);
             }
             ctx = new;
         }
-
-        #[cfg(any(feature = "metrics", osiris_metrics))]
-        sched.mirror_stats();
 
         ctx
     })
