@@ -103,13 +103,13 @@ impl Key {
             if let Some(state) = cell.get() {
                 if state.entry.node == node {
                     if !state.initialized.load(Ordering::Acquire) {
-                        return Err(kerr!(EINVAL, "key node {node} init failed"));
+                        return Err(kerr!(EIO, "key node {node} init failed"));
                     }
                     return Ok(Self { state });
                 }
             }
         }
-        Err(kerr!(EINVAL, "key node {node} not initialized"))
+        Err(kerr!(ENODEV, "key node {node} not registered"))
     }
 
     pub fn code(&self) -> u32 {
