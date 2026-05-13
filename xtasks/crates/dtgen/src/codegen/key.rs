@@ -96,13 +96,29 @@ fn collect_keys(dt: &DeviceTree) -> Vec<Key> {
         })
         .collect();
 
-    // Enforce uniqueness: `key_by_code` is a one-to-one lookup.
+    // `key_by_code` is a one-to-one lookup; reject reused codes.
     for i in 0..keys.len() {
         for j in (i + 1)..keys.len() {
             if keys[i].code == keys[j].code {
                 panic!(
                     "gpio-keys code {} is reused by `{}` and `{}` — codes must be unique",
                     keys[i].code, keys[i].label, keys[j].label
+                );
+            }
+        }
+    }
+
+    // `key_by_label` returns the first match; reject reused non-empty
+    // labels so the lookup is unambiguous.
+    for i in 0..keys.len() {
+        if keys[i].label.is_empty() {
+            continue;
+        }
+        for j in (i + 1)..keys.len() {
+            if keys[i].label == keys[j].label {
+                panic!(
+                    "gpio-keys label `{}` is reused — labels must be unique when set",
+                    keys[i].label
                 );
             }
         }

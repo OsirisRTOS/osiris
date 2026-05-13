@@ -14,7 +14,7 @@ struct Led {
 }
 
 fn collect_leds(dt: &DeviceTree) -> Vec<Led> {
-    collect_gpio_children(dt, "gpio-leds")
+    let leds: Vec<Led> = collect_gpio_children(dt, "gpio-leds")
         .into_iter()
         .map(|c| Led {
             node: c.child_idx,
@@ -23,7 +23,25 @@ fn collect_leds(dt: &DeviceTree) -> Vec<Led> {
             active_low: c.active_low,
             label: c.label,
         })
-        .collect()
+        .collect();
+
+    // `led_by_label` returns the first match; reject reused non-empty
+    // labels so the lookup is unambiguous.
+    for i in 0..leds.len() {
+        if leds[i].label.is_empty() {
+            continue;
+        }
+        for j in (i + 1)..leds.len() {
+            if leds[i].label == leds[j].label {
+                panic!(
+                    "gpio-leds label `{}` is reused — labels must be unique when set",
+                    leds[i].label
+                );
+            }
+        }
+    }
+
+    leds
 }
 
 pub fn emit_registry(dt: &DeviceTree) -> TokenStream {

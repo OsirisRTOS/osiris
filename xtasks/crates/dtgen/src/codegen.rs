@@ -9,6 +9,8 @@ mod led;
 mod spi;
 
 pub fn generate_rust(dt: &DeviceTree) -> String {
+    enforce_unique_gpio_pins(dt);
+
     let segments: &[TokenStream] = &[
         emit_prop_value_type(),
         emit_topology_type(),
@@ -532,6 +534,27 @@ pub(crate) fn collect_gpio_children<'a>(
         }
     }
     out
+}
+
+/// Fail the build if any GPIO pin is claimed by more than one
+/// single-GPIO binding (e.g. one `gpio-keys` and one `gpio-leds` child
+/// pointing at the same pin, or two children of the same parent on the
+/// same pin).
+fn enforce_unique_gpio_pins(dt: &DeviceTree) {
+    let mut claimed: Vec<(usize, u8, &'static str, String)> = Vec::new();
+    for binding in ["gpio-keys", "gpio-leds"] {
+        for c in collect_gpio_children(dt, binding) {
+            for (prev_port, prev_line, prev_binding, prev_name) in &claimed {
+                if *prev_port == c.port && *prev_line == c.line {
+                    panic!(
+                        "GPIO pin (port {:#x}, line {}) is claimed by both {} `{}` and {} `{}`",
+                        c.port, c.line, prev_binding, prev_name, binding, c.child.name,
+                    );
+                }
+            }
+            claimed.push((c.port, c.line, binding, c.child.name.clone()));
+        }
+    }
 }
 
 fn resolve_path(dt: &DeviceTree, path: &str) -> Option<usize> {
