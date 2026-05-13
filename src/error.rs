@@ -1,8 +1,6 @@
 //! Utility functions and definitions for the kernel.
 #![cfg_attr(feature = "nightly", feature(likely_unlikely))]
 
-use crate::hal;
-use crate::hal::mem::PhysAddr;
 #[cfg(feature = "error-msg")]
 use core::fmt::{self, Write};
 use core::fmt::{Debug, Display};
