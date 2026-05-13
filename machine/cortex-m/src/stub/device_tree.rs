@@ -85,3 +85,55 @@ pub const CAN_REGISTRY: &[CanRegistryEntry] = &[];
 pub fn can_by_compatible(_compatible: &str, _ord: usize) -> Option<&'static CanRegistryEntry> {
     None
 }
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct LedRegistryEntry {
+    pub node: usize,
+    pub port: usize,
+    pub line: u8,
+    pub active_low: u8,
+    pub label: &'static str,
+}
+
+pub const LED_REGISTRY: &[LedRegistryEntry] = &[];
+
+pub fn led_by_alias(_alias: &str) -> Option<&'static LedRegistryEntry> {
+    None
+}
+
+pub fn led_by_label(_label: &str) -> Option<&'static LedRegistryEntry> {
+    None
+}
+
+pub fn led_by_node(_node: usize) -> Option<&'static LedRegistryEntry> {
+    None
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct KeyRegistryEntry {
+    pub node: usize,
+    pub port: usize,
+    pub line: u8,
+    pub active_low: u8,
+    pub label: &'static str,
+    pub code: u32,
+    pub debounce_ms: u32,
+    pub wakeup_source: u8,
+    pub polling_mode: u8,
+}
+
+pub const KEY_REGISTRY: &[KeyRegistryEntry] = &[];
+
+pub fn key_by_alias(_alias: &str) -> Option<&'static KeyRegistryEntry> {
+    None
+}
+
+pub fn key_by_label(_label: &str) -> Option<&'static KeyRegistryEntry> {
+    None
+}
+
+pub fn key_by_code(_code: u32) -> Option<&'static KeyRegistryEntry> {
+    None
+}

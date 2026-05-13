@@ -4,6 +4,8 @@ use quote::quote;
 
 mod can;
 mod i2c;
+mod key;
+mod led;
 mod spi;
 
 pub fn generate_rust(dt: &DeviceTree) -> String {
@@ -20,7 +22,11 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         spi::emit_query_api(),
         can::emit_registry(dt),
         can::emit_query_api(),
+        led::emit_registry(dt),
+        key::emit_registry(dt),
         emit_aliases_module(dt),
+        led::emit_query_api(),
+        key::emit_query_api(),
         emit_memory_module(dt),
         emit_chosen_module(dt),
     ];
