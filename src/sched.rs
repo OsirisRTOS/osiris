@@ -62,18 +62,30 @@ unsafe impl<const N: usize> Send for Scheduler<N> {}
 unsafe impl<const N: usize> Sync for Scheduler<N> {}
 
 /// We define kill as a macro in order to avoid borrow checker issues.
+///
+/// A live thread may simultaneously be linked into:
+///   - exactly one runnable scheduler (RT xor RR),
+///   - the wakeup tree (when sleeping),
+///   - or no structure at all (freshly created, or just dequeued).
+///
+/// Killing must therefore attempt removal from all three; we don't fail if
+/// the thread happens to live in zero structures.
 macro_rules! kill {
-    ($self:expr, $uid:expr) => {
-        rt::ServerView::<N>::with(&mut $self.threads, |view| {
+    ($self:expr, $uid:expr) => {{
+        let _ = rt::ServerView::<N>::with(&mut $self.threads, |view| {
             $self.rt_scheduler.dequeue($uid, view)
-        })
-        .or_else(|_| $self.rr_scheduler.dequeue($uid, &mut $self.threads))
-        .or_else(|_| {
-            $self
-                .wakeup
-                .remove($uid, &mut WaiterView::<N>::new(&mut $self.threads))
-        })
-    };
+        });
+        let _ = $self.rr_scheduler.dequeue($uid, &mut $self.threads);
+        let _ = $self
+            .wakeup
+            .remove($uid, &mut WaiterView::<N>::new(&mut $self.threads));
+        // Clearing the waiter keeps the thread's projection consistent if it
+        // later gets re-used (defensive; the slot is normally freed shortly).
+        if let Some(thread) = $self.threads.get_mut($uid) {
+            thread.resume();
+        }
+        Ok::<(), crate::error::Error>(())
+    }};
 }
 
 impl<const N: usize> Scheduler<N> {

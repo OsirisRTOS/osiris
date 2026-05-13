@@ -100,14 +100,33 @@ fn check_invariants(s: &TestSched) {
             cur
         );
     }
-    // INV-2: Every live thread that has a `Waiter` must have a `until` that
-    // round-trips through the wakeup tree min.
-    // (Direct invariant: we can't easily walk the tree, but `wakeup_min` must
-    // point at a live thread that is_waiting.)
+    // INV-2: wakeup_min must point at a live thread that is_waiting.
     if let Some(min) = s.wakeup_min() {
         let t = s.threads.get(min).expect("wakeup_min points at dead thread");
         assert!(t.is_waiting(), "wakeup_min thread {} is not waiting", min);
     }
+    // INV-3: Step shouldn't return a UID whose backing slot is dead.
+    // (We can't drive `step` here without mutating, so this is a weak check.)
+}
+
+/// A stronger invariant check: drive a `step(now)` and assert it returns a
+/// live thread. The harness uses this after each operation that should leave
+/// the scheduler in a consistent runnable state.
+#[track_caller]
+fn check_step_consistency(s: &mut TestSched, now: u64) {
+    use crate::types::traits::Get;
+    let (picked, budget) = s.step(now);
+    let thread = s.threads.get(picked);
+    assert!(
+        thread.is_some(),
+        "step({}) picked dead thread {}",
+        now,
+        picked
+    );
+    // RT scheduler is supposed to only return positive budgets for runnable
+    // threads. The RR fallback returns the remaining quantum or `quantum`.
+    // Idle returns 1000 unconditionally. Either way budget should be >0.
+    assert!(budget > 0, "step({}) returned zero budget for {}", now, picked);
 }
 
 // ---------------- Regression: minimal failing cases ----------------
@@ -154,6 +173,37 @@ fn regression_b1_enqueue_sleeping_thread_then_kill_leaves_wakeup_dangling() {
             min
         );
     }
+}
+
+/// Bug B2: when an RT thread's budget runs out exactly at its deadline,
+/// `sync_to_sched` calls `sleep_until(t, deadline, now)` with `deadline == now`.
+/// The early `if until <= now { return Ok(()); }` in sleep_until makes this a
+/// silent no-op, so the throttle never happens. On the next pick the RT
+/// scheduler returns the same thread with `budget_left == 0`, which is then
+/// treated as a 0-tick reschedule budget downstream.
+#[test]
+fn regression_b2_rt_throttle_at_exact_deadline_returns_zero_budget() {
+    let mut s = make_sched();
+    let (_task, _idle) = ensure_idle(&mut s);
+    let rt_attrs = RtAttrs {
+        deadline: 100,
+        period: 200,
+        budget: 50,
+    };
+    let t_rt = s
+        .insert_thread_for_test(task::UId::new(0), Some(rt_attrs))
+        .unwrap();
+    s.enqueue(0, t_rt).unwrap();
+    s.set_current_for_test(Some(t_rt));
+
+    // Advance to t=100 (== deadline). consume(100) zeroes the budget; the
+    // throttle path tries sleep_until(t_rt, 100, 100), which currently no-ops.
+    let (picked, budget) = s.step(100);
+    assert_eq!(picked, t_rt, "RT thread should still be the natural pick");
+    assert!(
+        budget > 0,
+        "B2 reproduced: RT thread picked with budget_left = 0"
+    );
 }
 
 // ---------------- Proptest harness ----------------
@@ -287,5 +337,53 @@ proptest! {
             h.apply(op);
             check_invariants(&h.sched);
         }
+    }
+
+    /// After any op sequence, `step(now)` must return a live thread.
+    #[test]
+    fn step_always_returns_live_thread(ops in ops_strategy()) {
+        let mut h = Harness::new();
+        for op in ops {
+            h.apply(op);
+        }
+        check_step_consistency(&mut h.sched, h.now);
+    }
+
+    /// A thread that has been sleeping until T must not be picked at any
+    /// step whose clock is strictly less than T.
+    #[test]
+    fn sleeping_thread_not_picked_before_deadline(
+        deadline in 1u64..1000,
+        wait_for in 0u64..500,
+    ) {
+        let mut h = Harness::new();
+        let t1 = h.sched.insert_thread_for_test(h.task, None).unwrap();
+        h.sched.set_current_for_test(Some(t1));
+        h.sched.sleep_until(Some(t1), deadline, 0).unwrap();
+        let probe_at = (deadline.saturating_sub(1)).min(wait_for);
+        for now in 0..=probe_at {
+            let (picked, _) = h.sched.step(now);
+            prop_assert_ne!(picked, t1, "thread picked at {} before deadline {}", now, deadline);
+        }
+    }
+
+    /// After enqueueing a thread without RT attrs and stepping, eventually that
+    /// thread is picked (assuming no other RR thread monopolizes the queue).
+    #[test]
+    fn enqueued_rr_thread_runs_eventually(
+        steps in 1u64..20,
+    ) {
+        let mut h = Harness::new();
+        let t1 = h.sched.insert_thread_for_test(h.task, None).unwrap();
+        h.sched.enqueue(0, t1).unwrap();
+        let mut seen = false;
+        for now in 0..=steps {
+            let (picked, _) = h.sched.step(now * 100);
+            if picked == t1 {
+                seen = true;
+                break;
+            }
+        }
+        prop_assert!(seen, "T1 never picked within {} steps", steps);
     }
 }
