@@ -88,6 +88,11 @@ pub fn write(pin: Pin, level: Level) -> Result<()> {
     ok_or_err(rc, ())
 }
 
+pub fn enable_port_clock(pin: Pin) -> Result<()> {
+    let rc = unsafe { bindings::gpio_clock_enable(port_ptr(pin)) };
+    ok_or_err(rc, ())
+}
+
 pub fn read(pin: Pin) -> Result<Level> {
     let mask = pin_mask(pin)?;
     let rc = unsafe { bindings::gpio_read(port_ptr(pin), mask) };
