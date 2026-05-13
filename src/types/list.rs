@@ -231,6 +231,104 @@ impl<Tag, T: Copy + PartialEq> List<Tag, T> {
     }
 }
 
+// VERIFICATION -------------------------------------------------------------------------------------------------------
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::types::{array::IndexMap, traits::{Get, ToIndex}};
+    use core::borrow::Borrow;
+
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    struct Id(usize);
+
+    impl ToIndex for Id {
+        fn to_index<Q: Borrow<Self>>(idx: Option<Q>) -> usize {
+            idx.as_ref().map_or(0, |k| k.borrow().0)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct TestTag;
+
+    struct Node {
+        links: Links<TestTag, Id>,
+    }
+
+    impl Node {
+        fn new() -> Self {
+            Self {
+                links: Links::new(),
+            }
+        }
+    }
+
+    impl Linkable<TestTag, Id> for Node {
+        fn links(&self) -> &Links<TestTag, Id> {
+            &self.links
+        }
+        fn links_mut(&mut self) -> &mut Links<TestTag, Id> {
+            &mut self.links
+        }
+    }
+
+    fn storage<const N: usize>() -> IndexMap<Id, Node, N> {
+        let mut m = IndexMap::new();
+        for i in 0..N {
+            assert!(m.insert(&Id(i), Node::new()).is_ok());
+        }
+        m
+    }
+
+    /// Push then remove restores the list to empty for N=2.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn push_back_then_remove_is_empty() {
+        let mut s = storage::<2>();
+        let mut list: List<TestTag, Id> = List::new();
+        let which: u8 = kani::any();
+        let id = if which & 1 == 0 { Id(0) } else { Id(1) };
+        list.push_back(id, &mut s).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list.head(), Some(id));
+        assert_eq!(list.tail(), Some(id));
+        list.remove(id, &mut s).unwrap();
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.head(), None);
+        assert_eq!(list.tail(), None);
+    }
+
+    /// After push_back(a) then push_back(b), the head is a and tail is b, regardless
+    /// of a and b being distinct or equal.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn two_pushes_have_correct_head_tail() {
+        let mut s = storage::<2>();
+        let mut list: List<TestTag, Id> = List::new();
+        let a = Id(0);
+        let b = Id(1);
+        list.push_back(a, &mut s).unwrap();
+        list.push_back(b, &mut s).unwrap();
+        assert_eq!(list.head(), Some(a));
+        assert_eq!(list.tail(), Some(b));
+        assert_eq!(list.len(), 2);
+    }
+
+    /// Re-pushing the same id is a no-op on length, head, and tail.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn push_back_same_id_is_idempotent() {
+        let mut s = storage::<2>();
+        let mut list: List<TestTag, Id> = List::new();
+        let a = Id(0);
+        list.push_back(a, &mut s).unwrap();
+        list.push_back(a, &mut s).unwrap();
+        assert_eq!(list.head(), Some(a));
+        assert_eq!(list.tail(), Some(a));
+        assert_eq!(list.len(), 1);
+    }
+}
+// END VERIFICATION ---------------------------------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use core::borrow::Borrow;

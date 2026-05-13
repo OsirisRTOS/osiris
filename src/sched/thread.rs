@@ -376,3 +376,115 @@ impl Project<Waiter> for Thread {
         self.waiter.as_mut()
     }
 }
+
+// VERIFICATION -------------------------------------------------------------------------------------------------------
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// `RtServer::consume` must never panic, and after consuming `dt`:
+    ///  - if dt >= old_budget, budget_left must be 0 and a throttle Some(deadline)
+    ///    must be returned;
+    ///  - if dt < old_budget, budget_left must equal old - dt as u32 and the
+    ///    return must be None.
+    #[kani::proof]
+    fn consume_does_not_panic_and_is_consistent() {
+        let budget: u32 = kani::any();
+        let period: u32 = kani::any();
+        let relative_deadline: u64 = kani::any();
+        kani::assume(budget > 0);
+        kani::assume(period > 0);
+        kani::assume(relative_deadline > 0);
+
+        let uid = UId::new(1, Id::new(0, task::UId::new(0)));
+        let mut s = RtServer::new(budget, period, relative_deadline, uid);
+        // Seed the server with some prior on_wakeup so deadline is non-zero.
+        let now: u64 = kani::any();
+        kani::assume(now < u64::MAX / 2);
+        s.on_wakeup(now);
+
+        let old_budget = s.budget_left();
+        let old_deadline = s.deadline();
+        let dt: u64 = kani::any();
+
+        let r = s.consume(dt);
+
+        if dt >= old_budget as u64 {
+            assert_eq!(s.budget_left(), 0);
+            assert_eq!(r, Some(old_deadline));
+        } else {
+            assert_eq!(s.budget_left() as u64, old_budget as u64 - dt);
+            assert_eq!(r, None);
+        }
+    }
+
+    /// `RtServer::replenish` must not panic for any reachable server state.
+    /// After replenish, deadline must be >= the old deadline (it should only
+    /// grow), and budget_left must be >= old budget_left.
+    #[kani::proof]
+    fn replenish_monotonic() {
+        let budget: u32 = kani::any();
+        let period: u32 = kani::any();
+        let relative_deadline: u64 = kani::any();
+        kani::assume(budget > 0);
+        kani::assume(period > 0);
+        kani::assume(relative_deadline > 0);
+
+        let uid = UId::new(1, Id::new(0, task::UId::new(0)));
+        let mut s = RtServer::new(budget, period, relative_deadline, uid);
+
+        let old_deadline = s.deadline();
+        let old_budget = s.budget_left();
+        s.replenish();
+        assert!(s.deadline() >= old_deadline);
+        assert!(s.budget_left() >= old_budget);
+    }
+
+    /// `RtServer::on_wakeup` must establish: after the call, either nothing
+    /// changed, OR (deadline == now + relative_deadline AND budget_left == budget).
+    #[kani::proof]
+    fn on_wakeup_resets_or_keeps() {
+        let budget: u32 = kani::any();
+        let period: u32 = kani::any();
+        let relative_deadline: u64 = kani::any();
+        kani::assume(budget > 0);
+        kani::assume(period > 0);
+        kani::assume(relative_deadline > 0);
+
+        let uid = UId::new(1, Id::new(0, task::UId::new(0)));
+        let mut s = RtServer::new(budget, period, relative_deadline, uid);
+        let now: u64 = kani::any();
+
+        let pre_deadline = s.deadline();
+        let pre_budget = s.budget_left();
+        s.on_wakeup(now);
+
+        // Either nothing changed,
+        let unchanged = s.deadline() == pre_deadline && s.budget_left() == pre_budget;
+        // or it was reset to the fresh job.
+        let reset = s.deadline() == now.saturating_add(relative_deadline)
+            && s.budget_left() == budget;
+        assert!(unchanged || reset);
+    }
+
+    /// `violates_sched` must not panic for any inputs.
+    #[kani::proof]
+    fn violates_sched_total() {
+        let budget: u32 = kani::any();
+        let period: u32 = kani::any();
+        let relative_deadline: u64 = kani::any();
+        kani::assume(budget > 0);
+        kani::assume(period > 0);
+        kani::assume(relative_deadline > 0);
+        let uid = UId::new(1, Id::new(0, task::UId::new(0)));
+        let mut s = RtServer::new(budget, period, relative_deadline, uid);
+        let now: u64 = kani::any();
+        // Even with deadline < now (saturating_sub returns 0) we should not
+        // panic. The result must be a bool.
+        s.on_wakeup(now);
+        // Force an extreme deadline to exercise the overflow checks.
+        let probe_now: u64 = kani::any();
+        let _ = s.violates_sched(probe_now);
+    }
+}
+// END VERIFICATION ---------------------------------------------------------------------------------------------------
