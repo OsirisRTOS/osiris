@@ -171,9 +171,9 @@ impl ArmStack {
 
             // We should have written exactly FRAME_WORDS words.
             debug_assert!(write_index == self.top.sub(self.sp.offset() + FRAME_WORDS));
-
-            self.sp += FRAME_WORDS;
         }
+
+        self.set_sp(self.sp + FRAME_WORDS);
 
         // The returned stack pointer must be call-aligned.
         debug_assert!(Self::is_call_aligned(self.sp));
@@ -230,10 +230,12 @@ mod metrics_tests {
     }
 
     #[test]
-    fn metrics_peak_starts_at_zero() {
-        // peak_offset is only updated through set_sp; new() increments sp directly.
+    fn metrics_peak_includes_entry_frame() {
         let stack = make_stack(unsafe { &mut BUF_A });
-        assert_eq!(stack.metrics().peak_used_bytes, 0);
+        let word = core::mem::size_of::<u32>();
+        // The entry frame (18 words) is pushed during new(), so peak starts there.
+        assert_eq!(stack.metrics().peak_used_bytes, stack.metrics().used_bytes);
+        assert!(stack.metrics().peak_used_bytes >= 18 * word);
     }
 
     #[test]
