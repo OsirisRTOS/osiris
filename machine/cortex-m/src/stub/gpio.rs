@@ -59,6 +59,10 @@ pub fn write(_pin: Pin, _level: Level) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
+pub fn enable_port_clock(_pin: Pin) -> Result<()> {
+    Err(PosixError::EOPNOTSUPP)
+}
+
 pub fn read(_pin: Pin) -> Result<Level> {
     Err(PosixError::EOPNOTSUPP)
 }

@@ -24,3 +24,4 @@ int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
 /* gpio_read returns 0 or 1 (level) on success, or negative PosixError. */
 int gpio_read(void *port, uint16_t pin_mask);
 int gpio_toggle(void *port, uint16_t pin_mask);
+int gpio_clock_enable(void *port);

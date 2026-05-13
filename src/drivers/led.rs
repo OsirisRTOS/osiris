@@ -98,12 +98,16 @@ pub fn init() {
         };
         let state_ref: &'static LedState = SLOTS[i].set_or_get(state);
 
-        // Pre-MODER level from DT `default-state`; `Keep` is only
-        // meaningful on warm restart (cold reset reads 0 from analog).
         let initial = match entry.default_state {
             LedDefaultState::Off => level_for(entry, false),
             LedDefaultState::On => level_for(entry, true),
-            LedDefaultState::Keep => hal::gpio::read(pin_of(entry)).unwrap_or(Level::Low),
+            LedDefaultState::Keep => {
+                // enable clock, as we read before configure_output, which internally turns on clock
+                let _ = hal::gpio::enable_port_clock(pin_of(entry)).map_err(|e| {
+                    kprintln!("    LED {}: enable_port_clock failed: {:?}", entry.label, e)
+                });
+                hal::gpio::read(pin_of(entry)).unwrap_or(level_for(entry, false))
+            }
         };
         match hal::gpio::configure_output(pin_of(entry), initial) {
             Ok(()) => {

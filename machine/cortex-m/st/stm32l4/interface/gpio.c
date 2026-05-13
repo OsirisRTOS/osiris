@@ -183,3 +183,12 @@ int gpio_toggle(void *port, uint16_t pin_mask)
   HAL_GPIO_TogglePin(p, pin_mask);
   return 0;
 }
+
+int gpio_clock_enable(void *port)
+{
+  GPIO_TypeDef *p = (GPIO_TypeDef *)port;
+  if (!port_is_known(p))
+    return -PosixError_EINVAL;
+  gpio_enable_clock(p);
+  return 0;
+}

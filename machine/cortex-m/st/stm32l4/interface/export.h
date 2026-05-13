@@ -222,6 +222,7 @@ int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial);
 int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
 int gpio_read(void *port, uint16_t pin_mask);
 int gpio_toggle(void *port, uint16_t pin_mask);
+int gpio_clock_enable(void *port);
 
 // exti.c
 // edge_mask bitfield: 0x1 = rising, 0x2 = falling (see exti.h).
