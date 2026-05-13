@@ -1,66 +1,74 @@
 #include "exti.h"
 #include "hal_api.h"
 #include "stm32l4xx_hal_cortex.h"
+#include "stm32l4xx_hal_exti.h"
 #include "stm32l4xx_hal_rcc.h"
 
-static uint8_t port_index(GPIO_TypeDef *port)
+static int is_valid_port(GPIO_TypeDef *port)
 {
-  if (port == GPIOA)
-    return 0;
-  if (port == GPIOB)
-    return 1;
-  if (port == GPIOC)
-    return 2;
-  if (port == GPIOD)
-    return 3;
-  if (port == GPIOE)
-    return 4;
-  if (port == GPIOF)
-    return 5;
-  if (port == GPIOG)
-    return 6;
+  return port == GPIOA || port == GPIOB || port == GPIOC || port == GPIOD ||
+         port == GPIOE || port == GPIOF || port == GPIOG
 #if defined(GPIOH)
-  if (port == GPIOH)
-    return 7;
+         || port == GPIOH
 #endif
 #if defined(GPIOI)
-  if (port == GPIOI)
-    return 8;
+         || port == GPIOI
 #endif
-  return 0xFFu;
+      ;
 }
 
-static IRQn_Type exti_irqn_for_line(uint8_t line)
+static uint32_t port_to_gpiosel(GPIO_TypeDef *port)
+{
+  if (port == GPIOA) return EXTI_GPIOA;
+  if (port == GPIOB) return EXTI_GPIOB;
+  if (port == GPIOC) return EXTI_GPIOC;
+  if (port == GPIOD) return EXTI_GPIOD;
+  if (port == GPIOE) return EXTI_GPIOE;
+  if (port == GPIOF) return EXTI_GPIOF;
+  if (port == GPIOG) return EXTI_GPIOG;
+#if defined(GPIOH)
+  if (port == GPIOH) return EXTI_GPIOH;
+#endif
+#if defined(GPIOI)
+  if (port == GPIOI) return EXTI_GPIOI;
+#endif
+  return EXTI_GPIOA;
+}
+
+/* Precondition: line < 16, checked by both callers. */
+static IRQn_Type irqn_for_line(uint8_t line)
 {
   switch (line)
   {
-  case 0:
-    return EXTI0_IRQn;
-  case 1:
-    return EXTI1_IRQn;
-  case 2:
-    return EXTI2_IRQn;
-  case 3:
-    return EXTI3_IRQn;
-  case 4:
-    return EXTI4_IRQn;
+  case 0: return EXTI0_IRQn;
+  case 1: return EXTI1_IRQn;
+  case 2: return EXTI2_IRQn;
+  case 3: return EXTI3_IRQn;
+  case 4: return EXTI4_IRQn;
   case 5:
   case 6:
   case 7:
   case 8:
-  case 9:
-    return EXTI9_5_IRQn;
+  case 9: return EXTI9_5_IRQn;
   case 10:
   case 11:
   case 12:
   case 13:
   case 14:
-  case 15:
-    return EXTI15_10_IRQn;
-  default:
-    /* Unreachable; guarded above. */
-    return (IRQn_Type)0;
+  case 15: return EXTI15_10_IRQn;
   }
+  return (IRQn_Type)0;
+}
+
+/* Map our edge bitmask to the HAL's EXTI_TRIGGER_* values. The bit
+ * positions happen to match, but the explicit lookup keeps us robust
+ * against the HAL renumbering them. */
+static uint32_t edge_mask_to_trigger(uint8_t edge_mask)
+{
+  uint32_t trigger = 0;
+  if (edge_mask & EXTI_EDGE_RISING_)  trigger |= EXTI_TRIGGER_RISING;
+  if (edge_mask & EXTI_EDGE_FALLING_) trigger |= EXTI_TRIGGER_FALLING;
+  return trigger;
 }
 
 int exti_configure(void *port, uint8_t line, uint8_t edge_mask, uint8_t priority)
@@ -69,55 +77,40 @@ int exti_configure(void *port, uint8_t line, uint8_t edge_mask, uint8_t priority
   {
     return -PosixError_EINVAL;
   }
-  if ((edge_mask & (EXTI_EDGE_RISING_ | EXTI_EDGE_FALLING_)) == 0u)
+  uint32_t trigger = edge_mask_to_trigger(edge_mask);
+  if (trigger == 0u)
   {
     /* No edge selected would unmask a line that can never fire. */
     return -PosixError_EINVAL;
   }
-  uint8_t port_idx = port_index((GPIO_TypeDef *)port);
-  if (port_idx == 0xFFu)
+  GPIO_TypeDef *p = (GPIO_TypeDef *)port;
+  if (!is_valid_port(p))
   {
     return -PosixError_EINVAL;
   }
 
   __HAL_RCC_SYSCFG_CLK_ENABLE();
 
-  uint32_t line_mask = 1u << line;
-  uint32_t exticr_idx = line >> 2;            /* line / 4 */
-  uint32_t exticr_pos = (uint32_t)(line & 3) * 4u;
-
-  uint32_t primask = __get_PRIMASK();
-  __disable_irq();
-
-  uint32_t exticr = SYSCFG->EXTICR[exticr_idx];
-  exticr &= ~(0xFu << exticr_pos);
-  exticr |= ((uint32_t)port_idx) << exticr_pos;
-  SYSCFG->EXTICR[exticr_idx] = exticr;
-
-  if (edge_mask & EXTI_EDGE_RISING_)
+  /* HAL_EXTI_SetConfigLine writes SYSCFG_EXTICR, RTSR1/FTSR1, and IMR1
+   * for us. The handle's PendingCallback is unused — we run our own
+   * dispatcher and never call HAL_EXTI_IRQHandler. */
+  EXTI_HandleTypeDef hexti = {0};
+  EXTI_ConfigTypeDef cfg = {
+      .Line    = EXTI_LINE_0 | (uint32_t)line,
+      .Mode    = EXTI_MODE_INTERRUPT,
+      .Trigger = trigger,
+      .GPIOSel = port_to_gpiosel(p),
+  };
+  if (HAL_EXTI_SetConfigLine(&hexti, &cfg) != HAL_OK)
   {
-    EXTI->RTSR1 |= line_mask;
-  }
-  else
-  {
-    EXTI->RTSR1 &= ~line_mask;
-  }
-  if (edge_mask & EXTI_EDGE_FALLING_)
-  {
-    EXTI->FTSR1 |= line_mask;
-  }
-  else
-  {
-    EXTI->FTSR1 &= ~line_mask;
+    return -PosixError_EIO;
   }
 
-  /* Clear any spurious pending bit before unmasking. */
-  EXTI->PR1 = line_mask;
-  EXTI->IMR1 |= line_mask;
+  /* Clear any latent pending edge from before this configuration so
+   * the first IRQ corresponds to a real edge. */
+  HAL_EXTI_ClearPending(&hexti, EXTI_TRIGGER_RISING_FALLING);
 
-  __set_PRIMASK(primask);
-
-  IRQn_Type irqn = exti_irqn_for_line(line);
+  IRQn_Type irqn = irqn_for_line(line);
   HAL_NVIC_SetPriority(irqn, priority, 0);
   HAL_NVIC_EnableIRQ(irqn);
 
@@ -130,19 +123,19 @@ int exti_release(uint8_t line)
   {
     return -PosixError_EINVAL;
   }
-  uint32_t line_mask = 1u << line;
-
-  uint32_t primask = __get_PRIMASK();
-  __disable_irq();
-  EXTI->IMR1 &= ~line_mask;
-  EXTI->RTSR1 &= ~line_mask;
-  EXTI->FTSR1 &= ~line_mask;
-  EXTI->PR1 = line_mask;
-  __set_PRIMASK(primask);
-
+  EXTI_HandleTypeDef hexti = { .Line = EXTI_LINE_0 | (uint32_t)line };
+  if (HAL_EXTI_ClearConfigLine(&hexti) != HAL_OK)
+  {
+    return -PosixError_EIO;
+  }
+  HAL_EXTI_ClearPending(&hexti, EXTI_TRIGGER_RISING_FALLING);
+  /* NVIC vector is left enabled; it may still serve other lines that
+   * share it (5..9, 10..15). */
   return 0;
 }
 
+/* Raw access: the dispatcher needs every bit of EXTI_PR1 in one read
+ * so it can demux several lines latched in the same IRQ. */
 uint32_t exti_pending(void)
 {
   return EXTI->PR1;

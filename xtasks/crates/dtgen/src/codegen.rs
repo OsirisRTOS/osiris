@@ -457,6 +457,82 @@ fn decode_gpio_pins<'a>(dt: &'a DeviceTree, gpios: &[u32]) -> Vec<(&'a crate::ir
     pins
 }
 
+/// One decoded child of a `compatible = "gpio-*"` parent — the part
+/// every single-GPIO binding (`gpio-keys`, `gpio-leds`) extracts the
+/// same way. Per-binding extras live in the caller.
+pub(crate) struct GpioChild<'a> {
+    pub child_idx: usize,
+    pub child: &'a crate::ir::Node,
+    pub port: usize,
+    pub line: u8,
+    pub active_low: u8,
+    pub label: String,
+}
+
+/// Walk every enabled parent whose `compatible` matches, then for each
+/// enabled child decode its required single `gpios` cell and optional
+/// `label`. Panics on a malformed binding — codegen runs at build time,
+/// so a bad DT should fail the build loudly.
+pub(crate) fn collect_gpio_children<'a>(
+    dt: &'a DeviceTree,
+    parent_compatible: &str,
+) -> Vec<GpioChild<'a>> {
+    let mut out = Vec::new();
+    for parent in dt.nodes.iter().filter(|p| is_enabled(p)) {
+        if parent.compatible.iter().all(|c| c != parent_compatible) {
+            continue;
+        }
+        for &child_idx in &parent.children {
+            let child = &dt.nodes[child_idx];
+            if !is_enabled(child) {
+                continue;
+            }
+
+            let gpios = match child.extra.get("gpios") {
+                Some(PropValue::U32Array(v)) => v.as_slice(),
+                _ => panic!(
+                    "{parent_compatible} child {} missing required `gpios` property",
+                    child.name
+                ),
+            };
+
+            let pins = decode_gpio_pins(dt, gpios);
+            if pins.len() != 1 {
+                panic!(
+                    "{parent_compatible} child {} must specify exactly one GPIO ({} found)",
+                    child.name,
+                    pins.len()
+                );
+            }
+            let (ctrl, line, active_low) = pins[0];
+            let port = ctrl
+                .reg
+                .and_then(|(base, _)| usize::try_from(base).ok())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{parent_compatible} child {} references controller {} with no valid reg base",
+                        child.name, ctrl.name,
+                    )
+                });
+
+            let label = match child.extra.get("label") {
+                Some(PropValue::Str(s)) => s.clone(),
+                _ => String::new(),
+            };
+
+            out.push(GpioChild {
+                child_idx,
+                child,
+                port,
+                line,
+                active_low,
+                label,
+            });
+        }
+    }
+    out
+}
+
 fn resolve_path(dt: &DeviceTree, path: &str) -> Option<usize> {
     if path == "/" {
         return Some(dt.root);

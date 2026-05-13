@@ -35,7 +35,6 @@ pub enum Level {
 pub struct Edges(u8);
 
 impl Edges {
-    pub const NONE: Edges = Edges(0);
     pub const RISING: Edges = Edges(0x1);
     pub const FALLING: Edges = Edges(0x2);
     pub const BOTH: Edges = Edges(0x3);
@@ -54,10 +53,6 @@ impl core::ops::BitOr for Edges {
 
 /// IRQ-context callback. No allocation, no blocking.
 pub type EdgeHandler = extern "C" fn(line: u8, ctx: *mut ());
-
-// ----------------------------------------------------------------------
-// I/O
-// ----------------------------------------------------------------------
 
 fn port_ptr(pin: Pin) -> *mut c_void {
     pin.port as *mut c_void
@@ -98,10 +93,6 @@ pub fn toggle(pin: Pin) -> Result<()> {
     ok_or_err(rc, ())
 }
 
-// ----------------------------------------------------------------------
-// EXTI line → callback table + per-vector demuxer
-// ----------------------------------------------------------------------
-
 struct LineCb {
     handler: AtomicPtr<()>,
     ctx: AtomicPtr<()>,
@@ -116,11 +107,17 @@ impl LineCb {
     }
 }
 
+// One slot per EXTI GPIO line. `dispatch` reads these from IRQ context
+// without a lock; registration uses CAS on `handler` to claim the slot
+// and a brief PRIMASK mask to publish `ctx` and `handler` together.
 static LINES: [LineCb; 16] = [const { LineCb::new() }; 16];
 
-/// Install an edge handler for `pin` and unmask the EXTI line. The caller
-/// is responsible for registering [`dispatch`] at the NVIC slot returned
-/// by [`nvic_vector_for_line`] (once per slot).
+/// Install an edge handler for `pin` and unmask the EXTI line. Returns
+/// `EBUSY` if the line already has a registered handler — callers must
+/// [`unregister_edge_handler`] first, since hot-swapping would race
+/// against [`dispatch`]. The caller is responsible for registering
+/// `dispatch` at the NVIC slot reported by [`nvic_vector_for_line`]
+/// (once per slot).
 pub fn register_edge_handler(
     pin: Pin,
     edges: Edges,
@@ -133,17 +130,37 @@ pub fn register_edge_handler(
     }
     let slot = &LINES[pin.line as usize];
 
-    // Release-store before unmasking so the first IRQ sees a complete LineCb.
-    slot.ctx.store(ctx as *mut (), Ordering::Release);
-    slot.handler.store(handler as *mut (), Ordering::Release);
+    // Mask IRQs while we publish `ctx` and `handler` together so a
+    // concurrent dispatch cannot observe handler-without-ctx. The CAS
+    // rejects re-registration of an already-claimed line.
+    let state = super::asm::disable_irq_save();
+    let claimed = slot
+        .handler
+        .compare_exchange(
+            core::ptr::null_mut(),
+            handler as *mut (),
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        )
+        .is_ok();
+    if claimed {
+        slot.ctx.store(ctx as *mut (), Ordering::Release);
+    }
+    super::asm::enable_irq_restr(state);
+
+    if !claimed {
+        return Err(PosixError::EBUSY);
+    }
 
     let rc = unsafe {
         bindings::exti_configure(port_ptr(pin), pin.line, edges.bits(), nvic_priority)
     };
     if rc != 0 {
-        // Roll back so a retry can't see a stale handler.
-        slot.handler.store(core::ptr::null_mut(), Ordering::Release);
+        // The EXTI line was never unmasked (`exti_configure` short-circuits
+        // before any peripheral writes when it errors), so dropping the
+        // claim back to null cannot race with `dispatch`.
         slot.ctx.store(core::ptr::null_mut(), Ordering::Release);
+        slot.handler.store(core::ptr::null_mut(), Ordering::Release);
         return Err(PosixError::from_errno(-rc));
     }
     Ok(())
@@ -153,6 +170,9 @@ pub fn unregister_edge_handler(pin: Pin) -> Result<()> {
     if pin.line >= 16 {
         return Err(PosixError::EINVAL);
     }
+    // Mask the EXTI line first so no further IRQs reach `dispatch`,
+    // then drop the handler. Order matters: clearing handler before the
+    // line is masked would let an in-flight IRQ skip a live line.
     let rc = unsafe { bindings::exti_release(pin.line) };
     let slot = &LINES[pin.line as usize];
     slot.handler.store(core::ptr::null_mut(), Ordering::Release);

@@ -122,6 +122,7 @@ pub struct KeyRegistryEntry {
     pub debounce_ms: u32,
     pub wakeup_source: u8,
     pub polling_mode: u8,
+    pub irq_priority: u8,
 }
 
 pub const KEY_REGISTRY: &[KeyRegistryEntry] = &[];

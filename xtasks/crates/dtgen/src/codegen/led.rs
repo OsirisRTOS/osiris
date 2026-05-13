@@ -1,10 +1,6 @@
-//! gpio-leds registry codegen. One entry per child of a node whose
-//! `compatible` is `gpio-leds`. Each entry captures the (port, line,
-//! active_low) decoded from the child's `gpios` cell array via the
-//! shared `decode_gpio_pins` helper, plus the optional `label`.
-//!
-//! Mirrors Zephyr's `gpio-leds.yaml` binding so a Zephyr board file
-//! drops in unmodified.
+//! gpio-leds registry codegen. One entry per child of a `compatible =
+//! "gpio-leds"` node; the (port, line, active_low, label) extraction is
+//! shared with gpio-keys via [`super::collect_gpio_children`].
 
 use super::*;
 
@@ -18,65 +14,16 @@ struct Led {
 }
 
 fn collect_leds(dt: &DeviceTree) -> Vec<Led> {
-    let mut leds = Vec::new();
-
-    for (_parent_idx, parent) in dt.nodes.iter().enumerate() {
-        if !is_enabled(parent) {
-            continue;
-        }
-        if parent.compatible.iter().all(|c| c != "gpio-leds") {
-            continue;
-        }
-
-        for &child_idx in &parent.children {
-            let child = &dt.nodes[child_idx];
-            if !is_enabled(child) {
-                continue;
-            }
-
-            let gpios = match child.extra.get("gpios") {
-                Some(PropValue::U32Array(v)) => v.as_slice(),
-                _ => panic!(
-                    "gpio-leds child {} missing required `gpios` property",
-                    child.name
-                ),
-            };
-
-            let pins = decode_gpio_pins(dt, gpios);
-            if pins.len() != 1 {
-                panic!(
-                    "gpio-leds child {} must specify exactly one GPIO ({} found)",
-                    child.name,
-                    pins.len()
-                );
-            }
-            let (ctrl, line, active_low) = pins[0];
-            let port = ctrl
-                .reg
-                .and_then(|(base, _)| usize::try_from(base).ok())
-                .unwrap_or_else(|| {
-                    panic!(
-                        "gpio-leds child {} references controller {} with no valid reg base",
-                        child.name, ctrl.name,
-                    )
-                });
-
-            let label = match child.extra.get("label") {
-                Some(PropValue::Str(s)) => s.clone(),
-                _ => String::new(),
-            };
-
-            leds.push(Led {
-                node: child_idx,
-                port,
-                line,
-                active_low,
-                label,
-            });
-        }
-    }
-
-    leds
+    collect_gpio_children(dt, "gpio-leds")
+        .into_iter()
+        .map(|c| Led {
+            node: c.child_idx,
+            port: c.port,
+            line: c.line,
+            active_low: c.active_low,
+            label: c.label,
+        })
+        .collect()
 }
 
 pub fn emit_registry(dt: &DeviceTree) -> TokenStream {

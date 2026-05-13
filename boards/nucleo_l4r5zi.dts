@@ -60,6 +60,7 @@
 			label = "User";
 			gpios = <&gpioc 13 GPIO_ACTIVE_HIGH>;
 			osiris,code = <INPUT_KEY_0>;
+			osiris,irq-priority = <5>;
 			debounce-interval-ms = <50>;
 		};
 	};

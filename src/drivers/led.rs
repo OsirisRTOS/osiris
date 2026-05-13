@@ -1,6 +1,5 @@
-//! gpio-leds kernel driver. Hardware-independent — uses only
-//! `hal::gpio` and `hal::device_tree`. LEDs are stateless outputs, so
-//! there's no per-device kernel state beyond the generated registry entry.
+//! gpio-leds kernel driver. LEDs are stateless outputs, so there's no
+//! per-device kernel state beyond the generated registry entry.
 
 use crate::error::Result;
 use crate::hal;
@@ -13,14 +12,12 @@ pub struct Led {
 }
 
 impl Led {
-    /// Open by `/aliases` entry, e.g. `"led0"`.
     pub fn open_by_alias(name: &str) -> Result<Self> {
         hal::device_tree::led_by_alias(name)
             .map(|entry| Self { entry })
             .ok_or_else(|| kerr!(ENODEV, "led alias not found: {name}"))
     }
 
-    /// Open by the DT `label` property.
     pub fn open_by_label(label: &str) -> Result<Self> {
         hal::device_tree::led_by_label(label)
             .map(|entry| Self { entry })
@@ -32,23 +29,19 @@ impl Led {
     }
 
     pub fn on(&self) -> Result<()> {
-        hal::gpio::write(pin_of(self.entry), level_for(self.entry, true))?;
-        Ok(())
+        hal::gpio::write(pin_of(self.entry), level_for(self.entry, true)).map_err(Into::into)
     }
 
     pub fn off(&self) -> Result<()> {
-        hal::gpio::write(pin_of(self.entry), level_for(self.entry, false))?;
-        Ok(())
+        hal::gpio::write(pin_of(self.entry), level_for(self.entry, false)).map_err(Into::into)
     }
 
     pub fn set(&self, on: bool) -> Result<()> {
-        hal::gpio::write(pin_of(self.entry), level_for(self.entry, on))?;
-        Ok(())
+        hal::gpio::write(pin_of(self.entry), level_for(self.entry, on)).map_err(Into::into)
     }
 
     pub fn toggle(&self) -> Result<()> {
-        hal::gpio::toggle(pin_of(self.entry))?;
-        Ok(())
+        hal::gpio::toggle(pin_of(self.entry)).map_err(Into::into)
     }
 }
 
@@ -59,7 +52,6 @@ fn pin_of(entry: &LedRegistryEntry) -> Pin {
     }
 }
 
-/// Physical level the line must drive for the requested logical state.
 fn level_for(entry: &LedRegistryEntry, on: bool) -> Level {
     let active_low = entry.active_low != 0;
     if on ^ active_low {
@@ -74,7 +66,7 @@ pub fn init() {
     kprintln!("Found {} gpio-led entries", entries.len());
 
     for entry in entries {
-        // Drive the "off" level before switching to output so the line
+        // Drive the off level before switching to output so the line
         // never glitches the active polarity on boot.
         let off = level_for(entry, false);
         match hal::gpio::configure_output(pin_of(entry), off) {

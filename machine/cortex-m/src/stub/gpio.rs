@@ -29,7 +29,6 @@ pub enum Level {
 pub struct Edges(u8);
 
 impl Edges {
-    pub const NONE: Edges = Edges(0);
     pub const RISING: Edges = Edges(0x1);
     pub const FALLING: Edges = Edges(0x2);
     pub const BOTH: Edges = Edges(0x3);

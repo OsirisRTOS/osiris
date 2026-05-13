@@ -1,26 +1,28 @@
 //! Single-consumer park/wake primitive.
 //!
-//! [`ParkedWaiter`] stores one thread uid in an `AtomicU32`. Producers
-//! call [`wake`](ParkedWaiter::wake) from IRQ context (lock-free). The
-//! consumer side has two layers:
+//! [`ParkedWaiter`] holds at most one parked uid in an `AtomicU32`.
+//! Producers call [`wake`](ParkedWaiter::wake) from IRQ context — it is
+//! lock-free. Consumers either:
 //!
-//! - [`arm`](ParkedWaiter::arm) / [`disarm`](ParkedWaiter::disarm) — low
-//!   level. The caller is responsible for the actual park (e.g. via the
-//!   `sleep`/`sleep_for` syscalls in CAN's loop pattern).
-//! - [`park`](ParkedWaiter::park) — combined arm + scheduler park as a
-//!   single operation. Keeps the "mask IRQs across arm and park" rule in
-//!   one place so a wake that fires between the two cannot be lost.
+//! - drive their own park loop with the low-level [`arm`] / [`disarm`]
+//!   pair, or
+//! - call [`park`] / [`park_current`], which couples arming and the
+//!   scheduler-side park so a wake that fires in between cannot be lost.
 //!
-//! Either entry point rejects a concurrent second consumer with
-//! [`PosixError::EBUSY`] rather than silently overwriting it — sharing a
-//! single waiter across threads loses the first thread's wakeup.
+//! Either entry rejects a concurrent second consumer with `EBUSY`
+//! instead of silently overwriting the first uid (which would strand
+//! that thread).
+//!
+//! [`arm`]: ParkedWaiter::arm
+//! [`disarm`]: ParkedWaiter::disarm
+//! [`park`]: ParkedWaiter::park
+//! [`park_current`]: ParkedWaiter::park_current
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use crate::error::Result;
 
-/// Sentinel meaning "no waiter parked". 0 is a fine sentinel because
-/// uid 0 is the idle thread, which is not allowed to park.
+/// uid 0 is the idle thread, which cannot park; safe sentinel.
 const UNARMED: u32 = 0;
 
 pub struct ParkedWaiter {
@@ -34,8 +36,6 @@ impl ParkedWaiter {
         }
     }
 
-    /// Park `uid` as this waiter's single consumer. Returns
-    /// [`PosixError::EBUSY`] if another uid is already armed.
     pub fn arm(&self, uid: u32) -> Result<()> {
         if uid == UNARMED {
             return Err(kerr!(EINVAL, "ParkedWaiter::arm requires non-zero uid"));
@@ -46,42 +46,45 @@ impl ParkedWaiter {
             .map_err(|_| kerr!(EBUSY, "ParkedWaiter already armed"))
     }
 
-    /// Clear the armed uid. Idempotent.
     pub fn disarm(&self) {
         self.uid.store(UNARMED, Ordering::Release);
     }
 
-    /// Combined arm + scheduler park. Atomically (vs. IRQs) registers the
-    /// current thread and parks it on the scheduler's wakeup tree; the
-    /// thread wakes when [`wake`](Self::wake) kicks it.
-    ///
-    /// Returns [`PosixError::EBUSY`] if another consumer is already
-    /// parked, leaving that other thread's park intact.
+    /// Look up the current thread and park it. Returns `EINVAL` if
+    /// invoked outside of a thread context (e.g. from the idle thread or
+    /// pre-`sched::enable`), `EBUSY` if another consumer is already
+    /// parked here.
+    pub fn park_current(&self) -> Result<()> {
+        let uid = crate::sched::with(|s| s.current_uid())
+            .ok_or_else(|| kerr!(EINVAL, "park_current with no current thread"))?
+            as u32;
+        if uid == UNARMED {
+            return Err(kerr!(EINVAL, "idle thread cannot park"));
+        }
+        self.park(uid)
+    }
+
+    /// Atomically (vs IRQs) arm `uid` and park it on the scheduler's
+    /// wakeup tree. The intervening edge — wake fires after `arm` returns
+    /// but before `sched::with` runs — would otherwise kick a uid that
+    /// the scheduler does not yet see as sleeping, dropping the wakeup.
     pub fn park(&self, uid: u32) -> Result<()> {
-        // Mask IRQs across arm + sched-park: an edge that fires between
-        // the two would otherwise kick a uid that's not yet in the
-        // wakeup tree, and the kick would be lost.
-        crate::sync::atomic::irq_free(|| {
+        crate::sync::atomic::irq_free(|| -> Result<()> {
             self.arm(uid)?;
             crate::sched::with(|s| {
-                // `sleep_until` only errors when no current thread is
-                // set, which cannot happen from a thread that just
-                // proved its own uid via the caller's `current_uid`.
                 if s.sleep_until(u64::MAX, crate::time::tick()).is_err() {
-                    bug!("ParkedWaiter::park with no current thread");
+                    bug!("park with no current thread despite armed uid");
                 }
             });
-            Ok::<(), crate::error::Error>(())
+            Ok(())
         })?;
-
-        // PendSV fires once IRQs re-enable, switching this thread out.
-        // We resume here after `wake` -> kick_thread -> PendSV.
+        // The scheduler switches us out once IRQs re-enable; control
+        // resumes here after `wake` has run.
         self.disarm();
         Ok(())
     }
 
-    /// Wake the parked thread, if any. Safe from IRQ context, lock-free.
-    /// A spurious call with nothing armed is a no-op.
+    /// Wake the parked thread, if any. IRQ-safe and lock-free.
     pub fn wake(&self) {
         let uid = self.uid.load(Ordering::Acquire);
         if uid != UNARMED {

@@ -1,6 +1,6 @@
-//! gpio-keys kernel driver. Hardware-independent — uses only
-//! `hal::gpio`, `hal::device_tree`, and the kernel scheduler. IRQ + park
-//! logic clones the CAN pattern via [`sync::waiter::ParkedWaiter`].
+//! gpio-keys kernel driver. Each DT child of a `gpio-keys` node maps to
+//! one [`Key`]; consumers `open` by alias, label, or code and block on
+//! [`Key::wait`] until an edge arrives.
 
 use core::sync::atomic::Ordering;
 
@@ -14,24 +14,18 @@ use hal::Machinelike;
 use hal::device_tree::KeyRegistryEntry;
 use hal::gpio::{Edges, Level, Pin, Pull};
 
-/// Max keys the kernel tracks; the DT may populate fewer.
 const KEY_MAX: usize = 8;
-
-/// NVIC priority for EXTI vectors. Below CAN's typical priority.
-const KEY_NVIC_PRIORITY: u8 = 5;
 
 pub struct KeyEvent {
     pub code: u32,
-    /// `true` when the line is at the logical "pressed" level.
     pub pressed: bool,
 }
 
 struct KeyState {
     entry: &'static KeyRegistryEntry,
     waiter: ParkedWaiter,
-    /// Last accepted edge in `Machine::monotonic_now()` units.
     last_event_mono: AtomicU64,
-    /// `debounce_ms` pre-converted to monotonic ticks — keeps the ISR division-free.
+    /// Pre-converted from `entry.debounce_ms` so the ISR avoids a divide.
     debounce_ticks: u64,
 }
 
@@ -44,8 +38,8 @@ impl KeyState {
     }
 }
 
-/// `OnceCell::set_or_get` writes in place, so `&'static KeyState` stays
-/// valid for IRQ-context use. Same property the CAN driver relies on.
+// `OnceCell::set_or_get` writes in place, so the `&'static KeyState`
+// handed to ISRs stays valid for the program lifetime.
 static SLOTS: [OnceCell<KeyState>; KEY_MAX] = [const { OnceCell::new() }; KEY_MAX];
 
 pub struct Key {
@@ -53,21 +47,18 @@ pub struct Key {
 }
 
 impl Key {
-    /// Open by `/aliases` entry, e.g. `"sw0"`.
     pub fn open_by_alias(name: &str) -> Result<Self> {
         let entry = hal::device_tree::key_by_alias(name)
             .ok_or_else(|| kerr!(ENODEV, "key alias not found: {name}"))?;
         Self::open_for_node(entry.node)
     }
 
-    /// Open by the DT `label` property.
     pub fn open_by_label(label: &str) -> Result<Self> {
         let entry = hal::device_tree::key_by_label(label)
             .ok_or_else(|| kerr!(ENODEV, "key label not found: {label}"))?;
         Self::open_for_node(entry.node)
     }
 
-    /// Open by `osiris,code` / `zephyr,code` value.
     pub fn open_by_code(code: u32) -> Result<Self> {
         let entry = hal::device_tree::key_by_code(code)
             .ok_or_else(|| kerr!(ENODEV, "key code not found: {code}"))?;
@@ -99,19 +90,11 @@ impl Key {
         Ok(self.event_from_level(level))
     }
 
-    /// Block until the next edge, then return the event built from the
-    /// current line level. Returns `EBUSY` if another thread is already
-    /// waiting on the same key.
+    /// Block until the next edge, then return the event for the current
+    /// line level. Returns `EBUSY` if another thread is already waiting
+    /// on this key.
     pub fn wait(&self) -> Result<KeyEvent> {
-        let uid = crate::sched::with(|s| s.current_uid())
-            .ok_or_else(|| kerr!(EINVAL, "key::wait with no current thread"))?
-            as u32;
-        if uid == 0 {
-            return Err(kerr!(EINVAL, "idle thread cannot wait on a key"));
-        }
-
-        self.state.waiter.park(uid)?;
-
+        self.state.waiter.park_current()?;
         let level = hal::gpio::read(self.state.pin())?;
         Ok(self.event_from_level(level))
     }
@@ -127,10 +110,13 @@ impl Key {
 }
 
 extern "C" fn on_edge(_line: u8, ctx: *mut ()) {
+    // `ctx` is non-null in steady state, but `register_edge_handler`
+    // rolls it back to null on `exti_configure` failure — and that
+    // rollback races against `dispatch` since both are lock-free.
     if ctx.is_null() {
         return;
     }
-    // SAFETY: `ctx` is the `&'static KeyState` installed by `init`, backed by SLOTS.
+    // SAFETY: ctx points into SLOTS (a static OnceCell array).
     let state = unsafe { &*(ctx as *const KeyState) };
 
     if state.debounce_ticks > 0 {
@@ -161,9 +147,8 @@ pub fn init() {
         kprintln!("    Key registry exceeds KEY_MAX={KEY_MAX}; truncating");
     }
 
-    // One dispatcher registration per shared NVIC slot. EXTI9_5 and
-    // EXTI15_10 are aggregates over multiple lines, so several keys can
-    // map to the same vector. All Cortex-M EXTI vectors fit in u64.
+    // Several keys may resolve to the same IRQ vector; install the
+    // shared dispatcher exactly once per vector.
     let mut seen_slots: u64 = 0;
 
     for (i, entry) in entries.iter().take(KEY_MAX).enumerate() {
@@ -173,7 +158,11 @@ pub fn init() {
     }
 }
 
-fn init_entry(slot_idx: usize, entry: &'static KeyRegistryEntry, seen_slots: &mut u64) -> Result<()> {
+fn init_entry(
+    slot_idx: usize,
+    entry: &'static KeyRegistryEntry,
+    seen_slots: &mut u64,
+) -> Result<()> {
     let state = KeyState {
         entry,
         waiter: ParkedWaiter::new(),
@@ -186,7 +175,7 @@ fn init_entry(slot_idx: usize, entry: &'static KeyRegistryEntry, seen_slots: &mu
     let line = entry.line;
     let vector = hal::gpio::nvic_vector_for_line(line)
         .ok_or_else(|| kerr!(EINVAL, "invalid line {line}"))?;
-    debug_assert!(vector < 64, "EXTI vector outside u64 dedup mask");
+    debug_assert!(vector < 64, "IRQ vector outside u64 dedup mask");
 
     let bit = 1u64 << vector;
     if *seen_slots & bit == 0 {
@@ -194,7 +183,6 @@ fn init_entry(slot_idx: usize, entry: &'static KeyRegistryEntry, seen_slots: &mu
         *seen_slots |= bit;
     }
 
-    // Pull complements the active level so the idle state is unambiguous.
     let pull = if entry.active_low != 0 {
         Pull::Up
     } else {
@@ -203,8 +191,7 @@ fn init_entry(slot_idx: usize, entry: &'static KeyRegistryEntry, seen_slots: &mu
     hal::gpio::configure_input(pin, pull)?;
 
     let ctx = state_ref as *const KeyState as *mut ();
-    // Both edges so press and release both surface as events.
-    hal::gpio::register_edge_handler(pin, Edges::BOTH, on_edge, ctx, KEY_NVIC_PRIORITY)?;
+    hal::gpio::register_edge_handler(pin, Edges::BOTH, on_edge, ctx, entry.irq_priority)?;
 
     kprintln!(
         "    Initialized key {} on port 0x{:x} line {}",

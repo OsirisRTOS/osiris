@@ -1,13 +1,16 @@
 //! gpio-keys registry codegen. One entry per child of a `compatible =
-//! "gpio-keys"` node. Captures the GPIO line, polarity, label, input
-//! event code, and optional debounce / wakeup-source / polling-mode
-//! flags. Mirrors Zephyr's `gpio-keys.yaml` binding.
+//! "gpio-keys"` node. The shared (port, line, active_low, label) part
+//! goes through [`super::collect_gpio_children`]; the key-specific
+//! `osiris,code` / `zephyr,code`, debounce, wakeup, and polling flags
+//! are read off the same child node here.
 //!
-//! Both `osiris,code` and `zephyr,code` are accepted; the osiris-namespaced
-//! property wins when both are present. Same pattern as the CAN codegen
-//! accepting both `osiris,stm32l4-can` and `st,stm32-bxcan`.
+//! Both `osiris,code` and `zephyr,code` are accepted; the
+//! osiris-namespaced property wins when both are present.
 
 use super::*;
+
+/// Fallback when `osiris,irq-priority` is absent on a key node.
+const DEFAULT_KEY_IRQ_PRIORITY: u8 = 5;
 
 #[derive(Clone)]
 struct Key {
@@ -20,74 +23,31 @@ struct Key {
     debounce_ms: u32,
     wakeup_source: u8,
     polling_mode: u8,
+    irq_priority: u8,
 }
 
 fn collect_keys(dt: &DeviceTree) -> Vec<Key> {
-    let mut keys = Vec::new();
-
-    for (_parent_idx, parent) in dt.nodes.iter().enumerate() {
-        if !is_enabled(parent) {
-            continue;
-        }
-        if parent.compatible.iter().all(|c| c != "gpio-keys") {
-            continue;
-        }
-
-        for &child_idx in &parent.children {
-            let child = &dt.nodes[child_idx];
-            if !is_enabled(child) {
-                continue;
-            }
-
-            let gpios = match child.extra.get("gpios") {
-                Some(PropValue::U32Array(v)) => v.as_slice(),
-                _ => panic!(
-                    "gpio-keys child {} missing required `gpios` property",
-                    child.name
-                ),
-            };
-
-            let pins = decode_gpio_pins(dt, gpios);
-            if pins.len() != 1 {
-                panic!(
-                    "gpio-keys child {} must specify exactly one GPIO ({} found)",
-                    child.name,
-                    pins.len()
-                );
-            }
-            let (ctrl, line, active_low) = pins[0];
-            let port = ctrl
-                .reg
-                .and_then(|(base, _)| usize::try_from(base).ok())
-                .unwrap_or_else(|| {
-                    panic!(
-                        "gpio-keys child {} references controller {} with no valid reg base",
-                        child.name, ctrl.name,
-                    )
-                });
-
-            let label = match child.extra.get("label") {
-                Some(PropValue::Str(s)) => s.clone(),
-                _ => String::new(),
-            };
-
+    collect_gpio_children(dt, "gpio-keys")
+        .into_iter()
+        .map(|c| {
             // Prefer osiris-namespaced; fall back to canonical Zephyr.
-            let code = match child
+            let code = match c
+                .child
                 .extra
                 .get("osiris,code")
-                .or_else(|| child.extra.get("zephyr,code"))
+                .or_else(|| c.child.extra.get("zephyr,code"))
             {
                 Some(PropValue::U32(v)) => *v,
                 Some(PropValue::U32Array(v)) if !v.is_empty() => v[0],
                 _ => 0,
             };
 
-            let debounce_ms = match child.extra.get("debounce-interval-ms") {
+            let debounce_ms = match c.child.extra.get("debounce-interval-ms") {
                 Some(PropValue::U32(v)) => *v,
                 _ => 0,
             };
 
-            let wakeup_source = if child.extra.contains_key("wakeup-source") {
+            let wakeup_source = if c.child.extra.contains_key("wakeup-source") {
                 1
             } else {
                 0
@@ -96,27 +56,36 @@ fn collect_keys(dt: &DeviceTree) -> Vec<Key> {
             // `polling-mode` is accepted but ignored at runtime — we
             // always wire IRQs. Parsing it just avoids rejecting boards
             // that set it.
-            let polling_mode = if child.extra.contains_key("polling-mode") {
+            let polling_mode = if c.child.extra.contains_key("polling-mode") {
                 1
             } else {
                 0
             };
 
-            keys.push(Key {
-                node: child_idx,
-                port,
-                line,
-                active_low,
-                label,
+            let irq_priority = match c.child.extra.get("osiris,irq-priority") {
+                Some(PropValue::U32(v)) => u8::try_from(*v).unwrap_or_else(|_| {
+                    panic!(
+                        "gpio-keys child {} `osiris,irq-priority` {} out of u8 range",
+                        c.child.name, v
+                    )
+                }),
+                _ => DEFAULT_KEY_IRQ_PRIORITY,
+            };
+
+            Key {
+                node: c.child_idx,
+                port: c.port,
+                line: c.line,
+                active_low: c.active_low,
+                label: c.label,
                 code,
                 debounce_ms,
                 wakeup_source,
                 polling_mode,
-            });
-        }
-    }
-
-    keys
+                irq_priority,
+            }
+        })
+        .collect()
 }
 
 pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
@@ -132,6 +101,7 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
         let debounce_ms = k.debounce_ms;
         let wakeup_source = k.wakeup_source;
         let polling_mode = k.polling_mode;
+        let irq_priority = k.irq_priority;
         quote! {
             KeyRegistryEntry {
                 node: #node,
@@ -143,6 +113,7 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
                 debounce_ms: #debounce_ms,
                 wakeup_source: #wakeup_source,
                 polling_mode: #polling_mode,
+                irq_priority: #irq_priority,
             },
         }
     });
@@ -160,6 +131,7 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
             pub debounce_ms: u32,
             pub wakeup_source: u8,
             pub polling_mode: u8,
+            pub irq_priority: u8,
         }
 
         pub const KEY_REGISTRY: &[KeyRegistryEntry] = &[
