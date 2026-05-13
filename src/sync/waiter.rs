@@ -10,25 +10,25 @@
 //! [`park_current`]: ParkedWaiter::park_current
 //! [`wake`]: ParkedWaiter::wake
 
-use core::sync::atomic::{AtomicU32, Ordering};
-
 use crate::error::Result;
+use crate::sched::thread::{self, Id};
+use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 // 0 is the idle thread's uid, which is never allowed to park.
-const UNARMED: u32 = 0;
+const UNARMED: usize = 0;
 
 pub struct ParkedWaiter {
-    uid: AtomicU32,
+    uid: AtomicUsize,
 }
 
 impl ParkedWaiter {
     pub const fn new() -> Self {
         Self {
-            uid: AtomicU32::new(UNARMED),
+            uid: AtomicUsize::new(UNARMED),
         }
     }
 
-    pub fn arm(&self, uid: u32) -> Result<()> {
+    pub fn arm(&self, uid: usize) -> Result<()> {
         if uid == UNARMED {
             return Err(kerr!(EINVAL, "ParkedWaiter::arm requires non-zero uid"));
         }
@@ -46,8 +46,7 @@ impl ParkedWaiter {
     /// already parked here.
     pub fn park_current(&self) -> Result<()> {
         let uid = crate::sched::with(|s| s.current_uid())
-            .ok_or_else(|| kerr!(EINVAL, "park_current with no current thread"))?
-            as u32;
+            .ok_or_else(|| kerr!(EINVAL, "park_current with no current thread"))?;
         if uid == UNARMED {
             return Err(kerr!(EINVAL, "idle thread cannot park"));
         }
@@ -56,14 +55,17 @@ impl ParkedWaiter {
 
     /// Park `uid`. Prefer [`park_current`](Self::park_current) unless
     /// you already have the uid in hand.
-    pub fn park(&self, uid: u32) -> Result<()> {
+    pub fn park(&self, uid: usize) -> Result<()> {
         // IRQs masked across arm + scheduler park so a wake firing
         // in between can't kick a uid the scheduler hasn't yet
         // recorded as sleeping.
         crate::sync::atomic::irq_free(|| -> Result<()> {
             self.arm(uid)?;
+            let tid = thread::UId::new(uid, thread::Id::new(0, crate::sched::task::UId::new(0)));
             crate::sched::with(|s| {
-                if s.sleep_until(u64::MAX, crate::time::tick()).is_err() {
+                if s.sleep_until(Some(tid), u64::MAX, crate::time::tick())
+                    .is_err()
+                {
                     bug!("park with no current thread despite armed uid");
                 }
             });
@@ -77,7 +79,7 @@ impl ParkedWaiter {
     pub fn wake(&self) {
         let uid = self.uid.load(Ordering::Acquire);
         if uid != UNARMED {
-            crate::sched::kick_thread(uid);
+            crate::sched::kick_thread(uid as u32);
         }
     }
 }
