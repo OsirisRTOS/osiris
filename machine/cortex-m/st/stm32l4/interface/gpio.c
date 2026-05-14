@@ -158,6 +158,24 @@ int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial)
   return 0;
 }
 
+int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial)
+{
+  GPIO_TypeDef *p = (GPIO_TypeDef *)port;
+  if (!port_is_known(p) || pin_mask == 0)
+    return -PosixError_EINVAL;
+
+  gpio_enable_clock(p);
+  /* Pre-drive ODR before switching mode so the line never glitches. */
+  HAL_GPIO_WritePin(p, pin_mask, initial ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  GPIO_InitTypeDef gpio = {0};
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  gpio.Pin = pin_mask;
+  HAL_GPIO_Init(p, &gpio);
+  return 0;
+}
+
 int gpio_write(void *port, uint16_t pin_mask, uint8_t level)
 {
   GPIO_TypeDef *p = (GPIO_TypeDef *)port;
@@ -181,5 +199,14 @@ int gpio_toggle(void *port, uint16_t pin_mask)
   if (!port_is_known(p) || pin_mask == 0)
     return -PosixError_EINVAL;
   HAL_GPIO_TogglePin(p, pin_mask);
+  return 0;
+}
+
+int gpio_clock_enable(void *port)
+{
+  GPIO_TypeDef *p = (GPIO_TypeDef *)port;
+  if (!port_is_known(p))
+    return -PosixError_EINVAL;
+  gpio_enable_clock(p);
   return 0;
 }

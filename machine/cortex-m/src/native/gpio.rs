@@ -82,9 +82,22 @@ pub fn configure_output(pin: Pin, initial: Level) -> Result<()> {
     ok_or_err(rc, ())
 }
 
+pub fn configure_output_od(pin: Pin, initial: Level) -> Result<()> {
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_configure_output_od(port_ptr(pin), mask, initial as u8) };
+    ok_or_err(rc, ())
+}
+
 pub fn write(pin: Pin, level: Level) -> Result<()> {
     let mask = pin_mask(pin)?;
     let rc = unsafe { bindings::gpio_write(port_ptr(pin), mask, level as u8) };
+    ok_or_err(rc, ())
+}
+
+/// Ungate the port's clock without touching mode/pull. Needed before
+/// `read` on a still-analog pin (e.g. `default-state = "keep"`).
+pub fn enable_port_clock(pin: Pin) -> Result<()> {
+    let rc = unsafe { bindings::gpio_clock_enable(port_ptr(pin)) };
     ok_or_err(rc, ())
 }
 

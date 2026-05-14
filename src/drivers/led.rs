@@ -6,7 +6,7 @@ use crate::error::Result;
 use crate::hal;
 use crate::sync::once::OnceCell;
 
-use hal::device_tree::LedRegistryEntry;
+use hal::device_tree::{LedDefaultState, LedOutputMode, LedRegistryEntry};
 use hal::gpio::{Level, Pin};
 
 struct LedState {
@@ -98,17 +98,30 @@ pub fn init() {
         };
         let state_ref: &'static LedState = SLOTS[i].set_or_get(state);
 
-        // Drive the off level before switching to output so the line
-        // never glitches the active polarity on boot.
-        let off = level_for(entry, false);
-        match hal::gpio::configure_output(pin_of(entry), off) {
+        let initial = match entry.default_state {
+            LedDefaultState::Off => level_for(entry, false),
+            LedDefaultState::On => level_for(entry, true),
+            LedDefaultState::Keep => {
+                // Read pre-init level (warm restart). enable_port_clock so
+                // the read isn't on a gated bus.
+                let _ = hal::gpio::enable_port_clock(pin_of(entry));
+                hal::gpio::read(pin_of(entry)).unwrap_or(level_for(entry, false))
+            }
+        };
+        let configure = match entry.output_mode {
+            LedOutputMode::OpenDrain => hal::gpio::configure_output_od,
+            LedOutputMode::PushPull => hal::gpio::configure_output,
+        };
+        match configure(pin_of(entry), initial) {
             Ok(()) => {
                 state_ref.initialized.store(true, Ordering::Release);
                 kprintln!(
-                    "    Initialized LED {} on port 0x{:x} line {}",
+                    "    Initialized LED {} on port 0x{:x} line {} ({:?}, {:?})",
                     entry.label,
                     entry.port,
-                    entry.line
+                    entry.line,
+                    entry.default_state,
+                    entry.output_mode,
                 );
             }
             Err(e) => kprintln!("    LED {}: configure_output failed: {:?}", entry.label, e),

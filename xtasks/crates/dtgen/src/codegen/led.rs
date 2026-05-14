@@ -4,6 +4,77 @@
 
 use super::*;
 
+#[derive(Clone, Copy)]
+enum DefaultState {
+    Off,
+    On,
+    Keep,
+}
+
+impl DefaultState {
+    fn from_node(node: &crate::ir::Node) -> Self {
+        match node.extra.get("default-state") {
+            Some(PropValue::Str(s)) => match s.as_str() {
+                "on" => DefaultState::On,
+                "keep" => DefaultState::Keep,
+                "off" => DefaultState::Off,
+                other => panic!(
+                    "gpio-leds child {}: unknown `default-state` value {:?} \
+                     (expected \"on\", \"off\", or \"keep\")",
+                    node.name, other
+                ),
+            },
+            None => DefaultState::Off,
+            _ => panic!(
+                "gpio-leds child {}: `default-state` must be a string",
+                node.name
+            ),
+        }
+    }
+
+    fn tokens(self) -> TokenStream {
+        match self {
+            DefaultState::Off => quote! { LedDefaultState::Off },
+            DefaultState::On => quote! { LedDefaultState::On },
+            DefaultState::Keep => quote! { LedDefaultState::Keep },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum OutputMode {
+    PushPull,
+    OpenDrain,
+}
+
+impl OutputMode {
+    fn from_node(node: &crate::ir::Node) -> Self {
+        match node.extra.get("osiris,output-mode") {
+            Some(PropValue::Str(s)) => match s.as_str() {
+                "push-pull" => OutputMode::PushPull,
+                "open-drain" => OutputMode::OpenDrain,
+                other => panic!(
+                    "gpio-leds child {}: unknown `osiris,output-mode` value {:?} \
+                     (expected \"push-pull\" or \"open-drain\")",
+                    node.name, other
+                ),
+            },
+            None => OutputMode::PushPull,
+            _ => panic!(
+                "gpio-leds child {}: `osiris,output-mode` must be a string",
+                node.name
+            ),
+        }
+    }
+
+    fn tokens(self) -> TokenStream {
+        match self {
+            OutputMode::PushPull => quote! { LedOutputMode::PushPull },
+            OutputMode::OpenDrain => quote! { LedOutputMode::OpenDrain },
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Led {
     node: usize,
@@ -11,6 +82,8 @@ struct Led {
     line: u8,
     active_low: u8,
     label: String,
+    default_state: DefaultState,
+    output_mode: OutputMode,
 }
 
 fn collect_leds(dt: &DeviceTree) -> Vec<Led> {
@@ -22,6 +95,8 @@ fn collect_leds(dt: &DeviceTree) -> Vec<Led> {
             line: c.line,
             active_low: c.active_low,
             label: c.label,
+            default_state: DefaultState::from_node(c.child),
+            output_mode: OutputMode::from_node(c.child),
         })
         .collect();
 
@@ -53,6 +128,8 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
         let line = l.line;
         let active_low = l.active_low;
         let label = l.label.as_str();
+        let default_state = l.default_state.tokens();
+        let output_mode = l.output_mode.tokens();
         quote! {
             LedRegistryEntry {
                 node: #node,
@@ -60,11 +137,29 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
                 line: #line,
                 active_low: #active_low,
                 label: #label,
+                default_state: #default_state,
+                output_mode: #output_mode,
             },
         }
     });
 
     quote! {
+        #[repr(u8)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum LedDefaultState {
+            Off,
+            On,
+            /// Preserve current ODR (warm restart); cold boot reads analog → 0.
+            Keep,
+        }
+
+        #[repr(u8)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum LedOutputMode {
+            PushPull,
+            OpenDrain,
+        }
+
         #[derive(Debug, Clone, Copy)]
         #[repr(C)]
         pub struct LedRegistryEntry {
@@ -73,6 +168,8 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
             pub line: u8,
             pub active_low: u8,
             pub label: &'static str,
+            pub default_state: LedDefaultState,
+            pub output_mode: LedOutputMode,
         }
 
         pub const LED_REGISTRY: &[LedRegistryEntry] = &[
