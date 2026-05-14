@@ -117,7 +117,9 @@ pub fn init() {
             LedPull::Down => Pull::Down,
         };
         let res = match entry.output_mode {
-            LedOutputMode::OpenDrain => hal::gpio::configure_output_od(pin_of(entry), initial, pull),
+            LedOutputMode::OpenDrain => {
+                hal::gpio::configure_output_od(pin_of(entry), initial, pull)
+            }
             LedOutputMode::PushPull => hal::gpio::configure_output(pin_of(entry), initial),
         };
         match res {
