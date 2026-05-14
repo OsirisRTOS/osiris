@@ -37,6 +37,10 @@ impl UId {
         Self { uid }
     }
 
+    pub fn as_usize(&self) -> usize {
+        self.uid
+    }
+
     pub fn is_kernel(&self) -> bool {
         self.uid == 0
     }
@@ -136,5 +140,10 @@ impl Task {
 
     pub fn threads(&self) -> &list::List<thread::ThreadList, thread::UId> {
         &self.threads
+    }
+
+    #[cfg(any(feature = "metrics", metrics))]
+    pub(crate) fn allocator_metrics(&self) -> crate::mem::alloc::Metrics {
+        self.address_space.metrics()
     }
 }

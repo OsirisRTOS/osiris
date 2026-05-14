@@ -7,7 +7,7 @@ use core::{
     ptr::NonNull,
 };
 
-use hal_api::{Result, stack::Descriptor};
+use hal_api::{Result, stack::{Descriptor, Stacklike}};
 
 // A default finalizer used if none is supplied: just spins forever.
 #[inline(never)]
@@ -62,6 +62,9 @@ pub struct ArmStack {
     sp: StackPtr,
     /// The size of the stack
     size: NonZero<usize>,
+    /// High-water mark: largest sp offset ever recorded via set_sp.
+    #[cfg(any(feature = "metrics", metrics))]
+    peak_offset: usize,
 }
 
 impl ArmStack {
@@ -168,13 +171,96 @@ impl ArmStack {
 
             // We should have written exactly FRAME_WORDS words.
             debug_assert!(write_index == self.top.sub(self.sp.offset() + FRAME_WORDS));
-
-            self.sp += FRAME_WORDS;
         }
+
+        self.set_sp(self.sp + FRAME_WORDS);
 
         // The returned stack pointer must be call-aligned.
         debug_assert!(Self::is_call_aligned(self.sp));
         Ok(())
+    }
+}
+
+#[cfg(all(test, any(feature = "metrics", metrics)))]
+mod metrics_tests {
+    use super::*;
+    use core::num::NonZero;
+    use hal_api::stack::{Descriptor, Stacklike};
+    use hal_api::mem::PhysAddr;
+
+    const STACK_WORDS: usize = 256;
+
+    // Each test gets its own static buffer to avoid aliasing between parallel tests.
+    static mut BUF_A: [u32; STACK_WORDS] = [0u32; STACK_WORDS];
+    static mut BUF_B: [u32; STACK_WORDS] = [0u32; STACK_WORDS];
+
+    fn make_stack(buf: &mut [u32; STACK_WORDS]) -> ArmStack {
+        let top = unsafe { buf.as_mut_ptr().add(STACK_WORDS) };
+        extern "C" fn entry() {}
+        unsafe {
+            ArmStack::new(Descriptor {
+                top: PhysAddr::new(top as usize),
+                size: NonZero::new(STACK_WORDS).unwrap(),
+                entry,
+                fin: None,
+            })
+            .unwrap()
+        }
+    }
+
+    #[test]
+    fn metrics_total_bytes_matches_size() {
+        let stack = make_stack(unsafe { &mut BUF_A });
+        let m = stack.metrics();
+        let expected_total = STACK_WORDS * core::mem::size_of::<u32>();
+        assert_eq!(m.total_bytes, expected_total);
+        assert_eq!(m.total_bytes, m.used_bytes + m.free_bytes);
+    }
+
+    #[test]
+    fn metrics_used_bytes_after_init() {
+        // After new(), push_irq_ret_fn has consumed FRAME_WORDS (18) words.
+        let stack = make_stack(unsafe { &mut BUF_A });
+        let m = stack.metrics();
+        let word = core::mem::size_of::<u32>();
+        // Frame is 18 words; we allow for an optional alignment word.
+        assert!(m.used_bytes >= 18 * word);
+        assert!(m.used_bytes <= 20 * word);
+        assert!(m.free_bytes < m.total_bytes);
+    }
+
+    #[test]
+    fn metrics_peak_includes_entry_frame() {
+        let stack = make_stack(unsafe { &mut BUF_A });
+        let word = core::mem::size_of::<u32>();
+        // The entry frame (18 words) is pushed during new(), so peak starts there.
+        assert_eq!(stack.metrics().peak_used_bytes, stack.metrics().used_bytes);
+        assert!(stack.metrics().peak_used_bytes >= 18 * word);
+    }
+
+    #[test]
+    fn metrics_peak_tracks_high_water_mark() {
+        let mut stack = make_stack(unsafe { &mut BUF_A });
+        let word = core::mem::size_of::<u32>();
+
+        // Simulate two context saves at increasing depths.
+        let sp_deep = StackPtr { offset: 50 };
+        stack.set_sp(sp_deep);
+        assert_eq!(stack.metrics().peak_used_bytes, 50 * word);
+
+        let sp_shallow = StackPtr { offset: 20 };
+        stack.set_sp(sp_shallow);
+        // Peak must not decrease.
+        assert_eq!(stack.metrics().peak_used_bytes, 50 * word);
+        assert_eq!(stack.metrics().used_bytes, 20 * word);
+    }
+
+    #[test]
+    fn metrics_free_plus_used_equals_total() {
+        let mut stack = make_stack(unsafe { &mut BUF_B });
+        stack.set_sp(StackPtr { offset: 100 });
+        let m = stack.metrics();
+        assert_eq!(m.used_bytes + m.free_bytes, m.total_bytes);
     }
 }
 
@@ -208,6 +294,8 @@ impl hal_api::stack::Stacklike for ArmStack {
             top,
             sp: StackPtr { offset: 0 },
             size,
+            #[cfg(any(feature = "metrics", metrics))]
+            peak_offset: 0,
         };
 
         stack.push_irq_ret_fn(entry, ctx, fin)?;
@@ -223,7 +311,24 @@ impl hal_api::stack::Stacklike for ArmStack {
     }
 
     fn set_sp(&mut self, sp: StackPtr) {
+        #[cfg(any(feature = "metrics", metrics))]
+        if sp.offset > self.peak_offset {
+            self.peak_offset = sp.offset;
+        }
         self.sp = sp;
+    }
+
+    #[cfg(any(feature = "metrics", metrics))]
+    fn metrics(&self) -> hal_api::stack::StackMetrics {
+        let word = core::mem::size_of::<u32>();
+        let total_bytes = self.size.get() * word;
+        let used_bytes = self.sp.offset * word;
+        hal_api::stack::StackMetrics {
+            total_bytes,
+            used_bytes,
+            free_bytes: total_bytes.saturating_sub(used_bytes),
+            peak_used_bytes: self.peak_offset * word,
+        }
     }
 
     fn sp(&self) -> *mut c_void {

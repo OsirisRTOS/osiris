@@ -830,6 +830,17 @@ impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     }
 }
 
+impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
+    /// Call `f(slot, value)` for every occupied slot in the map.
+    pub fn for_each<F: FnMut(usize, &V)>(&self, mut f: F) {
+        for slot in 0..N {
+            if let Some(v) = self.map.raw_at(slot) {
+                f(slot, v);
+            }
+        }
+    }
+}
+
 impl<K: Copy + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     pub fn insert_with(&mut self, f: impl FnOnce(usize) -> Result<(K, V)>) -> Result<K> {
         let idx = self.free.alloc(1).ok_or(kerr!(ENOMEM))?;

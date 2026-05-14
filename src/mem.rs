@@ -91,6 +91,12 @@ pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
     unsafe { allocator.free(ptr, size) };
 }
 
+/// Returns a metrics snapshot of the global kernel heap.
+#[cfg(any(feature = "metrics", metrics))]
+pub(crate) fn global_metrics() -> alloc::Metrics {
+    GLOBAL_ALLOCATOR.lock().metrics()
+}
+
 /// Aligns a size to be a multiple of the u128 alignment.
 ///
 /// `size` - The size to align.
