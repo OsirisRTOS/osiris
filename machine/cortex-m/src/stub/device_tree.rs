@@ -101,6 +101,14 @@ pub enum LedOutputMode {
     OpenDrain,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LedPull {
+    None,
+    Up,
+    Down,
+}
+
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct LedRegistryEntry {
@@ -111,6 +119,7 @@ pub struct LedRegistryEntry {
     pub label: &'static str,
     pub default_state: LedDefaultState,
     pub output_mode: LedOutputMode,
+    pub pull: LedPull,
 }
 
 pub const LED_REGISTRY: &[LedRegistryEntry] = &[];

@@ -75,6 +75,47 @@ impl OutputMode {
     }
 }
 
+/// Standard Linux/Zephyr pinctrl `bias-*` triple (empty properties);
+/// see Linux's `pinctrl-bindings.txt` and Zephyr's `pincfg-node.yaml`.
+/// Absent → no pull (the binding's documented default).
+#[derive(Clone, Copy)]
+enum Pull {
+    None,
+    Up,
+    Down,
+}
+
+impl Pull {
+    fn from_node(node: &crate::ir::Node) -> Self {
+        let up = node.extra.contains_key("bias-pull-up");
+        let down = node.extra.contains_key("bias-pull-down");
+        let disable = node.extra.contains_key("bias-disable");
+        let count = up as u8 + down as u8 + disable as u8;
+        if count > 1 {
+            panic!(
+                "gpio-leds child {}: only one of `bias-pull-up`, `bias-pull-down`, \
+                 `bias-disable` may be set",
+                node.name
+            );
+        }
+        if up {
+            Pull::Up
+        } else if down {
+            Pull::Down
+        } else {
+            Pull::None
+        }
+    }
+
+    fn tokens(self) -> TokenStream {
+        match self {
+            Pull::None => quote! { LedPull::None },
+            Pull::Up => quote! { LedPull::Up },
+            Pull::Down => quote! { LedPull::Down },
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Led {
     node: usize,
@@ -84,6 +125,7 @@ struct Led {
     label: String,
     default_state: DefaultState,
     output_mode: OutputMode,
+    pull: Pull,
 }
 
 fn collect_leds(dt: &DeviceTree) -> Vec<Led> {
@@ -97,6 +139,7 @@ fn collect_leds(dt: &DeviceTree) -> Vec<Led> {
             label: c.label,
             default_state: DefaultState::from_node(c.child),
             output_mode: OutputMode::from_node(c.child),
+            pull: Pull::from_node(c.child),
         })
         .collect();
 
@@ -130,6 +173,7 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
         let label = l.label.as_str();
         let default_state = l.default_state.tokens();
         let output_mode = l.output_mode.tokens();
+        let pull = l.pull.tokens();
         quote! {
             LedRegistryEntry {
                 node: #node,
@@ -139,6 +183,7 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
                 label: #label,
                 default_state: #default_state,
                 output_mode: #output_mode,
+                pull: #pull,
             },
         }
     });
@@ -149,7 +194,7 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
         pub enum LedDefaultState {
             Off,
             On,
-            /// Preserve current ODR (warm restart); cold boot reads analog → 0.
+            /// Preserve current ODR (warm restart); cold boot reads ODR → 0.
             Keep,
         }
 
@@ -158,6 +203,14 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
         pub enum LedOutputMode {
             PushPull,
             OpenDrain,
+        }
+
+        #[repr(u8)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum LedPull {
+            None,
+            Up,
+            Down,
         }
 
         #[derive(Debug, Clone, Copy)]
@@ -170,6 +223,7 @@ pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
             pub label: &'static str,
             pub default_state: LedDefaultState,
             pub output_mode: LedOutputMode,
+            pub pull: LedPull,
         }
 
         pub const LED_REGISTRY: &[LedRegistryEntry] = &[

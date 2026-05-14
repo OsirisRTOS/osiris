@@ -20,9 +20,11 @@ void gpio_init_output_od(GPIO_TypeDef *port, uint16_t pin_mask);
 
 int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull);
 int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial);
-int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial);
+int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial,
+                             uint8_t pull);
 int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
 /* gpio_read returns 0 or 1 (level) on success, or negative PosixError. */
 int gpio_read(void *port, uint16_t pin_mask);
+int gpio_read_odr(void *port, uint16_t pin_mask);
 int gpio_toggle(void *port, uint16_t pin_mask);
 int gpio_clock_enable(void *port);

@@ -6,8 +6,8 @@ use crate::error::Result;
 use crate::hal;
 use crate::sync::once::OnceCell;
 
-use hal::device_tree::{LedDefaultState, LedOutputMode, LedRegistryEntry};
-use hal::gpio::{Level, Pin};
+use hal::device_tree::{LedDefaultState, LedOutputMode, LedPull, LedRegistryEntry};
+use hal::gpio::{Level, Pin, Pull};
 
 struct LedState {
     entry: &'static LedRegistryEntry,
@@ -102,26 +102,35 @@ pub fn init() {
             LedDefaultState::Off => level_for(entry, false),
             LedDefaultState::On => level_for(entry, true),
             LedDefaultState::Keep => {
-                // Read pre-init level (warm restart). enable_port_clock so
-                // the read isn't on a gated bus.
+                // ODR survives a warm reset that doesn't touch the GPIO
+                // peripheral; read it directly so we don't rely on the
+                // input driver (forced to 0 in the analog reset state —
+                // see RM0432 §8.3.12). Cold boot ODR = 0 → falls
+                // through to Off.
                 let _ = hal::gpio::enable_port_clock(pin_of(entry));
-                hal::gpio::read(pin_of(entry)).unwrap_or(level_for(entry, false))
+                hal::gpio::read_odr(pin_of(entry)).unwrap_or(level_for(entry, false))
             }
         };
-        let configure = match entry.output_mode {
-            LedOutputMode::OpenDrain => hal::gpio::configure_output_od,
-            LedOutputMode::PushPull => hal::gpio::configure_output,
+        let pull = match entry.pull {
+            LedPull::None => Pull::None,
+            LedPull::Up => Pull::Up,
+            LedPull::Down => Pull::Down,
         };
-        match configure(pin_of(entry), initial) {
+        let res = match entry.output_mode {
+            LedOutputMode::OpenDrain => hal::gpio::configure_output_od(pin_of(entry), initial, pull),
+            LedOutputMode::PushPull => hal::gpio::configure_output(pin_of(entry), initial),
+        };
+        match res {
             Ok(()) => {
                 state_ref.initialized.store(true, Ordering::Release);
                 kprintln!(
-                    "    Initialized LED {} on port 0x{:x} line {} ({:?}, {:?})",
+                    "    Initialized LED {} on port 0x{:x} line {} ({:?}, {:?}, {:?})",
                     entry.label,
                     entry.port,
                     entry.line,
                     entry.default_state,
                     entry.output_mode,
+                    entry.pull,
                 );
             }
             Err(e) => kprintln!("    LED {}: configure_output failed: {:?}", entry.label, e),

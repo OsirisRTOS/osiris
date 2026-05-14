@@ -82,9 +82,11 @@ pub fn configure_output(pin: Pin, initial: Level) -> Result<()> {
     ok_or_err(rc, ())
 }
 
-pub fn configure_output_od(pin: Pin, initial: Level) -> Result<()> {
+pub fn configure_output_od(pin: Pin, initial: Level, pull: Pull) -> Result<()> {
     let mask = pin_mask(pin)?;
-    let rc = unsafe { bindings::gpio_configure_output_od(port_ptr(pin), mask, initial as u8) };
+    let rc = unsafe {
+        bindings::gpio_configure_output_od(port_ptr(pin), mask, initial as u8, pull as u8)
+    };
     ok_or_err(rc, ())
 }
 
@@ -104,6 +106,22 @@ pub fn enable_port_clock(pin: Pin) -> Result<()> {
 pub fn read(pin: Pin) -> Result<Level> {
     let mask = pin_mask(pin)?;
     let rc = unsafe { bindings::gpio_read(port_ptr(pin), mask) };
+    match rc {
+        0 => Ok(Level::Low),
+        1 => Ok(Level::High),
+        other if other < 0 => Err(PosixError::from_errno(-other)),
+        _ => Err(PosixError::EIO),
+    }
+}
+
+/// Read the latched output (ODR) bit, not the input pad level. Use
+/// when the pin may not yet be configured as output: `read` goes via
+/// IDR which is forced to 0 in analog mode (RM0432 §8.3.12), so it
+/// can't recover the previously commanded level on a freshly-reset
+/// pin. Caller must have ungated the port clock.
+pub fn read_odr(pin: Pin) -> Result<Level> {
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_read_odr(port_ptr(pin), mask) };
     match rc {
         0 => Ok(Level::Low),
         1 => Ok(Level::High),

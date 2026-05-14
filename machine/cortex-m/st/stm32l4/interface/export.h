@@ -219,9 +219,11 @@ void can_isr(uint8_t index);
 #define GPIO_PULL_DOWN 2
 int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull);
 int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial);
-int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial);
+int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial,
+                             uint8_t pull);
 int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
 int gpio_read(void *port, uint16_t pin_mask);
+int gpio_read_odr(void *port, uint16_t pin_mask);
 int gpio_toggle(void *port, uint16_t pin_mask);
 int gpio_clock_enable(void *port);
 

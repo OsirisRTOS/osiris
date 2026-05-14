@@ -158,10 +158,13 @@ int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial)
   return 0;
 }
 
-int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial)
+int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial,
+                             uint8_t pull)
 {
   GPIO_TypeDef *p = (GPIO_TypeDef *)port;
   if (!port_is_known(p) || pin_mask == 0)
+    return -PosixError_EINVAL;
+  if (pull > GPIO_PULL_DOWN)
     return -PosixError_EINVAL;
 
   gpio_enable_clock(p);
@@ -169,7 +172,7 @@ int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial)
   HAL_GPIO_WritePin(p, pin_mask, initial ? GPIO_PIN_SET : GPIO_PIN_RESET);
   GPIO_InitTypeDef gpio = {0};
   gpio.Mode = GPIO_MODE_OUTPUT_OD;
-  gpio.Pull = GPIO_NOPULL;
+  gpio.Pull = pull_to_hal(pull);
   gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   gpio.Pin = pin_mask;
   HAL_GPIO_Init(p, &gpio);
@@ -191,6 +194,21 @@ int gpio_read(void *port, uint16_t pin_mask)
   if (!port_is_known(p) || pin_mask == 0)
     return -PosixError_EINVAL;
   return HAL_GPIO_ReadPin(p, pin_mask) == GPIO_PIN_SET ? 1 : 0;
+}
+
+/* Read the output data register directly. Unlike gpio_read (which goes
+ * through the input data register and returns 0 when the pin is in
+ * analog mode — see RM0432 §8.3.12), this reflects the latched output
+ * value regardless of the current pin mode. Use this when you need to
+ * recover the previously commanded level on a pin that may not yet be
+ * configured as output (e.g. `default-state = "keep"` at boot). The
+ * port clock must already be ungated. */
+int gpio_read_odr(void *port, uint16_t pin_mask)
+{
+  GPIO_TypeDef *p = (GPIO_TypeDef *)port;
+  if (!port_is_known(p) || pin_mask == 0)
+    return -PosixError_EINVAL;
+  return (p->ODR & pin_mask) ? 1 : 0;
 }
 
 int gpio_toggle(void *port, uint16_t pin_mask)
