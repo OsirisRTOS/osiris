@@ -284,6 +284,12 @@ impl hal_api::stack::Stacklike for ArmStack {
         let top = NonNull::new(top.as_mut_ptr::<u32>())
             .ok_or(hal_api::PosixError::EINVAL)?;
 
+        // `size` is in bytes (per the Descriptor contract); `does_fit` and
+        // `in_bounds` work in u32 words. Convert here so the stack's internal
+        // unit stays consistent with `StackPtr::offset`.
+        let size = NonZero::new(size.get() / core::mem::size_of::<u32>())
+            .ok_or(hal_api::PosixError::EINVAL)?;
+
         let mut stack = Self {
             top,
             sp: StackPtr { offset: 0 },
