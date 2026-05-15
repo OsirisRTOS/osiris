@@ -19,7 +19,8 @@ void gpio_init_output_od(GPIO_TypeDef *port, uint16_t pin_mask);
  * All return 0 on success or a negative PosixError code on failure. */
 
 int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull);
-int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial);
+int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial,
+                             uint8_t pull);
 int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial,
                              uint8_t pull);
 int gpio_write(void *port, uint16_t pin_mask, uint8_t level);

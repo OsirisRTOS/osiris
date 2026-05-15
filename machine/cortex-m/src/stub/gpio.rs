@@ -51,7 +51,7 @@ pub fn configure_input(_pin: Pin, _pull: Pull) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
-pub fn configure_output(_pin: Pin, _initial: Level) -> Result<()> {
+pub fn configure_output(_pin: Pin, _initial: Level, _pull: Pull) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 

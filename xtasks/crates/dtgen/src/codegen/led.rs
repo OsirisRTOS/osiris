@@ -24,10 +24,12 @@ impl DefaultState {
                     node.name, other
                 ),
             },
-            None => DefaultState::Off,
-            _ => panic!(
-                "gpio-leds child {}: `default-state` must be a string",
-                node.name
+            // Flag-form (`default-state;`) → Off, matching the Linux binding.
+            Some(PropValue::Empty) | None => DefaultState::Off,
+            Some(other) => panic!(
+                "gpio-leds child {}: `default-state` must be a string \
+                 (\"on\" / \"off\" / \"keep\"), got {:?}",
+                node.name, other
             ),
         }
     }
@@ -59,10 +61,12 @@ impl OutputMode {
                     node.name, other
                 ),
             },
-            None => OutputMode::PushPull,
-            _ => panic!(
-                "gpio-leds child {}: `osiris,output-mode` must be a string",
-                node.name
+            // Flag-form / absent → push-pull (the pre-existing default).
+            Some(PropValue::Empty) | None => OutputMode::PushPull,
+            Some(other) => panic!(
+                "gpio-leds child {}: `osiris,output-mode` must be a string \
+                 (\"push-pull\" / \"open-drain\"), got {:?}",
+                node.name, other
             ),
         }
     }
@@ -75,9 +79,7 @@ impl OutputMode {
     }
 }
 
-/// Standard Linux/Zephyr pinctrl `bias-*` triple (empty properties);
-/// see Linux's `pinctrl-bindings.txt` and Zephyr's `pincfg-node.yaml`.
-/// Absent → no pull (the binding's documented default).
+/// Linux/Zephyr `bias-*` triple (empty flag props). Absent → no pull.
 #[derive(Clone, Copy)]
 enum Pull {
     None,

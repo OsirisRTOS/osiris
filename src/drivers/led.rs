@@ -87,6 +87,36 @@ fn level_for(entry: &LedRegistryEntry, on: bool) -> Level {
     }
 }
 
+/// `default-state = "keep"`. Reads ODR (set by whatever ran before us,
+/// e.g. a bootloader) instead of IDR — IDR is forced to 0 on an
+/// analog-mode pin (RM0432 §8.3.12). Only ODR=High is preserved; Low
+/// falls back to logical-Off because ODR's reset value is also 0
+/// (RM0432 §8.4.6), so Low is ambiguous and would illuminate
+/// active-low LEDs on cold boot.
+fn keep_initial_level(entry: &LedRegistryEntry) -> Level {
+    let pin = pin_of(entry);
+    if let Err(e) = hal::gpio::enable_port_clock(pin) {
+        kprintln!(
+            "    LED {}: keep: enable_port_clock failed ({:?}); falling back to Off",
+            entry.label,
+            e,
+        );
+        return level_for(entry, false);
+    }
+    match hal::gpio::read_odr(pin) {
+        Ok(Level::High) => Level::High,
+        Ok(Level::Low) => level_for(entry, false),
+        Err(e) => {
+            kprintln!(
+                "    LED {}: keep: read_odr failed ({:?}); falling back to Off",
+                entry.label,
+                e,
+            );
+            level_for(entry, false)
+        }
+    }
+}
+
 pub fn init() {
     let entries = hal::device_tree::LED_REGISTRY;
     kprintln!("Found {} gpio-led entries", entries.len());
@@ -101,15 +131,7 @@ pub fn init() {
         let initial = match entry.default_state {
             LedDefaultState::Off => level_for(entry, false),
             LedDefaultState::On => level_for(entry, true),
-            LedDefaultState::Keep => {
-                // ODR survives a warm reset that doesn't touch the GPIO
-                // peripheral; read it directly so we don't rely on the
-                // input driver (forced to 0 in the analog reset state —
-                // see RM0432 §8.3.12). Cold boot ODR = 0 → falls
-                // through to Off.
-                let _ = hal::gpio::enable_port_clock(pin_of(entry));
-                hal::gpio::read_odr(pin_of(entry)).unwrap_or(level_for(entry, false))
-            }
+            LedDefaultState::Keep => keep_initial_level(entry),
         };
         let pull = match entry.pull {
             LedPull::None => Pull::None,
@@ -120,7 +142,7 @@ pub fn init() {
             LedOutputMode::OpenDrain => {
                 hal::gpio::configure_output_od(pin_of(entry), initial, pull)
             }
-            LedOutputMode::PushPull => hal::gpio::configure_output(pin_of(entry), initial),
+            LedOutputMode::PushPull => hal::gpio::configure_output(pin_of(entry), initial, pull),
         };
         match res {
             Ok(()) => {
