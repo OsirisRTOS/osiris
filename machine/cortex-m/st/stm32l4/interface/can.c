@@ -43,6 +43,11 @@ static uint32_t s_rx_hw_ovr_fifo1[CAN_SLOT_COUNT];
 static uint32_t s_rx_peak_fmp[CAN_SLOT_COUNT];
 static uint32_t s_rx_get_fails[CAN_SLOT_COUNT];
 
+/* Wrap-extension state for the 16-bit bxCAN SOF timestamp: previous
+ * raw read + accumulated high bits. ISR-only; reset in can_init. */
+static uint16_t s_ts_last[CAN_SLOT_COUNT];
+static uint64_t s_ts_hi[CAN_SLOT_COUNT];
+
 static struct {
   can_irq_handler_fn fn;
   void *ctx;
@@ -192,6 +197,10 @@ int can_init(const can_bus_cfg_t *cfg) {
   rx->tail = 0;
   rx->count = 0;
 
+  /* Reset the per-slot HW-timestamp wrap tracker (see drain_fifo). */
+  s_ts_last[cfg->index] = 0;
+  s_ts_hi[cfg->index] = 0;
+
   s_irqn[cfg->index].rx0_irqn = cfg->rx0_irqn;
   s_irqn[cfg->index].rx1_irqn = cfg->rx1_irqn;
 
@@ -216,7 +225,9 @@ int can_init(const can_bus_cfg_t *cfg) {
   h->Init.TimeSeg2 = ts2;
   h->Init.AutoBusOff = ENABLE;
   h->Init.AutoRetransmission = ENABLE;
-  h->Init.TimeTriggeredMode = DISABLE;
+  /* TTCM=1: latch the bxCAN bit-time counter into RDTxR.TIME at each
+   * RX SOF. No Tx mailbox sets TGT, so Tx framing is unaffected. */
+  h->Init.TimeTriggeredMode = ENABLE;
   h->Init.AutoWakeUp = DISABLE;
   /* RFLM=1: keep the oldest 3 frames on overflow; FOVR counts drops. */
   h->Init.ReceiveFifoLocked = ENABLE;
@@ -345,6 +356,7 @@ int can_receive(uint8_t slot, can_frame_t *out) {
   out->id = src->id;
   out->len = src->len;
   out->is_extended = src->is_extended;
+  out->hw_timestamp_rx = src->hw_timestamp_rx;
   memcpy(out->data, (const void *)src->data, sizeof(out->data));
 
   rx->head = (rx->head + 1u) % CAN_RX_BUF_SIZE;
@@ -411,6 +423,19 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx,
       s_rx_frames_fifo1[slot_idx]++;
     }
 
+    /* Extend the HW SOF timestamp (hdr.Timestamp, 1 tick = 1 CAN
+     * bit-time) to 64 bits. Frames arrive here in order, so raw <
+     * previous means one 16-bit wrap. Done before the overflow drop
+     * so dropped frames still advance the tracker. Caveat: a >65.5 ms
+     * gap with no RX frame hides a wrap — fine, sync traffic is
+     * periodic and far faster than that. */
+    uint16_t ts_raw = (uint16_t)hdr.Timestamp;
+    if (ts_raw < s_ts_last[slot_idx]) {
+      s_ts_hi[slot_idx] += 0x10000ull;
+    }
+    s_ts_last[slot_idx] = ts_raw;
+    uint64_t ts_ext = s_ts_hi[slot_idx] | (uint64_t)ts_raw;
+
     if (rx->count >= CAN_RX_BUF_SIZE) {
       s_rx_drops[slot_idx]++;
       continue;
@@ -420,6 +445,7 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx,
     slot->id = (hdr.IDE == CAN_ID_EXT) ? hdr.ExtId : hdr.StdId;
     slot->len = (hdr.DLC > 8) ? 8 : (uint8_t)hdr.DLC;
     slot->is_extended = (hdr.IDE == CAN_ID_EXT);
+    slot->hw_timestamp_rx = ts_ext;
     memcpy((void *)slot->data, data, sizeof(data));
 
     rx->tail = (rx->tail + 1u) % CAN_RX_BUF_SIZE;

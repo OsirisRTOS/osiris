@@ -154,7 +154,9 @@ typedef struct
 	uint8_t data[8];
 	uint8_t len;
 	uint8_t is_extended;
-	uint16_t reserved;
+	/* RX only: 64-bit-extended bxCAN SOF timestamp (1 tick = 1 CAN
+	 * bit-time), filled by drain_fifo. 0 on the Tx path. */
+	uint64_t hw_timestamp_rx;
 } can_frame_t;
 
 typedef struct

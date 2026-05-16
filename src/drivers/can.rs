@@ -195,3 +195,67 @@ impl Device {
 pub fn init() {
     let _ = LazyLock::force(&BUSES);
 }
+
+/// Host mirror of the SOF-timestamp wrap-extension in C `drain_fifo()`
+/// (`machine/cortex-m/st/stm32l4/interface/can.c`) — keep in sync.
+/// Value units: CAN bit-times since boot; wall-time conversion is the
+/// consumer's job (divide by bitrate).
+#[cfg(test)]
+mod hw_ts_extend_spec {
+    /// One extension step. `last`/`hi`: persisted per-slot state;
+    /// `raw`: new `TIME[15:0]`. Returns `(new_last, new_hi, extended)`.
+    fn extend(last: u16, hi: u64, raw: u16) -> (u16, u64, u64) {
+        let hi = if raw < last { hi + 0x1_0000 } else { hi };
+        (raw, hi, hi | raw as u64)
+    }
+
+    /// Walk a sequence of raw readings from zeroed state, as the ISR
+    /// does, and collect the extended values.
+    fn run(raws: &[u16]) -> Vec<u64> {
+        let mut last = 0u16;
+        let mut hi = 0u64;
+        let mut out = Vec::new();
+        for &r in raws {
+            let (l, h, ext) = extend(last, hi, r);
+            last = l;
+            hi = h;
+            out.push(ext);
+        }
+        out
+    }
+
+    #[test]
+    fn monotonic_within_one_epoch_passes_through() {
+        assert_eq!(run(&[0, 1, 100, 5_000, 65_535]), [0, 1, 100, 5_000, 65_535]);
+    }
+
+    #[test]
+    fn single_wrap_carries_into_high_word() {
+        assert_eq!(run(&[65_500, 30]), [65_500, 0x1_0000 + 30]);
+    }
+
+    #[test]
+    fn many_consecutive_wraps_accumulate() {
+        // Each step is below the previous => one wrap per step.
+        let v = run(&[60_000, 10, 5, 4, 3]);
+        assert_eq!(
+            v,
+            [60_000, 0x1_0000 + 10, 0x2_0000 + 5, 0x3_0000 + 4, 0x4_0000 + 3]
+        );
+        // strictly monotonic across wraps
+        assert!(v.windows(2).all(|w| w[1] > w[0]));
+    }
+
+    #[test]
+    fn equal_reading_is_not_treated_as_wrap() {
+        // rule is `<`, not `<=`: equality must not bump hi
+        assert_eq!(run(&[1234, 1234]), [1234, 1234]);
+    }
+
+    #[test]
+    fn idle_gap_longer_than_one_epoch_undercounts_is_known_limitation() {
+        // Known caveat: a >65.5 ms RX gap hides full wraps (the `<`
+        // rule sees only one). Fine — sync traffic is far faster.
+        assert_eq!(run(&[100, 90]), [100, 0x1_0000 + 90]);
+    }
+}
