@@ -17,6 +17,12 @@ pub(crate) fn init_console_from_dt() -> Result<()> {
     Ok(())
 }
 
+/// Length-proportional console TX timeout: slack over the line-rate
+/// transmit time, capped so the PendSV-masked window stays bounded
+/// (caller masks PendSV across this). Beyond the cap, lines may truncate.
+const CONSOLE_TX_SLACK_MS: u32 = 50;
+const CONSOLE_TX_MAX_MS: u32 = 100;
+
 pub(crate) fn console_write(buf: &[u8]) -> Result<()> {
     let Some(entry) = console_entry() else {
         return Ok(());
@@ -24,9 +30,20 @@ pub(crate) fn console_write(buf: &[u8]) -> Result<()> {
     if buf.is_empty() {
         return Ok(());
     }
-    // HAL_MAX_DELAY: console writes never give up.
+
+    // 10 bits/byte (8N1).
+    let per_byte_us = 10_000_000 / entry.baud.max(1);
+    let budget_ms = (buf.len() as u32).saturating_mul(per_byte_us) / 1000;
+    let timeout_ms = CONSOLE_TX_SLACK_MS
+        .saturating_add(budget_ms)
+        .min(CONSOLE_TX_MAX_MS);
     let rc = unsafe {
-        bindings::uart_transmit_blocking(entry.instance, buf.as_ptr(), buf.len() as i32, u32::MAX)
+        bindings::uart_transmit_blocking(
+            entry.instance,
+            buf.as_ptr(),
+            buf.len() as i32,
+            timeout_ms,
+        )
     };
     if rc < 0 {
         return Err(from_c_rc(rc));

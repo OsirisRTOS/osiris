@@ -520,11 +520,10 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 }
 
-/* On ORE/overrun (or framing/parity error) the HAL aborts the
- * ReceiveToIdle transfer and sets RxState READY WITHOUT an RxEvent
- * callback, which would leave RX permanently dead. Re-arm so RX
- * self-heals; bytes lost in the overrun are the caller's protocol to
- * recover (same resilience as the ring-full drop above). */
+/* On error the HAL aborts the hit transfer to READY without its
+ * completion callback, so that side stays dead (RX: no RxEvents; TX:
+ * tx_busy stuck). Recover only the side(s) actually torn down (state ==
+ * READY); the other keeps running. Lost bytes: peer reframes. */
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
     for (int i = 0; i < UART_SLOT_COUNT; ++i)
@@ -532,8 +531,22 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         uart_slot_t *slot = &uart_slots[i];
         if (!slot->in_use || slot->console_owned || &slot->huart != huart)
             continue;
-        HAL_UARTEx_ReceiveToIdle_IT(&slot->huart, slot->rx_scratch,
-                                    UART_RX_SCRATCH_SZ);
+
+        if (slot->tx_busy && slot->huart.gState == HAL_UART_STATE_READY)
+        {
+            /* TxCpltCallback won't fire: drop the in-flight chunk,
+             * re-arm queued bytes, wake a blocked writer. */
+            slot->tx_tail = (uint16_t)((slot->tx_tail + slot->tx_in_flight) % UART_TX_RING_SZ);
+            slot->tx_in_flight = 0;
+            slot->tx_busy = 0;
+            uart_arm_tx(slot);
+            if (!slot->tx_busy && slot->cb)
+                slot->cb(UART_IRQ_TX_DONE, slot->cb_ctx);
+        }
+
+        if (slot->huart.RxState == HAL_UART_STATE_READY)
+            HAL_UARTEx_ReceiveToIdle_IT(&slot->huart, slot->rx_scratch,
+                                        UART_RX_SCRATCH_SZ);
         return;
     }
 }

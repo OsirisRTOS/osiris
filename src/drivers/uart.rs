@@ -52,7 +52,10 @@ pub struct Config {
 
 pub const UART_SLOT_COUNT: usize = 6;
 
-static REGISTERED: [AtomicBool; UART_SLOT_COUNT] =
+/// Latched once the process-global vector→`vector_dispatch` mapping is
+/// live (it outlives every `Device`); set only after `register_irq`
+/// succeeds. Per-Device `slot->cb` is re-installed each `open` instead.
+static VECTOR_REGISTERED: [AtomicBool; UART_SLOT_COUNT] =
     [const { AtomicBool::new(false) }; UART_SLOT_COUNT];
 
 struct UartSlotWaiters {
@@ -324,18 +327,25 @@ pub fn ensure_registered(dev: &crate::hal::uart::Device) -> Result<(), Error> {
     if (slot as usize) >= UART_SLOT_COUNT {
         return Err(Error::InvalidArgument);
     }
-    if REGISTERED[slot as usize].swap(true, Ordering::AcqRel) {
-        return Ok(());
+
+    // Claim the once-only vector install via CAS; release on failure so
+    // a later `open` can retry. Latch true only after success.
+    if VECTOR_REGISTERED[slot as usize]
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        // IPSR = NVIC line + 16: kernel `HANDLERS` is IPSR-indexed.
+        let vector = dev.irqn() as usize + 16;
+        if let Err(e) =
+            unsafe { crate::irq::register_irq(vector, vector_dispatch, Some(slot as usize)) }
+        {
+            VECTOR_REGISTERED[slot as usize].store(false, Ordering::Release);
+            warn!("uart: irq vector registration failed: {:?}", e);
+            return Err(Error::Io);
+        }
     }
 
-    // IPSR = NVIC line + 16 on Cortex-M; the kernel `HANDLERS` table is
-    // IPSR-indexed and the asm trampoline passes IPSR.
-    let vector = dev.irqn() as usize + 16;
-    unsafe {
-        crate::irq::register_irq(vector, vector_dispatch, Some(slot as usize))
-            .map_err(|_| Error::Io)?;
-    }
-
+    // `deinit` clears the C slot's `cb`, so re-install it on every open
     let ctx = &UART_WAITERS[slot as usize] as *const _ as *mut ();
     crate::hal::uart::register_irq_handler(dev, Some(kernel_dispatch), ctx)
 }

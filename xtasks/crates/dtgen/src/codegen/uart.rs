@@ -95,7 +95,17 @@ fn is_uart_node(node: &Node) -> bool {
         .any(|c| c.contains("usart") || c.contains("uart") || c.contains("lpuart"))
 }
 
-fn collect(dt: &DeviceTree) -> Vec<Bus> {
+/// Node index of the `chosen.osiris,console` UART, if any.
+fn console_node_idx(dt: &DeviceTree) -> Option<usize> {
+    let chosen_idx = dt.by_name.get("chosen").and_then(|v| v.first()).copied()?;
+    let path = match dt.nodes[chosen_idx].extra.get("osiris,console")? {
+        PropValue::Str(s) => s.as_str(),
+        _ => return None,
+    };
+    resolve_path(dt, path)
+}
+
+fn collect(dt: &DeviceTree, console_idx: Option<usize>) -> Vec<Bus> {
     let mut out: Vec<Bus> = Vec::new();
     for (idx, node) in dt.nodes.iter().enumerate() {
         if !is_enabled(node) {
@@ -105,10 +115,13 @@ fn collect(dt: &DeviceTree) -> Vec<Bus> {
             continue;
         }
         let Some((base, _)) = node.reg else {
-            continue;
+            panic!("dtgen: UART node `{}` is missing a `reg` base", node.name);
         };
         let Ok(instance) = usize::try_from(base) else {
-            continue;
+            panic!(
+                "dtgen: UART node `{}` has an out-of-range `reg` base {base:#x}",
+                node.name
+            );
         };
 
         let baud = match node.extra.get("current-speed") {
@@ -138,17 +151,16 @@ fn collect(dt: &DeviceTree) -> Vec<Bus> {
             _ => 0,
         };
 
-        // STM32 UART nodes carry a 2-cell `interrupts = <irqn priority>`.
-        // Skip nodes that don't (we can't wire IT mode without an IRQ).
+        // IT mode needs `interrupts = <irqn priority>`; the console is
+        // blocking, so keep it even without one (else: no boot console).
         let (irqn, priority) = match node.interrupts.as_slice() {
             [irqn, priority, ..] => (*irqn as u8, *priority as u8),
-            _ => {
-                eprintln!(
-                    "cargo::warning=dtgen: skipping UART node `{}` — no `interrupts` property",
-                    node.name
-                );
-                continue;
-            }
+            _ if Some(idx) == console_idx => (0, 0),
+            _ => panic!(
+                "dtgen: UART node `{}` has no `interrupts` property (required for \
+                 the interrupt-driven path; only the chosen console may omit it)",
+                node.name
+            ),
         };
 
         let (mut tx, mut rx, mut rts, mut cts) = (None, None, None, None);
@@ -172,25 +184,22 @@ fn collect(dt: &DeviceTree) -> Vec<Bus> {
         }
 
         let Some(tx) = tx else {
-            eprintln!(
-                "cargo::warning=dtgen: skipping UART node `{}` — no `tx` pin in any pinctrl-* state",
+            panic!(
+                "dtgen: UART node `{}` has no `tx` pin in any pinctrl-* state",
                 node.name
             );
-            continue;
         };
         let Some(rx) = rx else {
-            eprintln!(
-                "cargo::warning=dtgen: skipping UART node `{}` — no `rx` pin in any pinctrl-* state",
+            panic!(
+                "dtgen: UART node `{}` has no `rx` pin in any pinctrl-* state",
                 node.name
             );
-            continue;
         };
         if flow_control == 1 && (rts.is_none() || cts.is_none()) {
-            eprintln!(
-                "cargo::warning=dtgen: skipping UART node `{}` — `hw-flow-control` set but `rts`/`cts` pin missing",
+            panic!(
+                "dtgen: UART node `{}` sets `hw-flow-control` but is missing an `rts`/`cts` pin",
                 node.name
             );
-            continue;
         }
 
         let compatible = node
@@ -219,25 +228,10 @@ fn collect(dt: &DeviceTree) -> Vec<Bus> {
     out
 }
 
-/// Resolve the `chosen.osiris,console` property to an index into
-/// `UART_REGISTRY`. The DTC turns `osiris,console = &foo;` into a
-/// path string `/soc/foo@..`, which we walk back to a node index
-/// and then match against `buses`. Returns `None` if the property
-/// is missing or doesn't point at a UART node we collected.
-fn resolve_console(dt: &DeviceTree, buses: &[Bus]) -> Option<usize> {
-    let chosen_idx = dt.by_name.get("chosen").and_then(|v| v.first()).copied()?;
-    let chosen = &dt.nodes[chosen_idx];
-    let path = match chosen.extra.get("osiris,console")? {
-        PropValue::Str(s) => s.as_str(),
-        _ => return None,
-    };
-    let node_idx = resolve_path(dt, path)?;
-    buses.iter().position(|b| b.node == node_idx)
-}
-
 pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
-    let buses = collect(dt);
-    let console_const = match resolve_console(dt, &buses) {
+    let console_idx = console_node_idx(dt);
+    let buses = collect(dt, console_idx);
+    let console_const = match console_idx.and_then(|n| buses.iter().position(|b| b.node == n)) {
         Some(i) => quote! { Some(#i) },
         None => quote! { None },
     };
