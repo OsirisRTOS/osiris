@@ -188,6 +188,30 @@ fn generate_bindings(out: &Path, hal: &Path) -> Result<()> {
     Ok(())
 }
 
+fn generate_hal_api_header(out: &Path) -> Result<()> {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    let api = manifest_dir.join("../api");
+    println!(
+        "cargo::rerun-if-changed={}",
+        api.join("src/lib.rs").display()
+    );
+
+    let mut config = cbindgen::Config::default();
+    config.language = cbindgen::Language::C;
+    config.include_guard = Some("OSIRIS_HAL_API_H".into());
+    config.export.include = vec!["PosixError".into()];
+    config.enumeration.prefix_with_name = true;
+
+    cbindgen::Builder::new()
+        .with_crate(api)
+        .with_config(config)
+        .generate()
+        .context("failed to generate HAL API C header")?
+        .write_to_file(out.join("hal_api.h"));
+
+    Ok(())
+}
+
 /// Error handling wrapper that converts Result failures to build script exit.
 ///
 /// # Arguments
@@ -305,6 +329,11 @@ mod vector_table {
 ///
 /// Exits with error code 1 if any critical build step fails
 fn main() {
+    println!("cargo::rerun-if-env-changed=OSIRIS_METRICS");
+    if env::var("OSIRIS_METRICS").map_or(false, |v| v == "true" || v == "1") {
+        println!("cargo::rustc-cfg=metrics");
+    }
+
     if !hal_builder::check_enabled("cortex-m") || !check_cortex_m() {
         return;
     }
@@ -334,6 +363,7 @@ fn main() {
         let hal = Path::new(vendor).join(name);
 
         if hal.exists() {
+            fail_on_error(generate_hal_api_header(&out));
             fail_on_error(generate_bindings(&out, &hal));
             let vector_code = vector_table::generate();
 

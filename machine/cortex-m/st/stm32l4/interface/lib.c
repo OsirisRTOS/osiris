@@ -47,3 +47,11 @@ void HAL_MspInit(void) {
     HAL_PWREx_EnableVddIO2();
   #endif
 }
+
+__attribute__((noreturn)) void system_reset(void) {
+  NVIC_SystemReset();
+  /* CMSIS signature isn't noreturn; spin so the attribute holds. */
+  for (;;) {
+    __WFI();
+  }
+}

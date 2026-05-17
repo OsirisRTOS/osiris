@@ -2,7 +2,16 @@ use crate::ir::{DeviceTree, Node, PropValue};
 use proc_macro2::TokenStream;
 use quote::quote;
 
+mod can;
+mod i2c;
+mod key;
+mod led;
+mod spi;
+mod uart;
+
 pub fn generate_rust(dt: &DeviceTree) -> String {
+    enforce_unique_gpio_pins(dt);
+
     let segments: &[TokenStream] = &[
         emit_prop_value_type(),
         emit_topology_type(),
@@ -16,7 +25,13 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         spi::emit_query_api(),
         uart::emit_registry(dt),
         uart::emit_query_api(),
+        can::emit_registry(dt),
+        can::emit_query_api(),
+        led::emit_registry(dt),
+        key::emit_registry(dt),
         emit_aliases_module(dt),
+        led::emit_query_api(),
+        key::emit_query_api(),
         emit_memory_module(dt),
         emit_chosen_module(dt),
     ];
@@ -417,6 +432,8 @@ macro_rules! match_compatible {
     }};
 }
 
+pub(crate) use match_compatible;
+
 /// Decode the STM32_PINMUX macro encoding. Shared by every peripheral
 /// codegen module that talks to `st,stm32-pinctrl` (SPI, UART, ...).
 fn decode_stm32_pinmux(pinmux: u32) -> (usize, u8, u8) {
@@ -442,7 +459,8 @@ fn decode_gpio_pins<'a>(dt: &'a DeviceTree, gpios: &[u32]) -> Vec<(&'a crate::ir
             panic!("Invalid GPIO spec - expected groups of 3 u32 values (phandle, pin, flags)");
         }
         let phandle = chunk[0];
-        let pin = chunk[1] as u8;
+        let pin = u8::try_from(chunk[1])
+            .unwrap_or_else(|_| panic!("GPIO pin number {} out of u8 range", chunk[1]));
         let flags = chunk[2];
         let active_low = (flags & 1) != 0;
 
@@ -454,1280 +472,99 @@ fn decode_gpio_pins<'a>(dt: &'a DeviceTree, gpios: &[u32]) -> Vec<(&'a crate::ir
     pins
 }
 
-// ------------------------------------------------------------------------------------------------
-// I2C registry
-// ------------------------------------------------------------------------------------------------
-
-mod i2c {
-    use super::*;
-    use quote::format_ident;
-
-    #[derive(Clone, Copy)]
-    struct BusPin {
-        port: usize,
-        pin: u8,
-        af: u8,
-    }
-
-    #[derive(Clone, Copy)]
-    struct DevPin {
-        port: usize,
-        pin: u8,
-        active_low: u8,
-    }
-
-    #[derive(Clone)]
-    struct Bus {
-        node: usize,
-        instance: usize,
-        hz: u32,
-        timingr: u32,
-        scl: BusPin,
-        sda: BusPin,
-    }
-
-    #[derive(Clone)]
-    struct Dev {
-        node: usize,
-        bus_node: usize,
-        bus_instance: usize,
-        address: u16,
-        enable: Option<DevPin>,
-        compatible: String,
-    }
-
-    fn decode_stm32_pinmux(pinmux: u32) -> (usize, u8, u8) {
-        let port_idx = ((pinmux >> 9) & 0x1f) as usize;
-        let line = ((pinmux >> 5) & 0x0f) as u8;
-        let mode = (pinmux & 0x1f) as u8;
-        (port_idx, line, mode)
-    }
-
-    fn decode_pinctrl<'a>(dt: &'a DeviceTree, pinctrl: &[u32]) -> Vec<(&'a str, BusPin)> {
-        fn parse_i2c_role(name: &str) -> Option<&'static str> {
-            let mut parts = name.split('_');
-            let periph = parts.next()?;
-            let signal = parts.next()?;
-            if !periph.starts_with("i2c") {
-                return None;
-            }
-            match signal {
-                "scl" => Some("scl"),
-                "sda" => Some("sda"),
-                _ => None,
-            }
-        }
-
-        let mut pins = Vec::new();
-        for ph in pinctrl {
-            let Some(pin) = dt.resolve_phandle_idx(*ph) else {
-                panic!("Invalid phandle in pinctrl: {ph:#x}");
-            };
-            let pin = &dt.nodes[pin];
-
-            let Some(pin_ctrl) = pin.parent else {
-                panic!("Pin node has no pin-controller?");
-            };
-            let pin_ctrl = &dt.nodes[pin_ctrl];
-
-            let (port, line, mode) = match_compatible!(&pin_ctrl.compatible, {
-                "st,stm32-pinctrl" => {
-                    let pinmux = match pin.extra.get("pinmux") {
-                        Some(PropValue::U32Array(v)) if !v.is_empty() => v[0],
-                        Some(PropValue::U32(v)) => *v,
-                        _ => panic!("Pin node missing pinmux property"),
-                    };
-
-                    let (port_idx, line, mode) = decode_stm32_pinmux(pinmux);
-                    let base = pin_ctrl
-                        .reg
-                        .and_then(|(base, _)| usize::try_from(base).ok())
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Pin controller node {} is missing a valid reg base",
-                                pin_ctrl.name
-                            )
-                        });
-                    let port = base + (port_idx * 0x400);
-                    (port, line, mode)
-                }
-            })
-            .unwrap_or_else(|| panic!("Unsupported pin-controller: {:?}", pin_ctrl.compatible));
-
-            let name = pin.name.as_str();
-            let role = parse_i2c_role(name).unwrap_or_else(|| {
-                panic!("Unable to determine I2C signal role from pin name: {name}");
-            });
-
-            pins.push((
-                role,
-                BusPin {
-                    port,
-                    pin: line,
-                    af: mode,
-                },
-            ));
-        }
-
-        pins
-    }
-
-    fn collect_buses(dt: &DeviceTree) -> Vec<Bus> {
-        let mut buses = Vec::new();
-
-        for (idx, node) in dt.nodes.iter().enumerate() {
-            if !is_enabled(node) {
-                continue;
-            }
-            if node.compatible.iter().all(|c| c != "osiris,stm32l4-i2c") {
-                continue;
-            }
-
-            let Some((base, _)) = node.reg else {
-                continue;
-            };
-            let Ok(instance) = usize::try_from(base) else {
-                continue;
-            };
-
-            let (mut scl, mut sda) = (None, None);
-            for (key, value) in &node.extra {
-                if !key.starts_with("pinctrl-") {
-                    continue;
-                }
-
-                let PropValue::U32Array(pinctrl) = value else {
-                    continue;
-                };
-
-                for (name, pin) in decode_pinctrl(dt, pinctrl) {
-                    let dst = match name {
-                        "scl" => &mut scl,
-                        "sda" => &mut sda,
-                        _ => continue,
-                    };
-                    *dst = Some(pin);
-                }
-            }
-
-            buses.push(Bus {
-                node: idx,
-                instance,
-                hz: match node.extra.get("clock-frequency") {
-                    Some(PropValue::U32(v)) => *v,
-                    _ => 100_000,
-                },
-                timingr: match node.extra.get("osiris,timingr") {
-                    Some(PropValue::U32(v)) => *v,
-                    _ => panic!("I2C bus node {} missing osiris,timingr property", node.name),
-                },
-                scl: scl.expect("I2C pinctrl should define scl"),
-                sda: sda.expect("I2C pinctrl should define sda"),
-            });
-        }
-
-        buses
-    }
-
-    fn collect_devices(dt: &DeviceTree, buses: &[Bus]) -> Vec<Dev> {
-        let mut devices = Vec::new();
-
-        for bus in buses {
-            let bus_node = &dt.nodes[bus.node];
-            for child_idx in &bus_node.children {
-                let child = &dt.nodes[*child_idx];
-                if !is_enabled(child) || child.compatible.is_empty() {
-                    continue;
-                }
-
-                let address = child
-                    .reg
-                    .and_then(|(v, _)| u16::try_from(v).ok())
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "I2C device node {} has no valid reg property for address",
-                            child.name
-                        )
-                    });
-
-                let enable = match child.extra.get("enable-gpios") {
-                    Some(PropValue::U32Array(v)) if v.len() >= 3 => v.as_slice(),
-                    _ => &[],
-                };
-                let enable = super::decode_gpio_pins(dt, enable);
-                if enable.len() > 1 {
-                    panic!(
-                        "Multiple enable GPIOs specified for I2C device node {}, but only one is supported",
-                        child.name
-                    );
-                }
-                let enable = enable.first().map(|(node, pin, active_low)| {
-                    let port = node
-                        .reg
-                        .and_then(|(base, _)| usize::try_from(base).ok())
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Invalid GPIO controller phandle for enable pin in I2C device node {}",
-                                child.name
-                            );
-                        });
-                    DevPin {
-                        port,
-                        pin: *pin,
-                        active_low: *active_low,
-                    }
-                });
-
-                devices.push(Dev {
-                    node: *child_idx,
-                    bus_node: bus.node,
-                    bus_instance: bus.instance,
-                    address,
-                    enable,
-                    compatible: child.compatible[0].clone(),
-                });
-            }
-        }
-
-        devices
-    }
-
-    pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
-        let buses = collect_buses(dt);
-        let devices = collect_devices(dt, &buses);
-
-        let dev_entry_tokens = |d: &Dev| {
-            let node = d.node;
-            let bus_node = d.bus_node;
-            let bus_instance = d.bus_instance;
-            let address = d.address;
-            let compatible = d.compatible.as_str();
-            let enable = if let Some(en) = d.enable {
-                let en_port = en.port;
-                let en_line = en.pin;
-                let en_active_low = en.active_low;
-                quote! {
-                    &[I2cDevPin {
-                        port: #en_port,
-                        line: #en_line,
-                        active_low: #en_active_low,
-                    }]
-                }
-            } else {
-                quote! { &[] }
-            };
-
-            quote! {
-                I2cDeviceRegistryEntry {
-                    node: #node,
-                    bus_node: #bus_node,
-                    bus_instance: #bus_instance,
-                    address: #address,
-                    enable: #enable,
-                    compatible: #compatible,
-                },
-            }
-        };
-
-        let bus_device_arrays = buses.iter().map(|b| {
-            let bus_node = b.node;
-            let bus_devices_ident = format_ident!("I2C_BUS_{}_DEVICES", bus_node);
-            let bus_dev_entries = devices
-                .iter()
-                .filter(|d| d.bus_node == bus_node)
-                .map(dev_entry_tokens);
-
-            quote! {
-                const #bus_devices_ident: &[I2cDeviceRegistryEntry] = &[
-                    #(#bus_dev_entries)*
-                ];
-            }
-        });
-
-        let bus_entries = buses.iter().map(|b| {
-            let node = b.node;
-            let instance = b.instance;
-            let hz = b.hz;
-            let timingr = b.timingr;
-            let bus_devices_ident = format_ident!("I2C_BUS_{}_DEVICES", node);
-
-            let scl_port = b.scl.port;
-            let scl_line = b.scl.pin;
-            let scl_af = b.scl.af;
-            let scl = quote! {
-                I2cBusPin {
-                    port: #scl_port,
-                    line: #scl_line,
-                    af: #scl_af,
-                }
-            };
-
-            let sda_port = b.sda.port;
-            let sda_line = b.sda.pin;
-            let sda_af = b.sda.af;
-            let sda = quote! {
-                I2cBusPin {
-                    port: #sda_port,
-                    line: #sda_line,
-                    af: #sda_af,
-                }
-            };
-
-            quote! {
-                I2cBusRegistryEntry {
-                    node: #node,
-                    instance: #instance,
-                    hz: #hz,
-                    timingr: #timingr,
-                    scl: #scl,
-                    sda: #sda,
-                    devices: #bus_devices_ident,
-                },
-            }
-        });
-
-        quote! {
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct I2cBusPin {
-                pub port: usize,
-                pub line: u8,
-                pub af: u8,
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct I2cDevPin {
-                pub port: usize,
-                pub line: u8,
-                pub active_low: u8,
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct I2cDeviceRegistryEntry {
-                pub node: usize,
-                pub bus_node: usize,
-                pub bus_instance: usize,
-                pub address: u16,
-                pub enable: &'static [I2cDevPin],
-                pub compatible: &'static str,
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct I2cBusRegistryEntry {
-                pub node: usize,
-                pub instance: usize,
-                pub hz: u32,
-                pub timingr: u32,
-                pub scl: I2cBusPin,
-                pub sda: I2cBusPin,
-                pub devices: &'static [I2cDeviceRegistryEntry],
-            }
-
-            #(#bus_device_arrays)*
-
-            pub const I2C_BUS_REGISTRY: &[I2cBusRegistryEntry] = &[
-                #(#bus_entries)*
-            ];
-        }
-    }
-
-    pub fn emit_query_api() -> TokenStream {
-        quote! {
-            pub fn i2c_bus_by_dev(dev: &I2cDeviceRegistryEntry) -> Option<&'static I2cBusRegistryEntry> {
-                I2C_BUS_REGISTRY.iter().find(|b| b.node == dev.bus_node)
-            }
-
-            pub fn i2c_device_by_compatible(compatible: &str, ord: usize) -> Option<&'static I2cDeviceRegistryEntry> {
-                let mut matches = 0usize;
-                for bus in I2C_BUS_REGISTRY {
-                    for dev in bus.devices {
-                        if dev.compatible == compatible {
-                            if matches == ord {
-                                return Some(dev);
-                            }
-                            matches += 1;
-                        }
-                    }
-                }
-                None
-            }
-        }
-    }
+/// One decoded child of a `compatible = "gpio-*"` parent — the part
+/// every single-GPIO binding (`gpio-keys`, `gpio-leds`) extracts the
+/// same way. Per-binding extras live in the caller.
+pub(crate) struct GpioChild<'a> {
+    pub child_idx: usize,
+    pub child: &'a crate::ir::Node,
+    pub port: usize,
+    pub line: u8,
+    pub active_low: u8,
+    pub label: String,
 }
 
-// ------------------------------------------------------------------------------------------------
-// SPI registry
-// ------------------------------------------------------------------------------------------------
-
-mod spi {
-    use super::*;
-    use quote::format_ident;
-
-    #[derive(Clone, Copy)]
-    struct BusPin {
-        port: usize,
-        pin: u8,
-        af: u8,
-    }
-
-    #[derive(Clone, Copy)]
-    struct DevPin {
-        port: usize,
-        pin: u8,
-        active_low: u8,
-    }
-
-    #[derive(Clone)]
-    struct Bus {
-        node: usize,
-        instance: usize,
-        sck: BusPin,
-        miso: BusPin,
-        mosi: BusPin,
-    }
-
-    #[derive(Clone)]
-    struct Dev {
-        node: usize,
-        bus_node: usize,
-        bus_instance: usize,
-        cs: DevPin,
-        enable: Option<DevPin>,
-        max_hz: u32,
-        cpol: u8,
-        cpha: u8,
-        bits_per_word: u8,
-        cs_setup_delay_us: u32,
-        cs_hold_delay_us: u32,
-        cs_inactive_delay_us: u32,
-        compatible: String,
-    }
-
-    /// Decodes pinctrl phandles to extract port, line, and alternate function for SPI pins.
-    fn decode_pinctrl<'a>(dt: &'a DeviceTree, pinctrl: &[u32]) -> Vec<(&'a str, BusPin)> {
-        /// Parses a node name like "spi1_sck_pa5" to extract the SPI signal role (sck, miso, mosi).
-        fn parse_spi_role(name: &str) -> Option<&'static str> {
-            let mut parts = name.split('_');
-            let periph = parts.next()?;
-            let signal = parts.next()?;
-            if !periph.starts_with("spi") {
-                return None;
-            }
-            match signal {
-                "sck" => Some("sck"),
-                "miso" => Some("miso"),
-                "mosi" => Some("mosi"),
-                _ => None,
-            }
+/// Walk every enabled parent whose `compatible` matches, then for each
+/// enabled child decode its required single `gpios` cell and optional
+/// `label`. Panics on a malformed binding — codegen runs at build time,
+/// so a bad DT should fail the build loudly.
+pub(crate) fn collect_gpio_children<'a>(
+    dt: &'a DeviceTree,
+    parent_compatible: &str,
+) -> Vec<GpioChild<'a>> {
+    let mut out = Vec::new();
+    for parent in dt.nodes.iter().filter(|p| is_enabled(p)) {
+        if parent.compatible.iter().all(|c| c != parent_compatible) {
+            continue;
         }
-
-        let mut pins = Vec::new();
-        for ph in pinctrl {
-            let Some(pin) = dt.resolve_phandle_idx(*ph) else {
-                panic!("Invalid phandle in pinctrl: {ph:#x}");
-            };
-            let pin = &dt.nodes[pin];
-
-            let Some(pin_ctrl) = pin.parent else {
-                panic!("Pin node has no pin-controller?");
-            };
-            let pin_ctrl = &dt.nodes[pin_ctrl];
-
-            let (port, line, mode) = match_compatible!(&pin_ctrl.compatible, {
-                // New pinctrl decoders go here.
-                "st,stm32-pinctrl" => {
-                    let pinmux = match pin.extra.get("pinmux") {
-                        Some(PropValue::U32Array(v)) if !v.is_empty() => v[0],
-                        Some(PropValue::U32(v)) => *v,
-                        _ => panic!("Pin node missing pinmux property"),
-                    };
-
-                    let (port_idx, line, mode) = decode_stm32_pinmux(pinmux);
-                    let base = pin_ctrl
-                        .reg
-                        .and_then(|(base, _)| usize::try_from(base).ok())
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Pin controller node {} is missing a valid reg base",
-                                pin_ctrl.name
-                            )
-                        });
-                    let port = base + (port_idx * 0x400);
-                    (port, line, mode)
-                }
-            })
-            .unwrap_or_else(|| panic!("Unsupported pin-controller: {:?}", pin_ctrl.compatible));
-            let name = pin.name.as_str();
-
-            let role = match parse_spi_role(name) {
-                Some(r) => r,
-                None => {
-                    println!("Unable to determine SPI signal role from pin name: {name}");
-                    continue;
-                }
-            };
-
-            pins.push((
-                role,
-                BusPin {
-                    port,
-                    pin: line,
-                    af: mode,
-                },
-            ));
-        }
-
-        pins
-    }
-
-    fn decode_dev_pins(dt: &DeviceTree, gpios: &[u32]) -> Vec<DevPin> {
-        let pins = decode_gpio_pins(dt, gpios);
-        pins.into_iter()
-            .map(|(node, pin, active_low)| {
-                let port = node
-                    .reg
-                    .and_then(|(base, _)| usize::try_from(base).ok())
-                    .unwrap_or_else(|| {
-                        panic!("Invalid GPIO controller phandle for CS: {}", node.name);
-                    });
-                DevPin {
-                    port,
-                    pin,
-                    active_low,
-                }
-            })
-            .collect()
-    }
-
-    fn collect_buses(dt: &DeviceTree) -> Vec<Bus> {
-        let mut buses: Vec<Bus> = Vec::new();
-
-        // Look for spi controllers
-        for (idx, node) in dt.nodes.iter().enumerate() {
-            if !is_enabled(node) {
-                continue;
-            }
-            if node.compatible.iter().all(|c| c != "osiris,stm32l4-spi") {
+        for &child_idx in &parent.children {
+            let child = &dt.nodes[child_idx];
+            if !is_enabled(child) {
                 continue;
             }
 
-            let Some((base, _)) = node.reg else {
-                continue;
+            let gpios = match child.extra.get("gpios") {
+                Some(PropValue::U32Array(v)) => v.as_slice(),
+                _ => panic!(
+                    "{parent_compatible} child {} missing required `gpios` property",
+                    child.name
+                ),
             };
 
-            let Ok(instance) = usize::try_from(base) else {
-                continue;
-            };
-
-            let (mut sck, mut miso, mut mosi) = (None, None, None);
-
-            for (key, value) in &node.extra {
-                if !key.starts_with("pinctrl-") {
-                    continue;
-                }
-
-                let PropValue::U32Array(pinctrl) = value else {
-                    continue;
-                };
-
-                for (name, pin) in decode_pinctrl(dt, pinctrl) {
-                    let dst = match name {
-                        "sck" => &mut sck,
-                        "miso" => &mut miso,
-                        "mosi" => &mut mosi,
-                        _ => continue,
-                    };
-
-                    *dst = Some(pin);
-                }
+            let pins = decode_gpio_pins(dt, gpios);
+            if pins.len() != 1 {
+                panic!(
+                    "{parent_compatible} child {} must specify exactly one GPIO ({} found)",
+                    child.name,
+                    pins.len()
+                );
             }
-
-            let sck = sck.expect("SPI pinctrl should define sck");
-            let miso = miso.expect("SPI pinctrl should define miso");
-            let mosi = mosi.expect("SPI pinctrl should define mosi");
-
-            let bus = Bus {
-                node: idx,
-                instance,
-                sck,
-                miso,
-                mosi,
-            };
-            buses.push(bus);
-        }
-        buses
-    }
-
-    fn collect_devices(dt: &DeviceTree, buses: &[Bus]) -> Vec<Dev> {
-        let mut devices: Vec<Dev> = Vec::new();
-
-        for bus in buses {
-            let bus_node = &dt.nodes[bus.node];
-            let cs = match bus_node.extra.get("cs-gpios") {
-                Some(PropValue::U32Array(v)) => v,
-                _ => panic!("SPI bus node {} missing cs-gpios property", bus_node.name),
-            };
-            let cs = decode_dev_pins(dt, cs);
-
-            // The peripherals connected to the bus
-            for child_idx in &bus_node.children {
-                let child = &dt.nodes[*child_idx];
-                if !is_enabled(child) || child.compatible.is_empty() {
-                    continue;
-                }
-
-                let cs_idx = child
-                    .reg
-                    .and_then(|(v, _)| usize::try_from(v).ok())
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "SPI device node {} has no reg property to specify CS index",
-                            child.name
-                        );
-                    });
-
-                let cs = cs[cs_idx];
-
-                let max_hz = match child.extra.get("spi-max-frequency") {
-                    Some(PropValue::U32(v)) => *v,
-                    _ => panic!(
-                        "SPI device node {} missing spi-max-frequency property",
-                        child.name
-                    ),
-                };
-
-                let enable = match child.extra.get("enable-gpios") {
-                    Some(PropValue::U32Array(v)) if v.len() >= 3 => v.as_slice(),
-                    _ => &[], // Optional - device may have no enable GPIOs
-                };
-                // TODO: Only one enable pin for now.
-                let enable = decode_dev_pins(dt, enable);
-                if enable.len() > 1 {
+            let (ctrl, line, active_low) = pins[0];
+            let port = ctrl
+                .reg
+                .and_then(|(base, _)| usize::try_from(base).ok())
+                .unwrap_or_else(|| {
                     panic!(
-                        "Multiple enable GPIOs specified for SPI device node {}, but only one is supported",
-                        child.name
-                    );
-                }
-                let enable = enable.first().cloned();
-
-                let cpol = if child.extra.contains_key("spi-cpol") {
-                    1
-                } else {
-                    0
-                };
-
-                let cpha = if child.extra.contains_key("spi-cpha") {
-                    1
-                } else {
-                    0
-                };
-
-                let bits_per_word = match child.extra.get("spi-word-size") {
-                    Some(PropValue::U32(v)) => u8::try_from(*v).unwrap_or_else(|_| {
-                        panic!(
-                            "SPI device node {} has spi-word-size out of u8 range: {}",
-                            child.name, v
-                        )
-                    }),
-                    _ => 8,
-                };
-
-                let cs_setup_delay_us = match child.extra.get("spi-cs-setup-delay-us") {
-                    Some(PropValue::U32(v)) => *v,
-                    _ => 0,
-                };
-                let cs_hold_delay_us = match child.extra.get("spi-cs-hold-delay-us") {
-                    Some(PropValue::U32(v)) => *v,
-                    _ => 0,
-                };
-                let cs_inactive_delay_us = match child.extra.get("spi-cs-inactive-delay-us") {
-                    Some(PropValue::U32(v)) => *v,
-                    _ => match child.extra.get("spi-post-delay-us") {
-                        Some(PropValue::U32(v)) => *v,
-                        _ => 0,
-                    },
-                };
-                devices.push(Dev {
-                    node: *child_idx,
-                    bus_node: bus.node,
-                    bus_instance: bus.instance,
-                    cs,
-                    enable,
-                    max_hz,
-                    cpol,
-                    cpha,
-                    bits_per_word,
-                    cs_setup_delay_us,
-                    cs_hold_delay_us,
-                    cs_inactive_delay_us,
-                    compatible: child.compatible[0].clone(),
+                        "{parent_compatible} child {} references controller {} with no valid reg base",
+                        child.name, ctrl.name,
+                    )
                 });
-            }
-        }
 
-        devices
-    }
-
-    pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
-        let buses = collect_buses(dt);
-        let devices = collect_devices(dt, &buses);
-
-        let dev_entry_tokens = |d: &Dev| {
-            let node = d.node;
-            let bus_node = d.bus_node;
-            let bus_instance = d.bus_instance;
-
-            let cs_port = d.cs.port;
-            let cs_line = d.cs.pin;
-            let cs_active_low = d.cs.active_low;
-            let cs = quote! {
-                SpiDevPin {
-                    port: #cs_port,
-                    line: #cs_line,
-                    active_low: #cs_active_low,
-                }
+            let label = match child.extra.get("label") {
+                Some(PropValue::Str(s)) => s.clone(),
+                _ => String::new(),
             };
 
-            let enable = if let Some(en) = d.enable {
-                let en_port = en.port;
-                let en_line = en.pin;
-                let en_active_low = en.active_low;
-                quote! {
-                    &[SpiDevPin {
-                        port: #en_port,
-                        line: #en_line,
-                        active_low: #en_active_low,
-                    }]
-                }
-            } else {
-                quote! { &[] }
-            };
-
-            let max_hz = d.max_hz;
-            let cpol = d.cpol;
-            let cpha = d.cpha;
-            let bits_per_word = d.bits_per_word;
-            let cs_setup_delay_us = d.cs_setup_delay_us;
-            let cs_hold_delay_us = d.cs_hold_delay_us;
-            let cs_inactive_delay_us = d.cs_inactive_delay_us;
-            let compatible = d.compatible.as_str();
-
-            quote! {
-                SpiDeviceRegistryEntry {
-                    node: #node,
-                    bus_node: #bus_node,
-                    bus_instance: #bus_instance,
-                    cs: #cs,
-                    enable: #enable,
-                    max_hz: #max_hz,
-                    cpol: #cpol,
-                    cpha: #cpha,
-                    bits_per_word: #bits_per_word,
-                    cs_setup_delay_us: #cs_setup_delay_us,
-                    cs_hold_delay_us: #cs_hold_delay_us,
-                    cs_inactive_delay_us: #cs_inactive_delay_us,
-                    compatible: #compatible,
-                },
-            }
-        };
-
-        let bus_device_arrays = buses.iter().map(|b| {
-            let bus_node = b.node;
-            let bus_devices_ident = format_ident!("SPI_BUS_{}_DEVICES", bus_node);
-            let bus_dev_entries = devices
-                .iter()
-                .filter(|d| d.bus_node == bus_node)
-                .map(dev_entry_tokens);
-
-            quote! {
-                const #bus_devices_ident: &[SpiDeviceRegistryEntry] = &[
-                    #(#bus_dev_entries)*
-                ];
-            }
-        });
-
-        let bus_entries = buses.iter().map(|b| {
-            let node = b.node;
-            let instance = b.instance;
-            let bus_devices_ident = format_ident!("SPI_BUS_{}_DEVICES", node);
-
-            let sck_port = b.sck.port;
-            let sck_line = b.sck.pin;
-            let sck_af = b.sck.af;
-            let sck = quote! {
-                SpiBusPin {
-                    port: #sck_port,
-                    line: #sck_line,
-                    af: #sck_af,
-                }
-            };
-
-            let miso_port = b.miso.port;
-            let miso_line = b.miso.pin;
-            let miso_af = b.miso.af;
-            let miso = quote! {
-                SpiBusPin {
-                    port: #miso_port,
-                    line: #miso_line,
-                    af: #miso_af,
-                }
-            };
-
-            let mosi_port = b.mosi.port;
-            let mosi_line = b.mosi.pin;
-            let mosi_af = b.mosi.af;
-            let mosi = quote! {
-                SpiBusPin {
-                    port: #mosi_port,
-                    line: #mosi_line,
-                    af: #mosi_af,
-                }
-            };
-
-            quote! {
-                SpiBusRegistryEntry {
-                    node: #node,
-                    instance: #instance,
-                    sck: #sck,
-                    miso: #miso,
-                    mosi: #mosi,
-                    devices: #bus_devices_ident,
-                },
-            }
-        });
-
-        quote! {
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct SpiBusPin {
-                pub port: usize,
-                pub line: u8,
-                pub af: u8,
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct SpiDevPin {
-                pub port: usize,
-                pub line: u8,
-                pub active_low: u8,
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct SpiDeviceRegistryEntry {
-                pub node: usize,
-                pub bus_node: usize,
-                pub bus_instance: usize,
-                pub cs: SpiDevPin,
-                pub enable: &'static [SpiDevPin],
-                pub max_hz: u32,
-                pub cpol: u8,
-                pub cpha: u8,
-                pub bits_per_word: u8,
-                pub cs_setup_delay_us: u32,
-                pub cs_hold_delay_us: u32,
-                pub cs_inactive_delay_us: u32,
-                pub compatible: &'static str,
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct SpiBusRegistryEntry {
-                pub node: usize,
-                pub instance: usize,
-                pub sck: SpiBusPin,
-                pub miso: SpiBusPin,
-                pub mosi: SpiBusPin,
-                pub devices: &'static [SpiDeviceRegistryEntry],
-            }
-
-            #(#bus_device_arrays)*
-
-            pub const SPI_BUS_REGISTRY: &[SpiBusRegistryEntry] = &[
-                #(#bus_entries)*
-            ];
+            out.push(GpioChild {
+                child_idx,
+                child,
+                port,
+                line,
+                active_low,
+                label,
+            });
         }
     }
-
-    pub fn emit_query_api() -> TokenStream {
-        quote! {
-            pub fn spi_bus_by_dev(dev: &SpiDeviceRegistryEntry) -> Option<&'static SpiBusRegistryEntry> {
-                SPI_BUS_REGISTRY.iter().find(|b| b.node == dev.bus_node)
-            }
-
-            pub fn spi_device_by_compatible(compatible: &str, ord: usize) -> Option<&'static SpiDeviceRegistryEntry> {
-                let mut matches = 0usize;
-                for bus in SPI_BUS_REGISTRY {
-                    for dev in bus.devices {
-                        if dev.compatible == compatible {
-                            if matches == ord {
-                                return Some(dev);
-                            }
-                            matches += 1;
-                        }
-                    }
-                }
-                None
-            }
-        }
-    }
+    out
 }
 
-// ------------------------------------------------------------------------------------------------
-// UART registry
-// ------------------------------------------------------------------------------------------------
-
-mod uart {
-    use super::*;
-
-    #[derive(Clone, Copy)]
-    struct Pin {
-        port: usize,
-        line: u8,
-        af: u8,
-    }
-
-    #[derive(Clone)]
-    struct Bus {
-        node: usize,
-        instance: usize,
-        baud: u32,
-        data_bits: u8,
-        stop_bits: u8,
-        parity: u8,
-        flow_control: u8,
-        irqn: u8,
-        priority: u8,
-        tx: Pin,
-        rx: Pin,
-        rts: Option<Pin>,
-        cts: Option<Pin>,
-        compatible: String,
-    }
-
-    /// Parse a pinctrl node name like `usart1_tx_pa9` or `lpuart1_rts_pg6`
-    /// into the signal role. Returns `None` for unrecognised roles
-    /// (don't panic — keeps DT extension cheap and avoids the SPI NSS trap).
-    fn parse_uart_role(name: &str) -> Option<&'static str> {
-        let mut parts = name.split('_');
-        let periph = parts.next()?;
-        let signal = parts.next()?;
-        let is_uart = periph.starts_with("usart")
-            || periph.starts_with("uart")
-            || periph.starts_with("lpuart");
-        if !is_uart {
-            return None;
-        }
-        match signal {
-            "tx" => Some("tx"),
-            "rx" => Some("rx"),
-            "rts" => Some("rts"),
-            "cts" => Some("cts"),
-            _ => None,
-        }
-    }
-
-    fn decode_pinctrl<'a>(dt: &'a DeviceTree, pinctrl: &[u32]) -> Vec<(&'static str, Pin)> {
-        let mut pins = Vec::new();
-        for ph in pinctrl {
-            let Some(idx) = dt.resolve_phandle_idx(*ph) else {
-                continue;
-            };
-            let pin = &dt.nodes[idx];
-            let Some(role) = parse_uart_role(&pin.name) else {
-                continue;
-            };
-            let Some(pin_ctrl_idx) = pin.parent else {
-                continue;
-            };
-            let pin_ctrl = &dt.nodes[pin_ctrl_idx];
-
-            let decoded = match_compatible!(&pin_ctrl.compatible, {
-                "st,stm32-pinctrl" => {
-                    let pinmux = match pin.extra.get("pinmux") {
-                        Some(PropValue::U32Array(v)) if !v.is_empty() => v[0],
-                        Some(PropValue::U32(v)) => *v,
-                        _ => continue,
-                    };
-                    let (port_idx, line, mode) = decode_stm32_pinmux(pinmux);
-                    let base = pin_ctrl
-                        .reg
-                        .and_then(|(b, _)| usize::try_from(b).ok())
-                        .unwrap_or(0);
-                    Pin { port: base + (port_idx * 0x400), line, af: mode }
-                }
-            });
-            let Some(pin) = decoded else { continue };
-            pins.push((role, pin));
-        }
-        pins
-    }
-
-    fn is_uart_node(node: &Node) -> bool {
-        node.compatible
-            .iter()
-            .any(|c| c.contains("usart") || c.contains("uart") || c.contains("lpuart"))
-    }
-
-    fn collect(dt: &DeviceTree) -> Vec<Bus> {
-        let mut out: Vec<Bus> = Vec::new();
-        for (idx, node) in dt.nodes.iter().enumerate() {
-            if !is_enabled(node) {
-                continue;
-            }
-            if !is_uart_node(node) {
-                continue;
-            }
-            let Some((base, _)) = node.reg else {
-                continue;
-            };
-            let Ok(instance) = usize::try_from(base) else {
-                continue;
-            };
-
-            let baud = match node.extra.get("current-speed") {
-                Some(PropValue::U32(v)) => *v,
-                _ => 115200,
-            };
-            let data_bits = match node.extra.get("data-bits") {
-                Some(PropValue::U32(v)) => *v as u8,
-                _ => 8,
-            };
-            let stop_bits = match node.extra.get("stop-bits") {
-                Some(PropValue::U32(v)) => *v as u8,
-                _ => 1,
-            };
-            let parity = match node.extra.get("parity") {
-                Some(PropValue::Str(s)) => match s.as_str() {
-                    "odd" => 1,
-                    "even" => 2,
-                    _ => 0,
-                },
-                Some(PropValue::U32(v)) => *v as u8,
-                _ => 0,
-            };
-            let flow_control = match node.extra.get("hw-flow-control") {
-                Some(PropValue::Empty) => 1,
-                Some(PropValue::U32(v)) if *v != 0 => 1,
-                _ => 0,
-            };
-
-            // STM32 UART nodes carry a 2-cell `interrupts = <irqn priority>`.
-            // Skip nodes that don't (we can't wire IT mode without an IRQ).
-            let (irqn, priority) = match node.interrupts.as_slice() {
-                [irqn, priority, ..] => (*irqn as u8, *priority as u8),
-                _ => {
-                    eprintln!(
-                        "cargo::warning=dtgen: skipping UART node `{}` — no `interrupts` property",
-                        node.name
+/// Fail the build if any GPIO pin is claimed by more than one
+/// single-GPIO binding (e.g. one `gpio-keys` and one `gpio-leds` child
+/// pointing at the same pin, or two children of the same parent on the
+/// same pin).
+fn enforce_unique_gpio_pins(dt: &DeviceTree) {
+    let mut claimed: Vec<(usize, u8, &'static str, String)> = Vec::new();
+    for binding in ["gpio-keys", "gpio-leds"] {
+        for c in collect_gpio_children(dt, binding) {
+            for (prev_port, prev_line, prev_binding, prev_name) in &claimed {
+                if *prev_port == c.port && *prev_line == c.line {
+                    panic!(
+                        "GPIO pin (port {:#x}, line {}) is claimed by both {} `{}` and {} `{}`",
+                        c.port, c.line, prev_binding, prev_name, binding, c.child.name,
                     );
-                    continue;
-                }
-            };
-
-            let (mut tx, mut rx, mut rts, mut cts) = (None, None, None, None);
-            for (key, value) in &node.extra {
-                if !key.starts_with("pinctrl-") {
-                    continue;
-                }
-                let PropValue::U32Array(pinctrl) = value else {
-                    continue;
-                };
-                for (role, pin) in decode_pinctrl(dt, pinctrl) {
-                    let dst = match role {
-                        "tx" => &mut tx,
-                        "rx" => &mut rx,
-                        "rts" => &mut rts,
-                        "cts" => &mut cts,
-                        _ => continue,
-                    };
-                    *dst = Some(pin);
                 }
             }
-
-            let Some(tx) = tx else {
-                eprintln!(
-                    "cargo::warning=dtgen: skipping UART node `{}` — no `tx` pin in pinctrl-0",
-                    node.name
-                );
-                continue;
-            };
-            let Some(rx) = rx else {
-                eprintln!(
-                    "cargo::warning=dtgen: skipping UART node `{}` — no `rx` pin in pinctrl-0",
-                    node.name
-                );
-                continue;
-            };
-            if flow_control == 1 && (rts.is_none() || cts.is_none()) {
-                eprintln!(
-                    "cargo::warning=dtgen: skipping UART node `{}` — `hw-flow-control` set but `rts`/`cts` pin missing",
-                    node.name
-                );
-                continue;
-            }
-
-            let compatible = node
-                .compatible
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "st,stm32-uart".to_string());
-
-            out.push(Bus {
-                node: idx,
-                instance,
-                baud,
-                data_bits,
-                stop_bits,
-                parity,
-                flow_control,
-                irqn,
-                priority,
-                tx,
-                rx,
-                rts,
-                cts,
-                compatible,
-            });
-        }
-        out
-    }
-
-    /// Resolve the `chosen.osiris,console` property to an index into
-    /// `UART_REGISTRY`. The DTC turns `osiris,console = &foo;` into a
-    /// path string `/soc/foo@..`, which we walk back to a node index
-    /// and then match against `buses`. Returns `None` if the property
-    /// is missing or doesn't point at a UART node we collected.
-    fn resolve_console(dt: &DeviceTree, buses: &[Bus]) -> Option<usize> {
-        let chosen_idx = dt.by_name.get("chosen").and_then(|v| v.first()).copied()?;
-        let chosen = &dt.nodes[chosen_idx];
-        let path = match chosen.extra.get("osiris,console")? {
-            PropValue::Str(s) => s.as_str(),
-            _ => return None,
-        };
-        let node_idx = resolve_path(dt, path)?;
-        buses.iter().position(|b| b.node == node_idx)
-    }
-
-    pub fn emit_registry(dt: &DeviceTree) -> TokenStream {
-        let buses = collect(dt);
-        let console_const = match resolve_console(dt, &buses) {
-            Some(i) => quote! { Some(#i) },
-            None => quote! { None },
-        };
-
-        let pin_tokens = |p: Pin| {
-            let port = p.port;
-            let line = p.line;
-            let af = p.af;
-            quote! { UartPin { port: #port, line: #line, af: #af } }
-        };
-
-        let opt_pin = |p: Option<Pin>| match p {
-            Some(p) => {
-                let pin = pin_tokens(p);
-                quote! { Some(#pin) }
-            }
-            None => quote! { None },
-        };
-
-        let entries = buses.iter().enumerate().map(|(i, b)| {
-            let index = i as u8;
-            let node = b.node;
-            let instance = b.instance;
-            let baud = b.baud;
-            let data_bits = b.data_bits;
-            let stop_bits = b.stop_bits;
-            let parity = b.parity;
-            let flow_control = b.flow_control;
-            let irqn = b.irqn;
-            let priority = b.priority;
-            let tx = pin_tokens(b.tx);
-            let rx = pin_tokens(b.rx);
-            let rts = opt_pin(b.rts);
-            let cts = opt_pin(b.cts);
-            let compatible = b.compatible.as_str();
-            quote! {
-                UartRegistryEntry {
-                    index: #index,
-                    node: #node,
-                    instance: #instance,
-                    compatible: #compatible,
-                    tx: #tx,
-                    rx: #rx,
-                    rts: #rts,
-                    cts: #cts,
-                    baud: #baud,
-                    data_bits: #data_bits,
-                    stop_bits: #stop_bits,
-                    parity: #parity,
-                    flow_control: #flow_control,
-                    irqn: #irqn,
-                    priority: #priority,
-                },
-            }
-        });
-
-        quote! {
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct UartPin {
-                pub port: usize,
-                pub line: u8,
-                pub af: u8,
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            #[repr(C)]
-            pub struct UartRegistryEntry {
-                pub index: u8,
-                pub node: usize,
-                pub instance: usize,
-                pub compatible: &'static str,
-                pub tx: UartPin,
-                pub rx: UartPin,
-                pub rts: Option<UartPin>,
-                pub cts: Option<UartPin>,
-                pub baud: u32,
-                pub data_bits: u8,
-                pub stop_bits: u8,
-                pub parity: u8,
-                pub flow_control: u8,
-                pub irqn: u8,
-                pub priority: u8,
-            }
-
-            pub const UART_REGISTRY: &[UartRegistryEntry] = &[
-                #(#entries)*
-            ];
-
-            #[doc = "index into UART_REGISTRY of the chosen.osiris,console node, resolved at codegen time"]
-            pub const CONSOLE_UART: Option<usize> = #console_const;
-        }
-    }
-
-    pub fn emit_query_api() -> TokenStream {
-        quote! {
-            pub fn uart_by_index(idx: u8) -> Option<&'static UartRegistryEntry> {
-                UART_REGISTRY.iter().find(|e| e.index == idx)
-            }
-
-            pub fn uart_by_compatible(compatible: &str, ord: usize) -> Option<&'static UartRegistryEntry> {
-                let mut matches = 0usize;
-                for e in UART_REGISTRY {
-                    if e.compatible == compatible {
-                        if matches == ord {
-                            return Some(e);
-                        }
-                        matches += 1;
-                    }
-                }
-                None
-            }
+            claimed.push((c.port, c.line, binding, c.child.name.clone()));
         }
     }
 }

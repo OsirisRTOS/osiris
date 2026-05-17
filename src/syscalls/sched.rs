@@ -10,7 +10,7 @@ use crate::{sched, time, uapi::sched::RtAttrs};
 fn sleep(until_hi: u32, until_lo: u32) -> c_int {
     let until = ((until_hi as u64) << 32) | (until_lo as u64);
     sched::with(|sched| {
-        if sched.sleep_until(until, time::tick()).is_err() {
+        if sched.sleep_until(None, until, time::tick()).is_err() {
             bug!("no current thread set.");
         }
     });
@@ -22,24 +22,40 @@ fn sleep_for(duration_hi: u32, duration_lo: u32) -> c_int {
     let duration = ((duration_hi as u64) << 32) | (duration_lo as u64);
     sched::with(|sched| {
         let now = time::tick();
-        if sched.sleep_until(now + duration, now).is_err() {
+        if sched
+            .sleep_until(None, now.saturating_add(duration), now)
+            .is_err()
+        {
             bug!("no current thread set.");
         }
     });
     0
 }
 
+fn valid_rt_attrs(attrs: RtAttrs) -> bool {
+    attrs.budget != 0
+        && attrs.period != 0
+        && attrs.deadline != 0
+        && attrs.budget as u64 <= attrs.deadline
+        && attrs.deadline <= attrs.period as u64
+}
+
 #[syscall_handler(num = 3)]
-fn spawn_thread(func_ptr: usize, attrs: *const RtAttrs) -> c_int {
+fn spawn_thread(func_ptr: usize, ctx: usize, attrs: *const RtAttrs) -> c_int {
     sched::with(|sched| {
         let attrs = if attrs.is_null() {
             None
         } else {
-            Some(unsafe { *attrs })
+            let attrs = unsafe { *attrs };
+            if !valid_rt_attrs(attrs) {
+                return -1;
+            }
+            Some(attrs)
         };
 
         let attrs = sched::thread::Attributes {
             entry: unsafe { core::mem::transmute(func_ptr) },
+            ctx: ctx as *mut core::ffi::c_void,
             fin: None,
             attrs,
         };
@@ -69,4 +85,12 @@ fn exit(_code: usize) -> c_int {
 fn kick_thread(_uid: usize) -> c_int {
     // TODO: Implement a way to retrieve the thread UID from the usize uid.
     0
+}
+
+#[syscall_handler(num = 6)]
+fn current_id() -> c_int {
+    sched::with(|sched| match sched.current_uid() {
+        Some(uid) => uid as c_int,
+        None => -1,
+    })
 }

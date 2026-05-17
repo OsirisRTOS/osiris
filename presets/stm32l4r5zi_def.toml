@@ -7,6 +7,7 @@ OSIRIS_MACHINE = "cortex-m"
 
 # Debugging configuration
 OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
+OSIRIS_METRICS = "false"
 
 # Tuning parameters
 OSIRIS_TUNING_ENABLEFPU = "false"

@@ -1,3 +1,5 @@
+use core::ffi::c_void;
+
 use crate::hal;
 use hal::stack::EntryFn;
 
@@ -22,21 +24,32 @@ pub struct RtAttrs {
     pub budget: u32,
 }
 
-pub fn spawn_thread(_func_ptr: EntryFn, attrs: Option<RtAttrs>) -> isize {
+/// Spawn a thread. `ctx` is delivered to `func_ptr` as its sole argument;
+/// caller owns the lifetime of the pointee.
+pub fn spawn_thread(_func_ptr: EntryFn, _ctx: *mut c_void, attrs: Option<RtAttrs>) -> isize {
     if let Some(attrs) = attrs {
         if attrs.budget == 0 || attrs.period == 0 {
             return -1; // Invalid attributes
         }
 
-        if attrs.budget > attrs.period {
-            return -1; // Budget cannot exceed period
+        if attrs.deadline == 0 || attrs.budget as u64 > attrs.deadline {
+            return -1; // Budget cannot exceed relative deadline
+        }
+
+        if attrs.deadline > attrs.period as u64 {
+            return -1; // Relative deadline cannot exceed period
         }
 
         if attrs.budget > u32::MAX / 2 || attrs.period > u32::MAX / 2 {
             return -1; // Prevent potential overflow in calculations
         }
 
-        hal::asm::syscall!(3, _func_ptr as u32, &attrs as *const RtAttrs as usize)
+        hal::asm::syscall!(
+            3,
+            _func_ptr as u32,
+            _ctx as usize,
+            &attrs as *const RtAttrs as usize
+        )
     } else {
         -1
     }
@@ -47,4 +60,10 @@ pub fn exit(_code: usize) -> ! {
     loop {
         hal::asm::nop!();
     }
+}
+
+/// Raw `UId::as_usize()` of the calling thread, or `-1` if there is
+/// no current thread (kernel pre-init).
+pub fn current_id() -> isize {
+    hal::asm::syscall!(6)
 }

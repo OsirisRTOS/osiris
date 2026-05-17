@@ -174,11 +174,11 @@ impl Device {
                                 true
                             }
                             Some(d) => {
-                                let _ = s.sleep_until(d, now);
+                                let _ = s.sleep_until(None, d, now);
                                 false
                             }
                             None => {
-                                let _ = s.sleep_until(u64::MAX, now);
+                                let _ = s.sleep_until(None, u64::MAX, now);
                                 false
                             }
                         }
@@ -228,11 +228,11 @@ impl Device {
                                 true
                             }
                             Some(d) => {
-                                let _ = s.sleep_until(d, now);
+                                let _ = s.sleep_until(None, d, now);
                                 false
                             }
                             None => {
-                                let _ = s.sleep_until(u64::MAX, now);
+                                let _ = s.sleep_until(None, u64::MAX, now);
                                 false
                             }
                         }

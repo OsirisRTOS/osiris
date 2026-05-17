@@ -7,20 +7,20 @@ use crate::types::array::Vec;
 // TODO: The 3 is must be a device-tree driven constant.
 static BUSES: LazyLock<SpinLocked<Vec<Result<hal::spi::Bus>, 3>>> = LazyLock::new(|| {
     let mut buses = Vec::<Result<hal::spi::Bus>, 3>::new();
-    kprintln!(
-        "Found {} SPI bus entries",
+    kprint!(
+        "Found {} SPI bus entries\n",
         hal::device_tree::SPI_BUS_REGISTRY.len()
     );
     for cfg in hal::device_tree::SPI_BUS_REGISTRY {
         let bus = hal::spi::init(cfg).map_err(|e| e.into());
         match &bus {
-            Ok(bus) => kprintln!("    Initialized SPI bus at 0x{:x}", cfg.instance),
-            Err(e) => kprintln!(
-                "    Failed to initialize SPI bus at 0x{:x}: {e}",
+            Ok(_) => kprint!("    Initialized SPI bus at 0x{:x}\n", cfg.instance),
+            Err(e) => kprint!(
+                "    Failed to initialize SPI bus at 0x{:x}: {e}\n",
                 cfg.instance
             ),
         }
-        buses.push(bus);
+        buses.push(bus).expect("Bus must fit in inline storage.");
     }
     SpinLocked::new(buses)
 });

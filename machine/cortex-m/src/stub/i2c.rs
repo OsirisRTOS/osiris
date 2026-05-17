@@ -13,6 +13,14 @@ pub fn deinit(_bus: &Bus) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
+pub fn recover_bus(_dev: &Device) -> Result<()> {
+    Err(PosixError::EOPNOTSUPP)
+}
+
+pub fn bus_recovery_needed(_dev: &Device) -> Result<bool> {
+    Err(PosixError::EOPNOTSUPP)
+}
+
 pub fn init_device(
     _bus: &Bus,
     _cfg: &'static device_tree::I2cDeviceRegistryEntry,
@@ -22,14 +30,14 @@ pub fn init_device(
 
 pub fn deinit_device(_dev: &Device) {}
 
-pub fn write(_dev: &Device, _tx: &[u8]) -> Result<()> {
+pub fn write(_dev: &Device, _tx: &[u8], _timeout: u16) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
-pub fn read(_dev: &Device, _rx: &mut [u8]) -> Result<()> {
+pub fn read(_dev: &Device, _rx: &mut [u8], _timeout: u16) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
-pub fn write_read(_dev: &Device, _tx: &[u8], _rx: &mut [u8]) -> Result<()> {
+pub fn write_read(_dev: &Device, _tx: &[u8], _rx: &mut [u8], _timeout: u16) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }

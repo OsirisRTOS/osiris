@@ -2,11 +2,14 @@ use core::result::Result::Ok;
 pub use hal_api::*;
 
 pub mod asm;
+pub mod can;
 pub mod device_tree;
+pub mod gpio;
 pub mod i2c;
 pub mod sched;
 pub mod spi;
 pub mod uart;
+pub mod system;
 
 pub type Machine = StubMachine;
 pub type Stack = sched::StubStack;
@@ -16,6 +19,10 @@ pub struct StubMachine;
 impl hal_api::Machinelike for StubMachine {
     fn init() {
         // No hardware to initialize in testing.
+    }
+
+    fn init_irqs(_register: hal_api::IrqRegister) {
+        // No hardware IRQs in testing.
     }
 
     fn print(s: &str) -> Result<()> {

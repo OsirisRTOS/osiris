@@ -59,7 +59,45 @@ impl Region {
 
     #[allow(dead_code)]
     pub fn contains(&self, addr: VirtAddr) -> bool {
-        self.start().saturating_add(self.len()) > addr && addr >= self.start()
+        let Some(start) = self.start else {
+            return false;
+        };
+        start.saturating_add(self.len()) > addr && addr >= start
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unplaced_region_contains_nothing() {
+        let r = Region::new(None, 100, Backing::Uninit, Perms::Read);
+        assert!(!r.contains(VirtAddr::new(0)));
+        assert!(!r.contains(VirtAddr::new(50)));
+        assert!(!r.contains(VirtAddr::new(100)));
+    }
+
+    #[test]
+    fn placed_region_contains_within_bounds() {
+        let r = Region::new(Some(VirtAddr::new(100)), 50, Backing::Uninit, Perms::Read);
+        assert!(!r.contains(VirtAddr::new(99)));
+        assert!(r.contains(VirtAddr::new(100)));
+        assert!(r.contains(VirtAddr::new(149)));
+        assert!(!r.contains(VirtAddr::new(150)));
+    }
+
+    #[test]
+    fn placed_region_saturates_at_usize_max() {
+        let r = Region::new(
+            Some(VirtAddr::new(usize::MAX - 10)),
+            100,
+            Backing::Uninit,
+            Perms::Read,
+        );
+        assert!(r.contains(VirtAddr::new(usize::MAX - 10)));
+        assert!(r.contains(VirtAddr::new(usize::MAX - 1)));
+        assert!(!r.contains(VirtAddr::new(usize::MAX)));
     }
 }
 

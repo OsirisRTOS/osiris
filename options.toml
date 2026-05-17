@@ -10,6 +10,12 @@ name = "Runtime Symbols"
 description = "Enables runtime symbols for debugging. This will increase the binary size by potentially a lot. When enabled e.g. backtraces can display function names."
 type = "Boolean"
 
+[debug.metrics]
+name = "Metrics"
+description = "Enables runtime metrics collection for heap allocator and stack usage. Increases binary size and adds small per-alloc/free overhead."
+type = "Boolean"
+default = false
+
 [debug.uart]
 name = "Debug UART"
 description = "Select the UART peripheral to use for debug output."
