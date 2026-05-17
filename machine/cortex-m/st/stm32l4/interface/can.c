@@ -426,9 +426,10 @@ static void drain_fifo(CAN_HandleTypeDef *hcan, uint8_t slot_idx,
     /* Extend the HW SOF timestamp (hdr.Timestamp, 1 tick = 1 CAN
      * bit-time) to 64 bits. Frames arrive here in order, so raw <
      * previous means one 16-bit wrap. Done before the overflow drop
-     * so dropped frames still advance the tracker. Caveat: a >65.5 ms
-     * gap with no RX frame hides a wrap — fine, sync traffic is
-     * periodic and far faster than that. */
+     * so dropped frames still advance the tracker. Caveat: an RX gap
+     * longer than 65536 bit-times (one counter period; ~65.5 ms at
+     * 1 Mbit/s, scaling with bitrate) hides a wrap — fine, sync
+     * traffic is periodic and far faster than that. */
     uint16_t ts_raw = (uint16_t)hdr.Timestamp;
     if (ts_raw < s_ts_last[slot_idx]) {
       s_ts_hi[slot_idx] += 0x10000ull;

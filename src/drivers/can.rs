@@ -198,8 +198,10 @@ pub fn init() {
 
 /// Host mirror of the SOF-timestamp wrap-extension in C `drain_fifo()`
 /// (`machine/cortex-m/st/stm32l4/interface/can.c`) — keep in sync.
-/// Value units: CAN bit-times since boot; wall-time conversion is the
-/// consumer's job (divide by bitrate).
+/// Value units: CAN bit-times since CAN init / peripheral reset (the
+/// bxCAN counter is zeroed on every `can_init`, not tied to system
+/// uptime); wall-time conversion is the consumer's job (divide by
+/// bitrate).
 #[cfg(test)]
 mod hw_ts_extend_spec {
     /// One extension step. `last`/`hi`: persisted per-slot state;
@@ -260,8 +262,9 @@ mod hw_ts_extend_spec {
 
     #[test]
     fn idle_gap_longer_than_one_epoch_undercounts_is_known_limitation() {
-        // Known caveat: a >65.5 ms RX gap hides full wraps (the `<`
-        // rule sees only one). Fine — sync traffic is far faster.
+        // Known caveat: an RX gap longer than 65536 bit-times (one
+        // counter period) hides full wraps (the `<` rule sees only
+        // one). Fine — sync traffic is far faster.
         assert_eq!(run(&[100, 90]), [100, 0x1_0000 + 90]);
     }
 }
