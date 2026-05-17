@@ -240,7 +240,13 @@ mod hw_ts_extend_spec {
         let v = run(&[60_000, 10, 5, 4, 3]);
         assert_eq!(
             v,
-            [60_000, 0x1_0000 + 10, 0x2_0000 + 5, 0x3_0000 + 4, 0x4_0000 + 3]
+            [
+                60_000,
+                0x1_0000 + 10,
+                0x2_0000 + 5,
+                0x3_0000 + 4,
+                0x4_0000 + 3
+            ]
         );
         // strictly monotonic across wraps
         assert!(v.windows(2).all(|w| w[1] > w[0]));
