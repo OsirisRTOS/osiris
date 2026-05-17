@@ -55,6 +55,10 @@ impl hal_api::Machinelike for StubMachine {
         0
     }
 
+    fn init_rtc() -> i32 {
+        0
+    }
+
     fn rtc_backup_register(index: u8) -> u32 {
         0
     }

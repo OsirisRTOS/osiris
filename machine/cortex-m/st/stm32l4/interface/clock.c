@@ -90,7 +90,7 @@ int init_rtc(void)
         return ERROR_RTC_INIT;
     }
 
-    if (HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR0) != RTC_BKP_MAGIC) {
+    if (HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR31) != RTC_BKP_MAGIC) {
         // Sat 01.01.2000
         unsigned long long time = ((uint64_t)0) |
            ((uint64_t)0 << 8U) |
@@ -200,7 +200,7 @@ int init_clock_cfg(void)
 
     SystemCoreClockUpdate();
     init_monotonic_timer();
-    return init_rtc();
+    return 0;
 }
 
 unsigned long long monotonic_now(void)
@@ -273,7 +273,6 @@ long get_rtc_backup_register(unsigned index)
 
 void set_rtc_backup_register(unsigned index, long value)
 {
-    assert(index != 0 && "Register 0 is reserved for RTC init");
     HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0 + index, value);
 }
 
@@ -322,6 +321,6 @@ int set_rtc_raw(unsigned long long raw)
         return -2;
     }
 
-    HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0, RTC_BKP_MAGIC);
+    HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR31, RTC_BKP_MAGIC);
     return 0;
 }

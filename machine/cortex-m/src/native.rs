@@ -121,6 +121,10 @@ impl hal_api::Machinelike for ArmMachine {
         unsafe { bindings::set_rtc_raw(time) }
     }
 
+    fn init_rtc() -> i32 {
+        unsafe { bindings::init_rtc() }
+    }
+
     fn rtc_backup_register(index: u8) -> u32 {
         unsafe { bindings::rtc_backup_register(index) }
     }

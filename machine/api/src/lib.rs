@@ -34,9 +34,10 @@ pub trait Machinelike {
     fn monotonic_freq() -> u64;
     fn rtc_raw() -> u64;
     fn set_rtc_raw(time: u64) -> i32;
-    // index 0..32, 0 is used by the RTC
+    fn init_rtc() -> i32;
+    // index 0..32, 31 is used by the RTC
     fn rtc_backup_register(index: u8) -> u32;
-    // index 0..32, 0 is used by the RTC
+    // index 0..32, 31 is used by the RTC
     fn set_rtc_backup_register(index: u8, value: u32);
     // Returns the frequency of the machine's systick timer in Hz.
     fn systick_freq() -> u64;
