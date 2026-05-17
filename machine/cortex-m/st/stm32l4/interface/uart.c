@@ -19,18 +19,6 @@
 #define UART_ERR_AGAIN (-4)
 #define UART_ERR_IO (-5)
 
-/* RX coalescing: HAL_UARTEx_ReceiveToIdle_IT lands bytes here and flushes
- * on the hardware IDLE line (~1 char time after the last byte) or when
- * full. 32 bounds worst-case tail latency (~2.8 ms @ 115200) for a
- * gapless >32-byte stream; record-oriented traffic flushes at the
- * inter-record gap. Must be <= UART_RX_RING_SZ - 1 (in-ISR copy target). */
-#define UART_RX_SCRATCH_SZ 32
-/* Mid-stream RXFIFO threshold IRQ guards against overrun on long bursts;
- * IDLE handles prompt end-of-frame delivery. TXFIFO threshold batches TX
- * IT (no TX state-machine change needed). */
-#define UART_RX_FIFO_THRESH UART_RXFIFO_THRESHOLD_3_4
-#define UART_TX_FIFO_THRESH UART_TXFIFO_THRESHOLD_1_2
-
 typedef struct
 {
     uint8_t in_use;
@@ -38,9 +26,8 @@ typedef struct
     uart_bus_cfg_t bus_cfg;
     UART_HandleTypeDef huart;
 
-    /* ReceiveToIdle landing buffer; drained into rx_ring in
-     * HAL_UARTEx_RxEventCallback on IDLE/threshold, then re-armed. */
-    uint8_t rx_scratch[UART_RX_SCRATCH_SZ];
+    /* 1-byte landing pad re-armed in RxCpltCallback. */
+    volatile uint8_t rx_byte;
     uint8_t rx_ring[UART_RX_RING_SZ];
     volatile uint16_t rx_head;
     volatile uint16_t rx_tail;
@@ -242,22 +229,6 @@ static int uart_hw_init(uart_slot_t *slot)
     if (HAL_UART_Init(&slot->huart) != HAL_OK)
         return UART_ERR_IO;
 
-    /* FIFO mode for the interrupt-driven (non-console) path only. The
-     * console is blocking and stays register-pristine. Thresholds must
-     * be set while FIFO is still disabled (they program CR3 RX/TXFTCFG);
-     * EnableFifoMode then sets CR1 FIFOEN and recomputes the HAL's
-     * Nb{Rx,Tx}DataToProcess from those thresholds. All three require
-     * post-HAL_UART_Init state. */
-    if (!slot->console_owned)
-    {
-        if (HAL_UARTEx_SetTxFifoThreshold(&slot->huart, UART_TX_FIFO_THRESH) != HAL_OK)
-            return UART_ERR_IO;
-        if (HAL_UARTEx_SetRxFifoThreshold(&slot->huart, UART_RX_FIFO_THRESH) != HAL_OK)
-            return UART_ERR_IO;
-        if (HAL_UARTEx_EnableFifoMode(&slot->huart) != HAL_OK)
-            return UART_ERR_IO;
-    }
-
     return UART_ERR_OK;
 }
 
@@ -300,23 +271,16 @@ static int uart_init_common(const uart_bus_cfg_t *cfg, uint8_t console_owned)
     if (uart_hw_init(slot) != UART_ERR_OK)
         return UART_ERR_IO;
 
+    slot->in_use = 1;
+
     if (!console_owned)
     {
         IRQn_Type irqn = (IRQn_Type)cfg->irqn;
         HAL_NVIC_SetPriority(irqn, cfg->priority, 0);
         HAL_NVIC_EnableIRQ(irqn);
-        /* Arm idle-line RX: the HAL fires HAL_UARTEx_RxEventCallback with
-         * the bytes received so far on the IDLE line or when rx_scratch
-         * fills, instead of one RxCplt per byte. */
-        if (HAL_UARTEx_ReceiveToIdle_IT(&slot->huart, slot->rx_scratch,
-                                        UART_RX_SCRATCH_SZ) != HAL_OK)
+        if (HAL_UART_Receive_IT(&slot->huart, (uint8_t *)&slot->rx_byte, 1) != HAL_OK)
             return UART_ERR_IO;
     }
-
-    /* in_use is the last write: a failure above leaves the slot free, so
-     * uart_find_slot/uart_alloc_slot never hand out a half-initialized
-     * slot (fixes the failed-init-leaves-slot-stuck-in-use bug). */
-    slot->in_use = 1;
 
     return uart_slot_index(slot);
 }
@@ -482,11 +446,7 @@ static void uart_arm_tx(uart_slot_t *slot)
     }
 }
 
-/* Fires once per RX event (IDLE line, RXFIFO threshold, or rx_scratch
- * full) with the number of bytes landed in rx_scratch — not per byte.
- * IDLE and buffer-full are handled identically (no half-transfer split,
- * so HAL_UARTEx_GetRxEventType is unnecessary). */
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     for (int i = 0; i < UART_SLOT_COUNT; ++i)
     {
@@ -494,44 +454,18 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
         if (!slot->in_use || &slot->huart != huart)
             continue;
 
-        /* HAL bounds Size to the armed length; clamp defensively. */
-        if (Size > UART_RX_SCRATCH_SZ)
-            Size = UART_RX_SCRATCH_SZ;
-
-        for (uint16_t j = 0; j < Size; ++j)
+        uint16_t next = (uint16_t)((slot->rx_head + 1) % UART_RX_RING_SZ);
+        if (next != slot->rx_tail)
         {
-            uint16_t next = (uint16_t)((slot->rx_head + 1) % UART_RX_RING_SZ);
-            if (next == slot->rx_tail)
-                break; /* ring full ⇒ drop rest; consumer resyncs. */
-            slot->rx_ring[slot->rx_head] = slot->rx_scratch[j];
+            slot->rx_ring[slot->rx_head] = slot->rx_byte;
             slot->rx_head = next;
         }
+        // ring full ⇒ drop. Consumer recovers from the next read.
 
-        /* One wake per event, not per byte — the interrupt-load win. */
-        if (Size > 0 && slot->cb)
+        if (slot->cb)
             slot->cb(UART_IRQ_RX, slot->cb_ctx);
 
-        /* RxState was set READY by the HAL before this callback. */
-        HAL_UARTEx_ReceiveToIdle_IT(&slot->huart, slot->rx_scratch,
-                                    UART_RX_SCRATCH_SZ);
-        return;
-    }
-}
-
-/* On ORE/overrun (or framing/parity error) the HAL aborts the
- * ReceiveToIdle transfer and sets RxState READY WITHOUT an RxEvent
- * callback, which would leave RX permanently dead. Re-arm so RX
- * self-heals; bytes lost in the overrun are the caller's protocol to
- * recover (same resilience as the ring-full drop above). */
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
-{
-    for (int i = 0; i < UART_SLOT_COUNT; ++i)
-    {
-        uart_slot_t *slot = &uart_slots[i];
-        if (!slot->in_use || slot->console_owned || &slot->huart != huart)
-            continue;
-        HAL_UARTEx_ReceiveToIdle_IT(&slot->huart, slot->rx_scratch,
-                                    UART_RX_SCRATCH_SZ);
+        HAL_UART_Receive_IT(&slot->huart, (uint8_t *)&slot->rx_byte, 1);
         return;
     }
 }
