@@ -82,14 +82,6 @@ fn flow_to_u8(f: FlowControl) -> u8 {
     }
 }
 
-fn duration_to_ticks(d: Duration) -> u64 {
-    use crate::hal::Machinelike;
-    let freq = crate::hal::Machine::systick_freq();
-    let secs = d.as_secs().saturating_mul(freq);
-    let sub = (d.subsec_micros() as u64).saturating_mul(freq) / 1_000_000;
-    secs.saturating_add(sub)
-}
-
 pub struct Device {
     desc: crate::hal::uart::Device,
     read_timeout: Option<Duration>,
@@ -158,7 +150,7 @@ impl Device {
             Some(u) => u as u32,
             None => return Err(Error::Io),
         };
-        let deadline = timeout.map(|d| time::tick().saturating_add(duration_to_ticks(d)));
+        let deadline = timeout.map(|d| time::tick().saturating_add(time::duration_to_ticks(d)));
         let waiter = wait::Waiter::new(uid);
         wait::register_rx_waiter(self.slot(), &waiter);
         let result = loop {
@@ -211,7 +203,7 @@ impl Device {
             Some(u) => u as u32,
             None => return Err(Error::Io),
         };
-        let deadline = timeout.map(|d| time::tick().saturating_add(duration_to_ticks(d)));
+        let deadline = timeout.map(|d| time::tick().saturating_add(time::duration_to_ticks(d)));
         let waiter = wait::Waiter::new(uid);
         wait::register_tx_waiter(self.slot(), &waiter);
         let mut sent = 0usize;

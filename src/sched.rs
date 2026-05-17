@@ -543,15 +543,9 @@ pub fn reschedule() {
     hal::Machine::trigger_reschedule();
 }
 
-/// Wake a thread by raw `uid` from ISR context. `sched::with` disables
-/// IRQs internally, and the trailing `reschedule()` arms PendSV so the
-/// woken thread is picked on IRQ-exit. Errors are swallowed — a
-/// not-yet-sleeping target is the common case and the consumer's bounded
-/// sleep loop covers it.
-///
-/// Exported as a C-FFI symbol so consumers that run in interrupt context
-/// can avoid the SVC path, which would HardFault from handler mode on
-/// Cortex-M.
+/// Wake a thread by raw `uid`. C-FFI so ISR-context callers can use it
+/// without going through the syscall path. Errors are swallowed:
+/// not-yet-sleeping is normal.
 #[unsafe(no_mangle)]
 pub extern "C" fn kick_thread(uid: u32) {
     with(|sched| {

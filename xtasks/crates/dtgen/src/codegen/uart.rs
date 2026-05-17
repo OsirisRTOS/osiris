@@ -73,8 +73,13 @@ fn decode_pinctrl<'a>(dt: &'a DeviceTree, pinctrl: &[u32]) -> Vec<(&'static str,
                 let (port_idx, line, mode) = decode_stm32_pinmux(pinmux);
                 let base = pin_ctrl
                     .reg
-                    .and_then(|(b, _)| usize::try_from(b).ok())
-                    .unwrap_or(0);
+                    .and_then(|(base, _)| usize::try_from(base).ok())
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Pin controller node {} is missing a valid reg base",
+                            pin_ctrl.name
+                        )
+                    });
                 Pin { port: base + (port_idx * 0x400), line, af: mode }
             }
         });
@@ -168,14 +173,14 @@ fn collect(dt: &DeviceTree) -> Vec<Bus> {
 
         let Some(tx) = tx else {
             eprintln!(
-                "cargo::warning=dtgen: skipping UART node `{}` — no `tx` pin in pinctrl-0",
+                "cargo::warning=dtgen: skipping UART node `{}` — no `tx` pin in any pinctrl-* state",
                 node.name
             );
             continue;
         };
         let Some(rx) = rx else {
             eprintln!(
-                "cargo::warning=dtgen: skipping UART node `{}` — no `rx` pin in pinctrl-0",
+                "cargo::warning=dtgen: skipping UART node `{}` — no `rx` pin in any pinctrl-* state",
                 node.name
             );
             continue;
