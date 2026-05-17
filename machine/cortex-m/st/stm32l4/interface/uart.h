@@ -69,8 +69,9 @@ int uart_transmit_nb(uintptr_t instance, const uint8_t *buf, int len);
  * bytes drained (0..len). Not valid on a console-owned slot. */
 int uart_receive_nb(uintptr_t instance, uint8_t *buf, int len);
 
-/* Install an ISR-context callback. Called from HAL_UART_RxCpltCallback after
- * each byte is pushed to the RX ring (kind=RX) and from HAL_UART_TxCpltCallback
+/* Install an ISR-context callback. Called from HAL_UARTEx_RxEventCallback
+ * once per RX event — a burst of bytes pushed to the RX ring on the IDLE
+ * line or RXFIFO threshold (kind=RX) — and from HAL_UART_TxCpltCallback
  * when the TX ring drains (kind=TX_DONE). Pass NULL fn to clear. */
 int uart_set_irq_handler(uintptr_t instance, uart_irq_handler_fn fn, void *ctx);
 
