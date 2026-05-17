@@ -34,9 +34,8 @@ fn parse_uart_role(name: &str) -> Option<&'static str> {
     let mut parts = name.split('_');
     let periph = parts.next()?;
     let signal = parts.next()?;
-    let is_uart = periph.starts_with("usart")
-        || periph.starts_with("uart")
-        || periph.starts_with("lpuart");
+    let is_uart =
+        periph.starts_with("usart") || periph.starts_with("uart") || periph.starts_with("lpuart");
     if !is_uart {
         return None;
     }
