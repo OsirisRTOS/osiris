@@ -289,6 +289,9 @@ pub struct Thread {
 
     waiter: Option<Waiter>,
 
+    /// Wake latched while not sleeping; consumed by the next park.
+    pending_wake: bool,
+
     #[list(tag = RRList, idx = UId)]
     rr_links: list::Links<RRList, UId>,
 
@@ -311,6 +314,7 @@ impl Thread {
             uid,
             rt_server: server,
             waiter: None,
+            pending_wake: false,
             rr_links: list::Links::new(),
             thread_links: list::Links::new(),
         }
@@ -326,6 +330,15 @@ impl Thread {
 
     pub fn is_waiting(&self) -> bool {
         self.waiter.is_some()
+    }
+
+    pub fn set_pending_wake(&mut self) {
+        self.pending_wake = true;
+    }
+
+    /// Returns and clears the latched wake.
+    pub fn take_pending_wake(&mut self) -> bool {
+        core::mem::replace(&mut self.pending_wake, false)
     }
 
     pub fn save_ctx(&mut self, ctx: *mut c_void) -> Result<()> {

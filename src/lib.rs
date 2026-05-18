@@ -31,6 +31,7 @@ pub use hal_cortex_m::*;
 // Add new hals here. No cfg needed.
 
 pub use hal::Machinelike;
+pub use crate::sync::waiter::ParkedWaiter;
 pub use hal_api::error::*;
 pub use proc_macros::app_main;
 

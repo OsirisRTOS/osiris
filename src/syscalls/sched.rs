@@ -87,6 +87,29 @@ fn kick_thread(_uid: usize) -> c_int {
     0
 }
 
+/// Sleep until `duration` ticks elapse, unless a wake was latched for
+/// this thread meanwhile (then return at once). `u64::MAX` = forever.
+#[syscall_handler(num = 7)]
+fn park_pending(duration_hi: u32, duration_lo: u32) -> c_int {
+    let duration = ((duration_hi as u64) << 32) | (duration_lo as u64);
+    sched::with(|sched| {
+        let Some(uid) = sched.current_uid() else {
+            bug!("no current thread set.");
+        };
+        if sched.take_pending_wake_by_uid(uid) {
+            return 0;
+        }
+        let now = time::tick();
+        if sched
+            .sleep_until(None, now.saturating_add(duration), now)
+            .is_err()
+        {
+            bug!("no current thread set.");
+        }
+        0
+    })
+}
+
 #[syscall_handler(num = 6)]
 fn current_id() -> c_int {
     sched::with(|sched| match sched.current_uid() {
