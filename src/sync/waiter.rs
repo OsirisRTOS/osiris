@@ -110,11 +110,7 @@ impl ParkedWaiter {
             if !forever && now >= deadline {
                 break None;
             }
-            let remaining = if forever {
-                u64::MAX
-            } else {
-                deadline - now
-            };
+            let remaining = if forever { u64::MAX } else { deadline - now };
             let _ = crate::uapi::sched::park_pending(remaining);
         };
         self.disarm();
