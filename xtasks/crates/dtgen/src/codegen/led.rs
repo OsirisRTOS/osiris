@@ -24,7 +24,6 @@ impl DefaultState {
                     node.name, other
                 ),
             },
-            // Flag-form (`default-state;`) → Off, matching the Linux binding.
             Some(PropValue::Empty) | None => DefaultState::Off,
             Some(other) => panic!(
                 "gpio-leds child {}: `default-state` must be a string \

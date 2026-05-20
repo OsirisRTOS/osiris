@@ -87,12 +87,6 @@ fn level_for(entry: &LedRegistryEntry, on: bool) -> Level {
     }
 }
 
-/// `default-state = "keep"`. Reads ODR (set by whatever ran before us,
-/// e.g. a bootloader) instead of IDR — IDR is forced to 0 on an
-/// analog-mode pin (RM0432 §8.3.12). Only ODR=High is preserved; Low
-/// falls back to logical-Off because ODR's reset value is also 0
-/// (RM0432 §8.4.6), so Low is ambiguous and would illuminate
-/// active-low LEDs on cold boot.
 fn keep_initial_level(entry: &LedRegistryEntry) -> Level {
     let pin = pin_of(entry);
     if let Err(e) = hal::gpio::enable_port_clock(pin) {
