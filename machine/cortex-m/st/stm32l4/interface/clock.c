@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stm32l4xx_hal.h>
 #include "stm32l4xx_hal_rcc.h"
+#include "stm32l4xx_hal_rcc_ex.h"
 #include <sys/_intsup.h>
 #include <stm32l4xx_ll_tim.h>
 
@@ -10,71 +11,109 @@ static volatile uint64_t monotonic_hi = 0;
 static volatile uint32_t tick = 0;
 
 #define RTC_BKP_MAGIC 0x4F534952U
-#define LSE_READY_TIMEOUT_LOOPS 2000000U
-#define LSI_READY_TIMEOUT_LOOPS 200000U
 
-#define ERROR_CONTROL_VOLTAGE_SCALING -1
-#define ERROR_RCC_OSC_CONFIG -2
-#define ERROR_RCC_CLOCK_CONFIG -3
-#define ERROR_RTC_INIT_CLOCK_SOURCE -4
-#define ERROR_RTC_INIT -5
+// use msb for the error type
+// lower byte(s) contain hal status
+enum ErrorTypes : uint64_t {
+     ERROR_CONTROL_VOLTAGE_SCALING = 0x01U << 56U,
+     ERROR_RCC_OSC_CONFIG = 0x02U << 56U,
+     ERROR_RCC_CLOCK_CONFIG = 0x03U << 56U,
+     ERROR_RTC_INIT_CLOCK_SOURCE = 0x04U << 56U,
+     ERROR_RTC_INIT = 0x05U << 56U,
+     ERROR_RTC_GET_TIME = 0x06U << 56U,
+     ERROR_RTC_GET_DATE = 0x07U << 56U,
+     ERROR_RTC_SET_TIME = 0x08U << 56U,
+     ERROR_RTC_SET_DATE = 0x09U << 56U
+};
 
 static RTC_HandleTypeDef rtc_handle;
 
-static int wait_rcc_ready_flag(uint32_t flag, uint32_t timeout_loops)
-{
-    while (timeout_loops > 0U) {
-        if (__HAL_RCC_GET_FLAG(flag) != RESET) {
-            return -1;
-        }
-
-        timeout_loops--;
-    }
-
-    return 0;
-}
-
-static HAL_StatusTypeDef select_rtc_clock_source(uint32_t source)
-{
-    RCC_PeriphCLKInitTypeDef periph = {0};
-
-    periph.PeriphClockSelection = RCC_PERIPHCLK_RTC;
-    periph.RTCClockSelection = source;
-
-    return HAL_RCCEx_PeriphCLKConfig(&periph);
-}
-
+/**
+* Try to use LSE, fall back to LSI and enable CSS if both are available.
+* @retval HAL_StatusTypeDef codes:
+* bit 0-1: selecting LSE clock source
+* bit 2-3: selecting LSI clock source
+* bit 4-5: HAL_TIMEOUT from waiting for LSI ready
+ */
 static int init_rtc_clock_source(void)
 {
+    HAL_PWR_EnableBkUpAccess();
+    int error = 0;
+
+    __HAL_RCC_LSI_ENABLE();
+
     __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_HIGH);
     __HAL_RCC_LSE_CONFIG(RCC_LSE_ON);
 
-    if (!wait_rcc_ready_flag(RCC_FLAG_LSERDY, LSE_READY_TIMEOUT_LOOPS) &&
-        select_rtc_clock_source(RCC_RTCCLKSOURCE_LSE) == HAL_OK) {
-        __HAL_RCC_RTC_ENABLE();
-        return 0;
-    }
-    
-    __HAL_RCC_LSE_CONFIG(RCC_LSE_OFF);
-    __HAL_RCC_LSI_ENABLE();
+    RCC_PeriphCLKInitTypeDef periph = {0};
+    periph.PeriphClockSelection = RCC_PERIPHCLK_RTC;
 
-    if (!wait_rcc_ready_flag(RCC_FLAG_LSIRDY, LSI_READY_TIMEOUT_LOOPS) &&
-        select_rtc_clock_source(RCC_RTCCLKSOURCE_LSI) == HAL_OK) {
-        __HAL_RCC_RTC_ENABLE();
-        return 0;
+    periph.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+    HAL_StatusTypeDef status = HAL_RCCEx_PeriphCLKConfig(&periph);
+
+    if (status != HAL_OK) {
+      error = status;
+      // fallback to LSI
+      periph.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+      status = HAL_RCCEx_PeriphCLKConfig(&periph);
+      // if LSI selection also fails, return both errors
+      if (status != HAL_OK) {
+        error |= status << 2;
+        return error;
+      }
     }
-    return -1;
+
+    // ensure LSI is ready
+    uint32_t tickstart = HAL_GetTick();
+    while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY) == RESET) {
+      if ((HAL_GetTick() - tickstart) > RCC_LSE_TIMEOUT_VALUE) {
+        error |= HAL_TIMEOUT << 4;
+        break;
+      }
+    }
+
+    __HAL_RCC_RTC_ENABLE();
+
+    // clock security system requires both LSE and LSI to be enabled.
+    if (!error) {
+       HAL_RCCEx_EnableLSECSS();
+       __HAL_RCC_ENABLE_IT(RCC_IT_LSECSS);
+    }
+    HAL_PWR_DisableBkUpAccess();
+
+    return error;
 }
 
-int set_rtc_raw(unsigned long long raw);
-int init_rtc(void)
+void handle_css_lse_interrupt()
+{
+    HAL_PWR_EnableBkUpAccess();
+    __HAL_RCC_CLEAR_IT(RCC_IT_LSECSS);
+
+    // The software MUST then disable the LSECSSON bit
+    HAL_RCCEx_DisableLSECSS();
+    // stop the defective 32 kHz oscillator (disabling LSEON)
+    __HAL_RCC_LSE_CONFIG(RCC_LSE_OFF);
+
+    // and change the RTC clock source (no clock or LSI or HSE, with RTCSEL)
+    RCC_PeriphCLKInitTypeDef periph = {0};
+    periph.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+    periph.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+    HAL_StatusTypeDef status = HAL_RCCEx_PeriphCLKConfig(&periph);
+    if (status != HAL_OK) {
+        // internal clock failed, try again later?
+        __HAL_RCC_RTC_DISABLE();
+    }
+    HAL_PWR_DisableBkUpAccess();
+}
+
+uint64_t set_rtc_raw(uint64_t raw);
+uint64_t init_rtc(void)
 {
     __HAL_RCC_PWR_CLK_ENABLE();
-    HAL_PWR_EnableBkUpAccess();
 
-    // TODO: setup Clock Security System
-    if (init_rtc_clock_source()) {
-        return ERROR_RTC_INIT_CLOCK_SOURCE;
+    int ret = init_rtc_clock_source();
+    if (ret) {
+        return ERROR_RTC_INIT_CLOCK_SOURCE | ret;
     }
 
     rtc_handle.Instance = RTC;
@@ -86,8 +125,9 @@ int init_rtc(void)
     rtc_handle.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
     rtc_handle.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
 
-    if (HAL_RTC_Init(&rtc_handle) != HAL_OK) {
-        return ERROR_RTC_INIT;
+    ret = HAL_RTC_Init(&rtc_handle);
+    if (ret != HAL_OK) {
+        return ERROR_RTC_INIT | ret;
     }
 
     if (HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR31) != RTC_BKP_MAGIC) {
@@ -154,7 +194,7 @@ void tim2_hndlr(void)
     }
 }
 
-int init_clock_cfg(void)
+uint64_t init_clock_cfg(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
@@ -162,8 +202,9 @@ int init_clock_cfg(void)
     /* 80 MHz on STM32L4+ => Range 1 normal mode, not boost */
     __HAL_RCC_PWR_CLK_ENABLE();
 
-    if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK) {
-       return ERROR_CONTROL_VOLTAGE_SCALING;
+    int ret = HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
+    if (ret != HAL_OK) {
+       return ERROR_CONTROL_VOLTAGE_SCALING | ret;
     }
 
     /* HSI16 -> PLL -> 80 MHz SYSCLK */
@@ -179,8 +220,9 @@ int init_clock_cfg(void)
     RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV7;   // arbitrary unless you use PLLP
     RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;   // arbitrary unless you use PLLQ
 
-    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-       return ERROR_RCC_OSC_CONFIG;
+    ret = HAL_RCC_OscConfig(&RCC_OscInitStruct);
+    if (ret != HAL_OK) {
+       return ERROR_RCC_OSC_CONFIG | ret;
     }
 
     RCC_ClkInitStruct.ClockType =
@@ -194,8 +236,9 @@ int init_clock_cfg(void)
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK) {
-       return ERROR_RCC_CLOCK_CONFIG;
+    ret = HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4);
+    if (ret != HAL_OK) {
+       return ERROR_RCC_CLOCK_CONFIG | ret;
     }
 
     SystemCoreClockUpdate();
@@ -266,39 +309,43 @@ void do_tick(void)
 }
 
 
-long get_rtc_backup_register(unsigned index)
+uint32_t get_rtc_backup_register(uint32_t index)
 {
     return HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR0 + index);
 }
 
-void set_rtc_backup_register(unsigned index, long value)
+void set_rtc_backup_register(uint32_t index, uint32_t value)
 {
+    HAL_PWR_EnableBkUpAccess();
     HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0 + index, value);
+    HAL_PWR_DisableBkUpAccess();
 }
 
-unsigned long long rtc_raw(void)
+uint64_t rtc_raw(void)
 {
     RTC_TimeTypeDef time = {0};
     RTC_DateTypeDef date = {0};
 
-    if (HAL_RTC_GetTime(&rtc_handle, &time, RTC_FORMAT_BCD) != HAL_OK) {
-        return -1U;
+    int ret = HAL_RTC_GetTime(&rtc_handle, &time, RTC_FORMAT_BCD);
+    if (ret != HAL_OK) {
+        return ERROR_RTC_GET_TIME | ret;
     }
 
-    if (HAL_RTC_GetDate(&rtc_handle, &date, RTC_FORMAT_BCD) != HAL_OK) {
-        return -2U;
+    ret = HAL_RTC_GetDate(&rtc_handle, &date, RTC_FORMAT_BCD);
+    if (ret != HAL_OK) {
+        return ERROR_RTC_GET_DATE | ret;
     }
 
     return ((uint64_t)time.Hours) |
            ((uint64_t)time.Minutes << 8U) |
            ((uint64_t)time.Seconds << 16U) |
-           ((uint64_t)date.WeekDay << 32U) |              
-           ((uint64_t)date.Month << 40U) |
-           ((uint64_t)date.Date << 48U) |
-           ((uint64_t)date.Year << 56U);
+           ((uint64_t)date.WeekDay << 24U) |              
+           ((uint64_t)date.Month << 32U) |
+           ((uint64_t)date.Date << 40U) |
+           ((uint64_t)date.Year << 48U);
 }
 
-int set_rtc_raw(unsigned long long raw)
+uint64_t set_rtc_raw(uint64_t raw)
 {
     RTC_TimeTypeDef rtc_time = {0};
     RTC_DateTypeDef rtc_date = {0};
@@ -313,12 +360,14 @@ int set_rtc_raw(unsigned long long raw)
     rtc_date.Date = (uint8_t)((raw >> 48U) & 0xFFU);
     rtc_date.Year = (uint8_t)((raw >> 56U) & 0xFFU);
 
-    if (HAL_RTC_SetTime(&rtc_handle, &rtc_time, RTC_FORMAT_BCD) != HAL_OK) {
-        return -1;
+    int ret = HAL_RTC_SetTime(&rtc_handle, &rtc_time, RTC_FORMAT_BCD);
+    if (ret != HAL_OK) {
+        return ERROR_RTC_SET_TIME | ret;
     }
 
-    if (HAL_RTC_SetDate(&rtc_handle, &rtc_date, RTC_FORMAT_BCD) != HAL_OK) {
-        return -2;
+    ret = HAL_RTC_SetDate(&rtc_handle, &rtc_date, RTC_FORMAT_BCD);
+    if (ret != HAL_OK) {
+        return ERROR_RTC_SET_DATE | ret;
     }
 
     HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR31, RTC_BKP_MAGIC);
