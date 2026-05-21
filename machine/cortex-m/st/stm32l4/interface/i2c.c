@@ -11,6 +11,7 @@
 #define I2C_SLOT_COUNT 4
 #define I2C_RECOVERY_CLOCKS 9
 #define I2C_RECOVERY_DELAY_US 5U
+#define I2C_ENABLE_SETTLE_US 10000U
 
 struct i2c_bus {
     uint8_t in_use;
@@ -437,6 +438,8 @@ int i2c_init_device(const i2c_device_cfg_t *dev_cfg)
         gpio_enable_clock(port);
         gpio_init_output(port, pin);
         HAL_GPIO_WritePin(port, pin, active_state);
+        /* Let the device power up before the first transaction. */
+        delay_us(I2C_ENABLE_SETTLE_US);
         return 0;
     }
 
