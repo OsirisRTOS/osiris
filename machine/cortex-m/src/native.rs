@@ -8,6 +8,7 @@ pub mod debug;
 pub mod excep;
 pub mod gpio;
 pub mod i2c;
+pub mod mcu_temp;
 pub mod panic;
 pub mod sched;
 pub mod spi;

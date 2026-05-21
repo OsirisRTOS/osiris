@@ -253,3 +253,10 @@ unsigned long long monotonic_freq(void);
 void delay_us(uint32_t delay_us);
 void do_tick(void);
 void tim2_hndlr(void);
+
+// mcu_temp.c
+// Sentinel returned on init/conversion failure.
+#define HAL_MCU_TEMP_ERROR INT32_MIN
+// Reads the MCU internal junction temperature, in milli-degrees Celsius,
+// or HAL_MCU_TEMP_ERROR on failure.
+int32_t hal_mcu_temp_millidegc(void);
