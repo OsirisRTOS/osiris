@@ -51,7 +51,11 @@ pub fn configure_input(_pin: Pin, _pull: Pull) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
-pub fn configure_output(_pin: Pin, _initial: Level) -> Result<()> {
+pub fn configure_output(_pin: Pin, _initial: Level, _pull: Pull) -> Result<()> {
+    Err(PosixError::EOPNOTSUPP)
+}
+
+pub fn configure_output_od(_pin: Pin, _initial: Level, _pull: Pull) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
@@ -59,7 +63,15 @@ pub fn write(_pin: Pin, _level: Level) -> Result<()> {
     Err(PosixError::EOPNOTSUPP)
 }
 
+pub fn enable_port_clock(_pin: Pin) -> Result<()> {
+    Err(PosixError::EOPNOTSUPP)
+}
+
 pub fn read(_pin: Pin) -> Result<Level> {
+    Err(PosixError::EOPNOTSUPP)
+}
+
+pub fn read_odr(_pin: Pin) -> Result<Level> {
     Err(PosixError::EOPNOTSUPP)
 }
 

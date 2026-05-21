@@ -76,9 +76,19 @@ pub fn configure_input(pin: Pin, pull: Pull) -> Result<()> {
     ok_or_err(rc, ())
 }
 
-pub fn configure_output(pin: Pin, initial: Level) -> Result<()> {
+pub fn configure_output(pin: Pin, initial: Level, pull: Pull) -> Result<()> {
     let mask = pin_mask(pin)?;
-    let rc = unsafe { bindings::gpio_configure_output_pp(port_ptr(pin), mask, initial as u8) };
+    let rc = unsafe {
+        bindings::gpio_configure_output_pp(port_ptr(pin), mask, initial as u8, pull as u8)
+    };
+    ok_or_err(rc, ())
+}
+
+pub fn configure_output_od(pin: Pin, initial: Level, pull: Pull) -> Result<()> {
+    let mask = pin_mask(pin)?;
+    let rc = unsafe {
+        bindings::gpio_configure_output_od(port_ptr(pin), mask, initial as u8, pull as u8)
+    };
     ok_or_err(rc, ())
 }
 
@@ -88,9 +98,30 @@ pub fn write(pin: Pin, level: Level) -> Result<()> {
     ok_or_err(rc, ())
 }
 
+/// Ungate the port's clock without touching mode/pull — needed
+/// before `read_odr` on a still-analog pin.
+pub fn enable_port_clock(pin: Pin) -> Result<()> {
+    let rc = unsafe { bindings::gpio_clock_enable(port_ptr(pin)) };
+    ok_or_err(rc, ())
+}
+
 pub fn read(pin: Pin) -> Result<Level> {
     let mask = pin_mask(pin)?;
     let rc = unsafe { bindings::gpio_read(port_ptr(pin), mask) };
+    match rc {
+        0 => Ok(Level::Low),
+        1 => Ok(Level::High),
+        other if other < 0 => Err(PosixError::from_errno(-other)),
+        _ => Err(PosixError::EIO),
+    }
+}
+
+/// Read ODR (latched output bit). Use instead of `read` on a pin
+/// that may still be in analog mode — IDR is forced to 0 there
+/// (RM0432 §8.3.12). Clock must be ungated.
+pub fn read_odr(pin: Pin) -> Result<Level> {
+    let mask = pin_mask(pin)?;
+    let rc = unsafe { bindings::gpio_read_odr(port_ptr(pin), mask) };
     match rc {
         0 => Ok(Level::Low),
         1 => Ok(Level::High),

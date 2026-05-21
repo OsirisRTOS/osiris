@@ -86,6 +86,29 @@ pub fn can_by_compatible(_compatible: &str, _ord: usize) -> Option<&'static CanR
     None
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LedDefaultState {
+    Off,
+    On,
+    Keep,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LedOutputMode {
+    PushPull,
+    OpenDrain,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LedPull {
+    None,
+    Up,
+    Down,
+}
+
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct LedRegistryEntry {
@@ -94,6 +117,9 @@ pub struct LedRegistryEntry {
     pub line: u8,
     pub active_low: u8,
     pub label: &'static str,
+    pub default_state: LedDefaultState,
+    pub output_mode: LedOutputMode,
+    pub pull: LedPull,
 }
 
 pub const LED_REGISTRY: &[LedRegistryEntry] = &[];
