@@ -11,6 +11,8 @@ static volatile uint32_t tick = 0;
 
 #define RTC_BKP_MAGIC 0x4F534952U
 
+const int CONST_RCC_IRQn = RCC_IRQn;
+
 // use msb for the error type
 // lower byte(s) contain hal status
 enum ErrorTypes : uint64_t {
@@ -83,10 +85,23 @@ static int init_rtc_clock_source(void)
     return error;
 }
 
+_Bool irq_is_css(void) { 
+    return __HAL_RCC_GET_IT(RCC_IT_CSS);
+}
+
+_Bool irq_is_lse_css(void)  { 
+    return __HAL_RCC_GET_IT(RCC_IT_LSECSS);
+}
+
+void css_hndlr() {
+    __HAL_RCC_CLEAR_IT(RCC_IT_CSS);
+    // TODO switch to HSI, reconfigure PLL
+}
+
 void css_lse_hndlr()
 {
-    HAL_PWR_EnableBkUpAccess();
     __HAL_RCC_CLEAR_IT(RCC_IT_LSECSS);
+    HAL_PWR_EnableBkUpAccess();
 
     // The software MUST then disable the LSECSSON bit
     HAL_RCCEx_DisableLSECSS();

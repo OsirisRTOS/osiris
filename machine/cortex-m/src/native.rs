@@ -43,8 +43,16 @@ fn monotonic_overflow_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize
     unsafe { bindings::tim2_hndlr() };
 }
 
-fn css_lse_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
-    unsafe { bindings::css_lse_hndlr() }
+fn nmi_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    if unsafe { bindings::irq_is_css() } {
+        unsafe { bindings::css_hndlr() }
+    }
+}
+
+fn rcc_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    if unsafe { bindings::irq_is_lse_css() } {
+        unsafe { bindings::css_lse_hndlr() }
+    }
 }
 
 impl hal_api::Machinelike for ArmMachine {
@@ -79,11 +87,16 @@ impl hal_api::Machinelike for ArmMachine {
             panic!("failed to register monotonic timer IRQ at vector {vector}: {e}");
         }
 
-        /* TODO find vector
-        let vector = irqn as usize + 16;
-        if let Err(e) = register(vector, css_lse_irq, None) {
-            panic!("failed to register CSS LSE IRQ at vector {vector}: {e}");
+        /* TODO ensure NMI is not handled elsewhere
+        let vector = 2;
+        if let Err(e) = register(vector, nmi_irq, None) {
+            panic!("failed to register CSS IRQ at vector {vector}: {e}");
         }*/
+
+        let vector = unsafe { bindings::CONST_RCC_IRQn as usize } + 16;
+        if let Err(e) = register(vector, rcc_irq, None) {
+            panic!("failed to register CSS LSE IRQ at vector {vector}: {e}");
+        }
     }
 
     fn print(s: &str) -> Result<()> {

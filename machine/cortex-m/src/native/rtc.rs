@@ -2,7 +2,6 @@ use hal_api::PosixError;
 
 use super::{Result, bindings};
 
-#[allow(unused_macros)]
 macro_rules! println {
     ($($arg:tt)*) => ({
         use core::fmt::Write;

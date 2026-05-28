@@ -257,6 +257,11 @@ void tim2_hndlr(void);
 uint64_t init_rtc(void);
 uint64_t rtc_raw(void);
 uint64_t set_rtc_raw(uint64_t time);
+
+extern const int CONST_RCC_IRQn;
+_Bool irq_is_css(void);
+_Bool irq_is_lse_css(void);
+void css_hndlr(void);
 void css_lse_hndlr(void);
 
 uint32_t rtc_backup_register(uint8_t index);
