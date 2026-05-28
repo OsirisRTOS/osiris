@@ -74,7 +74,7 @@ impl Region {
     pub fn get_by_label(_label: &str) -> Result<Self> {
         Err(Error::NotFound)
     }
-    pub fn get_by_address(_addr: impl Into<FlashAddress>) -> Result<(Self, usize)> {
+    pub fn get_by_address(_addr: impl Into<FlashAddress>) -> Result<Self> {
         Err(Error::NotFound)
     }
     pub fn label(&self) -> &'static str {

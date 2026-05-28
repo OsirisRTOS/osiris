@@ -167,7 +167,10 @@ pub fn program<A: Into<FlashAddress>>(
         .as_usize()
         .checked_add(bytes)
         .ok_or(Error::OutOfBounds)?;
-    if end > flash_base() + total_size() {
+    let flash_end = flash_base()
+        .checked_add(total_size())
+        .ok_or(Error::OutOfBounds)?;
+    if end > flash_end {
         return Err(Error::OutOfBounds);
     }
 
@@ -198,7 +201,10 @@ pub fn read<A: Into<FlashAddress>>(start: A, buf: &mut [u8]) -> Result<()> {
         .as_usize()
         .checked_add(buf.len())
         .ok_or(Error::OutOfBounds)?;
-    if end > flash_base() + total_size() {
+    let flash_end = flash_base()
+        .checked_add(total_size())
+        .ok_or(Error::OutOfBounds)?;
+    if end > flash_end {
         return Err(Error::OutOfBounds);
     }
     unsafe {
@@ -218,33 +224,41 @@ pub fn read<A: Into<FlashAddress>>(start: A, buf: &mut [u8]) -> Result<()> {
 pub struct Region(&'static device_tree::FlashPartitionRegistryEntry);
 
 impl Region {
+    /// Validate that the DT-derived entry fits within the chip's actual flash size.
+    fn from_entry(entry: &'static device_tree::FlashPartitionRegistryEntry) -> Result<Self> {
+        let offset_end = entry
+            .offset
+            .checked_add(entry.len)
+            .ok_or(Error::OutOfBounds)?;
+        if offset_end > total_size() {
+            return Err(Error::OutOfBounds);
+        }
+        flash_base()
+            .checked_add(entry.offset)
+            .and_then(|s| s.checked_add(entry.len))
+            .ok_or(Error::OutOfBounds)?;
+        Ok(Self(entry))
+    }
+
     pub fn get(compatible: &str, ordinal: usize) -> Result<Self> {
-        device_tree::flash_partition_by_compatible(compatible, ordinal)
-            .map(Self)
-            .ok_or(Error::NotFound)
+        let entry = device_tree::flash_partition_by_compatible(compatible, ordinal)
+            .ok_or(Error::NotFound)?;
+        Self::from_entry(entry)
     }
 
     pub fn get_by_label(label: &str) -> Result<Self> {
-        device_tree::flash_partition_by_label(label)
-            .map(Self)
-            .ok_or(Error::NotFound)
+        let entry = device_tree::flash_partition_by_label(label).ok_or(Error::NotFound)?;
+        Self::from_entry(entry)
     }
 
-    /// Find the partition that contains `addr` and return it together with
-    /// the byte offset of `addr` from that partition's start.
-    ///
-    /// The returned `usize` is **partition-relative**, not a `FlashOffset`
-    /// (which is from `FLASH_BASE`) — it can be passed straight to the
-    /// driver-layer `Region::read`/`erase`/`program`/`write` methods.
-    ///
-    /// Accepts any `Into<FlashAddress>`, so a `FlashOffset` or
-    /// `FlashPageStart` works too. Returns `Err(NotFound)` if `addr` doesn't
-    /// fall in any declared partition.
-    pub fn get_by_address(addr: impl Into<FlashAddress>) -> Result<(Self, usize)> {
+    /// Find the partition that contains `addr`. Returns `Err(NotFound)` if
+    /// `addr` doesn't fall in any declared partition. Accepts any
+    /// `Into<FlashAddress>`.
+    pub fn get_by_address(addr: impl Into<FlashAddress>) -> Result<Self> {
         let addr: FlashAddress = addr.into();
-        device_tree::flash_partition_by_address(addr.as_usize())
-            .map(|(entry, offset)| (Self(entry), offset))
-            .ok_or(Error::NotFound)
+        let (entry, _) =
+            device_tree::flash_partition_by_address(addr.as_usize()).ok_or(Error::NotFound)?;
+        Self::from_entry(entry)
     }
 
     pub fn label(&self) -> &'static str {

@@ -794,7 +794,6 @@ dependencies = [
  "cbindgen",
  "cmake",
  "critical-section",
- "dtgen",
  "hal-api",
  "hal-builder",
  "quote",
