@@ -138,6 +138,20 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
             return (None, None);
         }
 
+        if idx1 >= N {
+            return (
+                None,
+                if idx2 < N {
+                    self.data[idx2].as_mut()
+                } else {
+                    None
+                },
+            );
+        }
+        if idx2 >= N {
+            return (self.data[idx1].as_mut(), None);
+        }
+
         let (left, right) = self.data.split_at_mut(idx1.max(idx2));
 
         if idx1 < idx2 {
@@ -170,13 +184,31 @@ impl<K: ?Sized + ToIndex, V, const N: usize> GetMut<K> for IndexMap<K, V, N> {
             return (None, None, None);
         }
 
-        let ptr1 = &mut self.data[idx1] as *mut Option<V>;
-        let ptr2 = &mut self.data[idx2] as *mut Option<V>;
-        let ptr3 = &mut self.data[idx3] as *mut Option<V>;
+        let ptr1 = if idx1 < N {
+            Some(&mut self.data[idx1] as *mut Option<V>)
+        } else {
+            None
+        };
+        let ptr2 = if idx2 < N {
+            Some(&mut self.data[idx2] as *mut Option<V>)
+        } else {
+            None
+        };
+        let ptr3 = if idx3 < N {
+            Some(&mut self.data[idx3] as *mut Option<V>)
+        } else {
+            None
+        };
 
-        // Safety: the elements at index1, index2 and index3 are nowhere else borrowed mutably by function contract.
-        // And they are disjoint because of the check above.
-        unsafe { ((*ptr1).as_mut(), (*ptr2).as_mut(), (*ptr3).as_mut()) }
+        // Safety: each pointer comes from an in-bounds slot in self.data, and the three indices
+        // are pairwise distinct (check above), so the resulting references are disjoint.
+        unsafe {
+            (
+                ptr1.and_then(|p| (*p).as_mut()),
+                ptr2.and_then(|p| (*p).as_mut()),
+                ptr3.and_then(|p| (*p).as_mut()),
+            )
+        }
     }
 }
 
@@ -337,25 +369,25 @@ impl<T, const N: usize> Vec<T, N> {
             // Initialize all elements in the inline storage.
             for i in 0..length {
                 vec.data[i].write(value.clone());
+                // Bump len after each write so a panicking T::clone leaves Drop able
+                // to clean up the slots that were already initialized.
+                vec.len = i + 1;
             }
         } else {
-            // Initialize all elements in the inline storage.
+            // Allocate the extra storage first and install it on `vec` so any later
+            // failure (clone panic) leaves Drop with a consistent (len, extra) view,
+            // and so an OOM here cannot leak inline clones (none have been written yet).
+            let extra_len = length - N;
+            vec.extra = Box::new_slice_uninit(extra_len)?;
+
             for elem in &mut vec.data {
                 elem.write(value.clone());
+                vec.len += 1;
             }
 
-            // Check if we need to allocate extra storage.
-            if length - N > 0 {
-                // Allocate extra storage for the remaining elements.
-                let mut extra = Box::new_slice_uninit(length - N)?;
-
-                // Initialize all the required elements in the extra storage.
-                for i in N..length {
-                    extra[i - N].write(value.clone());
-                }
-
-                // Set the extra storage in the Vec.
-                vec.extra = extra;
+            for i in 0..extra_len {
+                vec.extra[i].write(value.clone());
+                vec.len += 1;
             }
         }
 
@@ -546,12 +578,23 @@ impl<T, const N: usize> Vec<T, N> {
             return (None, None);
         }
 
-        let ptr1 = self.at_mut_unchecked(index1);
-        let ptr2 = self.at_mut_unchecked(index2);
+        let in1 = index1 < self.len;
+        let in2 = index2 < self.len;
+        let ptr1 = if in1 {
+            Some(self.at_mut_unchecked(index1))
+        } else {
+            None
+        };
+        let ptr2 = if in2 {
+            Some(self.at_mut_unchecked(index2))
+        } else {
+            None
+        };
 
-        // Safety: the elements at index1 and index2 are nowhere else borrowed mutably by function contract.
-        // And they are disjoint because of the check above.
-        unsafe { (Some(&mut *ptr1), Some(&mut *ptr2)) }
+        // Safety: each pointer is only constructed when the corresponding index is < self.len,
+        // so it points to an initialized slot. The two indices are pairwise distinct (check
+        // above), so the resulting references are disjoint.
+        unsafe { (ptr1.map(|p| &mut *p), ptr2.map(|p| &mut *p)) }
     }
 
     /// Get disjoint mutable references to the values at the given indices.
@@ -572,13 +615,35 @@ impl<T, const N: usize> Vec<T, N> {
             return (None, None, None);
         }
 
-        let ptr1 = self.at_mut_unchecked(index1);
-        let ptr2 = self.at_mut_unchecked(index2);
-        let ptr3 = self.at_mut_unchecked(index3);
+        let in1 = index1 < self.len;
+        let in2 = index2 < self.len;
+        let in3 = index3 < self.len;
+        let ptr1 = if in1 {
+            Some(self.at_mut_unchecked(index1))
+        } else {
+            None
+        };
+        let ptr2 = if in2 {
+            Some(self.at_mut_unchecked(index2))
+        } else {
+            None
+        };
+        let ptr3 = if in3 {
+            Some(self.at_mut_unchecked(index3))
+        } else {
+            None
+        };
 
-        // Safety: the elements at index1, index2 and index3 are nowhere else borrowed mutably by function contract.
-        // And they are disjoint because of the check above.
-        unsafe { (Some(&mut *ptr1), Some(&mut *ptr2), Some(&mut *ptr3)) }
+        // Safety: each pointer is only constructed when the corresponding index is < self.len,
+        // so it points to an initialized slot. The three indices are pairwise distinct (check
+        // above), so the resulting references are disjoint.
+        unsafe {
+            (
+                ptr1.map(|p| &mut *p),
+                ptr2.map(|p| &mut *p),
+                ptr3.map(|p| &mut *p),
+            )
+        }
     }
 
     /// Swap the values at the given indices.
@@ -749,7 +814,12 @@ impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     #[allow(dead_code)]
     pub fn insert(&mut self, value: V) -> Result<usize> {
         let idx = self.free.alloc(1).ok_or(kerr!(ENOMEM))?;
-        self.map.raw_insert(idx, value)?;
+        if let Err(e) = self.map.raw_insert(idx, value) {
+            // BitAlloc<N> exposes more bits than IndexMap has slots; release any index
+            // that raw_insert rejects so a leaked bit can't accumulate across failures.
+            self.free.free(idx, 1);
+            return Err(e);
+        }
         Ok(idx)
     }
 
@@ -760,11 +830,33 @@ impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     }
 }
 
+impl<K: ?Sized + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
+    /// Call `f(slot, value)` for every occupied slot in the map.
+    pub fn for_each<F: FnMut(usize, &V)>(&self, mut f: F) {
+        for slot in 0..N {
+            if let Some(v) = self.map.raw_at(slot) {
+                f(slot, v);
+            }
+        }
+    }
+}
+
 impl<K: Copy + ToIndex, V, const N: usize> BitReclaimMap<K, V, N> {
     pub fn insert_with(&mut self, f: impl FnOnce(usize) -> Result<(K, V)>) -> Result<K> {
         let idx = self.free.alloc(1).ok_or(kerr!(ENOMEM))?;
-        let (key, value) = f(idx)?;
-        self.map.raw_insert(idx, value)?;
+        // The closure is user-supplied and may return an error; release the bit so a
+        // sustained run of closure failures cannot exhaust the allocator.
+        let (key, value) = match f(idx) {
+            Ok(kv) => kv,
+            Err(e) => {
+                self.free.free(idx, 1);
+                return Err(e);
+            }
+        };
+        if let Err(e) = self.map.raw_insert(idx, value) {
+            self.free.free(idx, 1);
+            return Err(e);
+        }
         Ok(key)
     }
 }
@@ -1146,5 +1238,133 @@ mod tests {
         for i in 0..5 {
             assert_eq!(vec.at(i).unwrap().value, 42);
         }
+    }
+
+    #[test]
+    fn new_init_oom_does_not_leak() {
+        struct Counted<'a> {
+            drops: &'a AtomicUsize,
+            clones: &'a AtomicUsize,
+        }
+        impl Clone for Counted<'_> {
+            fn clone(&self) -> Self {
+                self.clones.fetch_add(1, Ordering::SeqCst);
+                Counted {
+                    drops: self.drops,
+                    clones: self.clones,
+                }
+            }
+        }
+        impl Drop for Counted<'_> {
+            fn drop(&mut self) {
+                self.drops.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        setup_memory(4096);
+        let drops = AtomicUsize::new(0);
+        let clones = AtomicUsize::new(0);
+        let r = Vec::<Counted, 2>::new_init(
+            1_000_000_000,
+            Counted {
+                drops: &drops,
+                clones: &clones,
+            },
+        );
+        assert!(r.is_err());
+        let n_clones = clones.load(Ordering::SeqCst);
+        let n_drops = drops.load(Ordering::SeqCst);
+        assert_eq!(
+            n_drops,
+            n_clones + 1,
+            "leaked clones (clones={}, drops={})",
+            n_clones,
+            n_drops,
+        );
+    }
+
+    #[test]
+    fn at2_mut_out_of_bounds_returns_none() {
+        let mut vec = Vec::<usize, 4>::new();
+        vec.push(7).unwrap();
+        let (a, b) = vec.at2_mut(0, 2);
+        assert!(a.is_some(), "index 0 is in-bounds");
+        assert!(
+            b.is_none(),
+            "index 2 should be out-of-bounds (len=1) and return None, but got {:?}",
+            b
+        );
+    }
+
+    #[test]
+    fn at3_mut_out_of_bounds_returns_none() {
+        let mut vec = Vec::<usize, 4>::new();
+        vec.push(7).unwrap();
+        vec.push(8).unwrap();
+        let (a, b, c) = vec.at3_mut(0, 1, 3);
+        assert!(a.is_some());
+        assert!(b.is_some());
+        assert!(
+            c.is_none(),
+            "index 3 should be out-of-bounds (len=2) and return None, but got {:?}",
+            c
+        );
+    }
+
+    use super::IndexMap;
+    use crate::types::traits::GetMut;
+
+    #[test]
+    fn indexmap_get2_mut_out_of_bounds_returns_none() {
+        let mut m: IndexMap<usize, u32, 4> = IndexMap::new();
+        m.raw_insert(0, 10).unwrap();
+        let (a, b) = m.get2_mut(0usize, 10usize);
+        assert!(a.is_some());
+        assert!(b.is_none());
+    }
+
+    #[test]
+    fn indexmap_get3_mut_out_of_bounds_returns_none() {
+        let mut m: IndexMap<usize, u32, 4> = IndexMap::new();
+        m.raw_insert(0, 10).unwrap();
+        let (a, b, c) = m.get3_mut(0usize, 10usize, 11usize);
+        assert!(a.is_some());
+        assert!(b.is_none());
+        assert!(c.is_none());
+    }
+
+    use super::BitReclaimMap;
+
+    #[test]
+    fn bitreclaim_insert_failure_does_not_leak() {
+        let mut m: BitReclaimMap<usize, u32, 2> = BitReclaimMap::new();
+        m.insert(10).unwrap();
+        m.insert(20).unwrap();
+        // Third insert allocates bit 2 then fails (raw_insert rejects idx >= N).
+        assert!(m.insert(30).is_err());
+        // Probe BitAlloc directly: bit 2 must be free again.
+        let next_free = m.free.alloc(1);
+        assert_eq!(
+            next_free,
+            Some(2),
+            "expected bit 2 to be free after failed insert, but BitAlloc returned {:?}",
+            next_free
+        );
+    }
+
+    #[test]
+    fn bitreclaim_insert_with_failed_closure_does_not_leak() {
+        use crate::error::Result as KResult;
+        let mut m: BitReclaimMap<usize, u32, 2> = BitReclaimMap::new();
+        for _ in 0..10 {
+            let r: KResult<usize> =
+                m.insert_with(|_idx| -> KResult<(usize, u32)> { Err(kerr!(ENOMEM)) });
+            assert!(r.is_err());
+        }
+        let id0 = m.insert(10).unwrap();
+        let id1 = m.insert(20).unwrap();
+        assert!(id0 < 2);
+        assert!(id1 < 2);
+        assert_ne!(id0, id1);
     }
 }

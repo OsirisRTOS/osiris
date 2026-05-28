@@ -3,13 +3,16 @@ use core::ffi::c_char;
 pub use hal_api::*;
 
 pub mod asm;
+pub mod can;
 pub mod debug;
 pub mod excep;
 pub mod flash;
+pub mod gpio;
 pub mod i2c;
 pub mod panic;
 pub mod sched;
 pub mod spi;
+pub mod system;
 
 mod crit;
 mod print;
@@ -36,6 +39,10 @@ pub type Stack = sched::ArmStack;
 
 pub struct ArmMachine;
 
+fn monotonic_overflow_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    unsafe { bindings::tim2_hndlr() };
+}
+
 impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
@@ -45,15 +52,40 @@ impl hal_api::Machinelike for ArmMachine {
         }
     }
 
-    fn print(s: &str) -> Result<()> {
-        let state = asm::disable_irq_save();
+    fn init_irqs(register: hal_api::IrqRegister) {
+        // Monotonic timer - usually TIM2 - picked by the board via `osiris,monotonic-timer`
+        // in /chosen; vector = irqn + 16 (Cortex-M IPSR offset).
+        let Some(&(_, device_tree::PropValue::Str(path))) = device_tree::chosen::EXTRAS
+            .iter()
+            .find(|(k, _)| *k == "osiris,monotonic-timer")
+        else {
+            panic!("device tree: missing `osiris,monotonic-timer` in /chosen");
+        };
+        let Some(timer) = device_tree::peripheral_by_path(path) else {
+            panic!("device tree: `osiris,monotonic-timer` path {path} did not resolve");
+        };
+        let Some(&irqn) = timer.interrupts.first() else {
+            panic!("device tree: monotonic timer at {path} has no `interrupts` entry");
+        };
+        let vector = irqn as usize + 16;
+        if let Err(e) = register(vector, monotonic_overflow_irq, None) {
+            panic!("failed to register monotonic timer IRQ at vector {vector}: {e}");
+        }
+    }
 
-        if (unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0)
-        {
-            asm::enable_irq_restr(state);
+    fn print(s: &str) -> Result<()> {
+        // Mask PendSV only — a full cpsid_i across a polled-UART line at
+        // 115200 baud (~13 ms) overruns the bxCAN FIFO at 1 Mbit/s.
+        let state = asm::disable_pendsv_save();
+
+        let ok =
+            unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0;
+
+        asm::enable_pendsv_restr(state);
+
+        if ok {
             Ok(())
         } else {
-            asm::enable_irq_restr(state);
             Err(hal_api::PosixError::EIO)
         }
     }

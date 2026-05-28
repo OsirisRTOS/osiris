@@ -3,16 +3,9 @@ use core::fmt::{self, Write};
 use crate::hal;
 use hal::Machinelike;
 
-#[macro_export]
-macro_rules! uprintln {
-    ($($arg:tt)*) => ({
-        use core::fmt::Write;
-        use osiris::uapi::print::Printer;
-
-        let mut printer = Printer;
-        printer.write_fmt(format_args!($($arg)*)).unwrap();
-        printer.write_str("\n").unwrap();
-    });
+pub fn print(args: fmt::Arguments) {
+    let mut printer = Printer;
+    printer.write_fmt(args).unwrap();
 }
 
 pub struct Printer;

@@ -121,8 +121,13 @@ impl<const N: usize> BitAlloc<N> {
                 }
 
                 // Mark the remaining bits in the last word as used.
-                self.l1[idx] &= !((!0usize)
-                    .unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
+                // Guard against `len % BITS_PER_WORD == 0`, which means the run ended
+                // exactly on a word boundary — there is no trailing partial word, and
+                // unguarded `self.l1[idx]` would index one past the last word.
+                if len % Self::BITS_PER_WORD != 0 {
+                    self.l1[idx] &= !((!0usize)
+                        .unbounded_shl((Self::BITS_PER_WORD - (len % Self::BITS_PER_WORD)) as u32));
+                }
                 return Some(start);
             }
         }
@@ -170,6 +175,25 @@ mod tests {
         let result = alloc.alloc(1);
 
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn alloc_full_two_words() {
+        let mut alloc = BitAlloc::<2>::new(2 * BitAlloc::<2>::BITS_PER_WORD).unwrap();
+        let r = alloc.alloc(2 * BitAlloc::<2>::BITS_PER_WORD);
+        assert_eq!(r, Some(0));
+        assert_eq!(alloc.l1[0], 0);
+        assert_eq!(alloc.l1[1], 0);
+    }
+
+    #[test]
+    fn alloc_full_three_words() {
+        let mut alloc = BitAlloc::<3>::new(3 * BitAlloc::<3>::BITS_PER_WORD).unwrap();
+        let r = alloc.alloc(3 * BitAlloc::<3>::BITS_PER_WORD);
+        assert_eq!(r, Some(0));
+        assert_eq!(alloc.l1[0], 0);
+        assert_eq!(alloc.l1[1], 0);
+        assert_eq!(alloc.l1[2], 0);
     }
 
     #[test]

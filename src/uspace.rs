@@ -7,13 +7,14 @@ unsafe extern "C" {
     fn app_main() -> ();
 }
 
-extern "C" fn app_main_entry() {
+extern "C" fn app_main_entry(_ctx: *mut core::ffi::c_void) {
     unsafe { app_main() }
 }
 
 pub fn init_app() {
     let attrs = sched::thread::Attributes {
         entry: app_main_entry,
+        ctx: core::ptr::null_mut(),
         fin: None,
         attrs: None,
     };

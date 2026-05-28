@@ -37,6 +37,7 @@ _Static_assert((ERR_FLASH_TIMEOUT & __FLASH_ERRORS) == 0);
 // lib.c
 unsigned long long systick_freq(void);
 void init_hal(void);
+__attribute__((noreturn)) void system_reset(void);
 
 // uart.c
 int init_debug_uart(void);
@@ -134,9 +135,12 @@ struct i2c_transfer {
 	uint8_t *rx;
 	int tx_len;
 	int rx_len;
+	uint16_t timeout;
 };
 
 void *i2c_init(const i2c_bus_cfg_t *bus_cfg);
+int i2c_bus_recovery_needed(void *bus);
+int i2c_recover_bus(void *bus);
 int i2c_write(void *bus, const i2c_device_cfg_t *dev_cfg, struct i2c_transfer *transfer);
 int i2c_read(void *bus, const i2c_device_cfg_t *dev_cfg, struct i2c_transfer *transfer);
 int i2c_write_read(void *bus, const i2c_device_cfg_t *dev_cfg, const struct i2c_transfer *transfer);
@@ -144,6 +148,125 @@ int i2c_deinit(void *bus);
 
 int i2c_init_device(const i2c_device_cfg_t *dev_cfg);
 int i2c_deinit_device(const i2c_device_cfg_t *dev_cfg);
+
+// can.c
+typedef struct
+{
+	uintptr_t port;
+	uint8_t pin;
+	uint8_t af;
+	uint16_t reserved;
+} can_pin_cfg_t;
+
+enum can_mode
+{
+	CAN_MODE_NORMAL_ = 0,
+	CAN_MODE_LOOPBACK_ = 1,
+};
+
+typedef struct
+{
+	uintptr_t instance;
+	uint32_t bitrate_hz;
+	can_pin_cfg_t rx;
+	can_pin_cfg_t tx;
+	uint8_t rx0_irqn;
+	uint8_t rx0_priority;
+	uint8_t rx1_irqn;
+	uint8_t rx1_priority;
+	uint8_t index;
+	uint8_t mode;
+	uint8_t tx_open_drain;
+	uint8_t reserved;
+} can_bus_cfg_t;
+
+typedef struct
+{
+	uint32_t id;
+	uint8_t data[8];
+	uint8_t len;
+	uint8_t is_extended;
+	uint16_t reserved;
+} can_frame_t;
+
+typedef struct
+{
+	uint32_t id;
+	uint32_t mask;
+	uint8_t bank;
+	uint8_t extended;
+	uint8_t fifo;
+	uint8_t reserved;
+} can_filter_t;
+
+enum can_irq_kind
+{
+	CAN_IRQ_TX  = 0,
+	CAN_IRQ_RX0 = 1,
+	CAN_IRQ_RX1 = 2,
+	CAN_IRQ_SCE = 3,
+};
+
+typedef void (*can_irq_handler_fn)(int kind, void *ctx);
+
+int can_init(const can_bus_cfg_t *cfg);
+int can_start(uint8_t slot);
+int can_deinit(uint8_t slot);
+int can_transmit(uint8_t slot, const can_frame_t *frame);
+int can_receive(uint8_t slot, can_frame_t *out);
+int can_configure_filter(uint8_t slot, const can_filter_t *filter);
+uint32_t can_last_error(uint8_t slot);
+int can_recover(uint8_t slot);
+int can_set_irq_handler(uint8_t slot, can_irq_handler_fn handler, void *ctx);
+
+typedef struct
+{
+	uint32_t esr;
+	uint32_t tsr;
+	uint32_t msr;
+	uint32_t mcr;
+	uint32_t btr;
+	uint32_t tx_attempts;
+	uint32_t tx_hal_fails;
+	uint32_t tx_mbx_timeouts;
+	uint32_t rx_irqs;
+	uint32_t rx_frames;
+	uint32_t rx_frames_fifo0;
+	uint32_t rx_frames_fifo1;
+	uint32_t rx_drops;
+	uint32_t rx_hw_ovr;
+	uint32_t rx_hw_ovr_fifo0;
+	uint32_t rx_hw_ovr_fifo1;
+	uint32_t rx_peak_fmp;
+	uint32_t rx_get_fails;
+} can_diag_t;
+void can_diag(uint8_t slot, can_diag_t *out);
+
+void can_isr(uint8_t index);
+
+// gpio.c
+// Pull values accepted by `gpio_configure_input`.
+// bindgen-export: GPIO_PULL_.*
+#define GPIO_PULL_NONE 0
+#define GPIO_PULL_UP   1
+#define GPIO_PULL_DOWN 2
+int gpio_configure_input(void *port, uint16_t pin_mask, uint8_t pull);
+int gpio_configure_output_pp(void *port, uint16_t pin_mask, uint8_t initial,
+                             uint8_t pull);
+int gpio_configure_output_od(void *port, uint16_t pin_mask, uint8_t initial,
+                             uint8_t pull);
+int gpio_write(void *port, uint16_t pin_mask, uint8_t level);
+int gpio_read(void *port, uint16_t pin_mask);
+int gpio_read_odr(void *port, uint16_t pin_mask);
+int gpio_toggle(void *port, uint16_t pin_mask);
+int gpio_clock_enable(void *port);
+
+// exti.c
+// edge_mask bitfield: 0x1 = rising, 0x2 = falling (see exti.h).
+int exti_configure(void *port, uint8_t line, uint8_t edge_mask, uint8_t priority);
+int exti_release(uint8_t line);
+uint32_t exti_pending(void);
+void exti_ack(uint32_t mask);
 
 // sched.c
 void reschedule(void);
@@ -209,3 +332,4 @@ unsigned long long monotonic_now(void);
 unsigned long long monotonic_freq(void);
 void delay_us(uint32_t delay_us);
 void do_tick(void);
+void tim2_hndlr(void);

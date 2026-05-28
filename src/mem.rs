@@ -35,17 +35,18 @@ pub fn init_memory() -> vmm::AddressSpace {
         panic!("failed to initialize PFA. Error: {e}");
     }
 
-    // TODO: Configure.
-    let pgs = 10;
+    // TODO: Configure via env / DT. heap_pgs is mapped, the rest reserved for stacks.
+    let total_pgs = 64;
+    let heap_pgs = 8; // 32 KB heap
 
-    let mut kaddr_space = vmm::AddressSpace::new(pgs).unwrap_or_else(|e| {
+    let mut kaddr_space = vmm::AddressSpace::new(total_pgs).unwrap_or_else(|e| {
         panic!("failed to create kernel address space. Error: {e}");
     });
 
     let begin = kaddr_space
         .map(Region::new(
             None,
-            2 * PAGE_SIZE,
+            heap_pgs * PAGE_SIZE,
             Backing::Zeroed,
             Perms::all(),
         ))
@@ -56,7 +57,7 @@ pub fn init_memory() -> vmm::AddressSpace {
     {
         let mut allocator = GLOBAL_ALLOCATOR.lock();
 
-        let range = begin..(begin + pgs * PAGE_SIZE);
+        let range = begin..(begin + heap_pgs * PAGE_SIZE);
         if let Err(e) = unsafe { allocator.add_range(&range) } {
             panic!("failed to add range to allocator. Error: {e}");
         }
@@ -88,6 +89,12 @@ pub fn malloc(size: usize, align: usize) -> Option<NonNull<u8>> {
 pub unsafe fn free(ptr: NonNull<u8>, size: usize) {
     let mut allocator = GLOBAL_ALLOCATOR.lock();
     unsafe { allocator.free(ptr, size) };
+}
+
+/// Returns a metrics snapshot of the global kernel heap.
+#[cfg(any(feature = "metrics", metrics))]
+pub(crate) fn global_metrics() -> alloc::Metrics {
+    GLOBAL_ALLOCATOR.lock().metrics()
 }
 
 /// Aligns a size to be a multiple of the u128 alignment.
