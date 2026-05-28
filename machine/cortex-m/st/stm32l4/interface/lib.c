@@ -25,7 +25,7 @@ unsigned long long systick_freq(void) {
   return 1000;
 }
 
-int init_hal(void) {
+uint64_t init_hal(void) {
 #if OSIRIS_TUNING_ENABLEFPU
   init_fpu();
 #endif
@@ -33,7 +33,7 @@ int init_hal(void) {
 
   enable_faults();
 
-  int ret = init_clock_cfg();
+  uint64_t ret = init_clock_cfg();
   if (ret != 0) {
     return ret;
   }

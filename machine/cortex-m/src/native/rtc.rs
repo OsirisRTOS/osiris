@@ -1,66 +1,81 @@
 use hal_api::PosixError;
 
-use crate::hal;
-use crate::hal::Machinelike;
+use super::{Result, bindings};
 
-/// The monotonic clock is brought up by [hal::Machine::init()]
-pub fn init() {
-    match hal::Machine::init_rtc() {
-        0 => (),
-        -4 => {
-            kprintln!("failed to initialize RTC: init clock source");
-        }
-        -5 => {
-            kprintln!("failed to initialize RTC: init RTC");
-        }
-        ret => {
-            kprintln!("failed to initialize RTC: {ret}");
-        }
-    }
+#[allow(unused_macros)]
+macro_rules! println {
+    ($($arg:tt)*) => ({
+        use core::fmt::Write;
+        use super::print::Printer;
+        let mut printer = Printer;
+        printer.write_fmt(format_args!($($arg)*)).unwrap();
+        printer.write_str("\n").unwrap();
+    });
 }
 
-pub fn rtc_backup_register(index: u8) -> u32 {
-    assert!(index < 32, "RTC backup register index out of bounds");
-    assert!(index != 31, "RTC uses this register for restart continuity");
-    hal::Machine::rtc_backup_register(index)
-}
-
-pub fn set_rtc_backup_register(index: u8, value: u32) {
-    assert!(index < 32, "RTC backup register index out of bounds");
-    assert!(index != 31, "RTC uses this register for restart continuity");
-    hal::Machine::set_rtc_backup_register(index, value)
-}
-
-pub fn walltime() -> Result<u64, PosixError> {
-    let raw = hal::Machine::rtc_raw();
-    if raw == -1i64 as u64 {
-        kprintln!("failed to read RTC time");
-        return Err(PosixError::EIO);
-    }
-    if raw == -2i64 as u64 {
-        kprintln!("failed to read RTC date");
-        return Err(PosixError::EIO);
-    }
-    Ok(rtc_raw_to_unix(raw))
-}
-
-pub fn set_walltime(time: u64) -> Result<(), PosixError> {
-    let raw = unix_to_rtc_raw(time);
-    match hal::Machine::set_rtc_raw(raw) {
+pub(crate) fn init_rtc() -> Result<()> {
+    let raw = unsafe { bindings::init_rtc() };
+    match raw >> 56 {
         0 => Ok(()),
-        -1 => {
-            kprintln!("failed to set RTC time");
-            return Err(PosixError::EINVAL);
+        0x04 => {
+            println!(
+                "failed to initialize RTC clock source: LSE failed with {}, LSI with {}",
+                raw & 0xff,
+                (raw >> 8) & 0xff
+            );
+            Err(PosixError::EIO)
         }
-        -2 => {
-            kprintln!("failed to set RTC date");
-            return Err(PosixError::EINVAL);
+        0x05 => {
+            println!("failed to init RTC: {}", raw & 0xff);
+            Err(PosixError::EIO)
+        }
+        0x08 => {
+            println!("failed to set RTC time: {}", raw & 0xff);
+            Err(PosixError::EIO)
+        }
+        0x09 => {
+            println!("failed to set RTC date: {}", raw & 0xff);
+            Err(PosixError::EIO)
         }
         _ => {
-            kprintln!("unknown error setting RTC time");
-            return Err(PosixError::Unknown);
+            println!("unknown error code: {}", raw);
+            Err(PosixError::Unknown)
         }
     }
+}
+
+pub(crate) fn rtc() -> Result<u64> {
+    let raw = unsafe { bindings::rtc_raw() };
+    match raw >> 56 {
+        0 => Ok(rtc_raw_to_unix(raw)),
+        0x06 => {
+            println!("failed to get RTC time: {}", raw & 0xff);
+            Err(PosixError::EIO)
+        }
+        0x07 => {
+            println!("failed to get RTC date: {}", raw & 0xff);
+            Err(PosixError::EIO)
+        }
+        _ => {
+            println!("unknown error code: {}", raw);
+            Err(PosixError::Unknown)
+        }
+    }
+}
+
+pub(crate) fn set_rtc(time: u64) -> Result<()> {
+    let raw = unix_to_rtc_raw(time);
+    let ret = unsafe { bindings::set_rtc_raw(raw) };
+    if ret != 0 {
+        if ret >> 56 == 0x08 {
+            println!("failed to set RTC time: {}", ret & 0xff);
+            return Err(PosixError::EIO);
+        } else {
+            println!("failed to set RTC date: {}", ret & 0xff);
+            return Err(PosixError::EIO);
+        }
+    }
+    Ok(())
 }
 
 const fn bcd_to_bin(value: u8) -> u8 {

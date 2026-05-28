@@ -9,6 +9,7 @@ pub mod excep;
 pub mod gpio;
 pub mod i2c;
 pub mod panic;
+pub mod rtc;
 pub mod sched;
 pub mod spi;
 pub mod system;
@@ -42,6 +43,10 @@ fn monotonic_overflow_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize
     unsafe { bindings::tim2_hndlr() };
 }
 
+fn css_lse_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    unsafe { bindings::css_lse_hndlr() }
+}
+
 impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
@@ -73,6 +78,12 @@ impl hal_api::Machinelike for ArmMachine {
         if let Err(e) = register(vector, monotonic_overflow_irq, None) {
             panic!("failed to register monotonic timer IRQ at vector {vector}: {e}");
         }
+
+        /* TODO find vector
+        let vector = irqn as usize + 16;
+        if let Err(e) = register(vector, css_lse_irq, None) {
+            panic!("failed to register CSS LSE IRQ at vector {vector}: {e}");
+        }*/
     }
 
     fn print(s: &str) -> Result<()> {
@@ -113,23 +124,27 @@ impl hal_api::Machinelike for ArmMachine {
         unsafe { bindings::monotonic_freq() }
     }
 
-    fn rtc_raw() -> u64 {
-        unsafe { bindings::rtc_raw() }
+    fn init_rtc() -> Result<()> {
+        rtc::init_rtc()
     }
 
-    fn set_rtc_raw(time: u64) -> i32 {
-        unsafe { bindings::set_rtc_raw(time) }
+    fn rtc() -> Result<u64> {
+        rtc::rtc()
     }
 
-    fn init_rtc() -> i32 {
-        unsafe { bindings::init_rtc() }
+    fn set_rtc(time: u64) -> Result<()> {
+        rtc::set_rtc(time)
     }
 
     fn rtc_backup_register(index: u8) -> u32 {
+        assert!(index < 32, "RTC backup register index out of bounds");
+        assert!(index != 31, "RTC uses this register for restart continuity");
         unsafe { bindings::rtc_backup_register(index) }
     }
 
     fn set_rtc_backup_register(index: u8, value: u32) {
+        assert!(index < 32, "RTC backup register index out of bounds");
+        assert!(index != 31, "RTC uses this register for restart continuity");
         unsafe { bindings::set_rtc_backup_register(index, value) }
     }
 

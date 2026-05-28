@@ -1,6 +1,6 @@
 use hal_api::PosixError;
 
-use crate::{drivers::clock, time};
+use crate::{drivers::rtc, time};
 
 pub fn mono_now() -> u64 {
     time::mono_now()
@@ -15,9 +15,9 @@ pub fn tick() -> u64 {
 }
 
 pub fn walltime() -> Result<u64, PosixError> {
-    clock::walltime()
+    rtc::walltime()
 }
 
 pub fn set_walltime(time: u64) -> Result<(), PosixError> {
-    clock::set_walltime(time)
+    rtc::set_walltime(time)
 }

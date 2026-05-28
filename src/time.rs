@@ -1,4 +1,4 @@
-use crate::drivers::clock;
+use crate::drivers::rtc;
 use crate::hal::{self, Machinelike};
 
 use crate::{sched, sync};
@@ -10,14 +10,14 @@ extern "C" fn update_time(_ctx: *mut core::ffi::c_void) {
     kprintln!(
         "Time thread started with tick interval {} at {:?}",
         interval,
-        clock::walltime()
+        rtc::walltime()
     );
     loop {
         let tick = tick();
         sched::with(|sched| {
-            let _ = sched.sleep_until(tick + interval, tick);
+            let _ = sched.sleep_until(None, tick + interval, tick);
         });
-        kprintln!("time is now {:?}", clock::walltime());
+        kprintln!("time is now {:?}", rtc::walltime());
     }
 }
 

@@ -4,7 +4,6 @@
 #include <stm32l4xx_hal.h>
 #include "stm32l4xx_hal_rcc.h"
 #include "stm32l4xx_hal_rcc_ex.h"
-#include <sys/_intsup.h>
 #include <stm32l4xx_ll_tim.h>
 
 static volatile uint64_t monotonic_hi = 0;
@@ -32,8 +31,7 @@ static RTC_HandleTypeDef rtc_handle;
 * Try to use LSE, fall back to LSI and enable CSS if both are available.
 * @retval HAL_StatusTypeDef codes:
 * bit 0-1: selecting LSE clock source
-* bit 2-3: selecting LSI clock source
-* bit 4-5: HAL_TIMEOUT from waiting for LSI ready
+* bit 8-9: selecting LSI clock source
  */
 static int init_rtc_clock_source(void)
 {
@@ -58,16 +56,17 @@ static int init_rtc_clock_source(void)
       status = HAL_RCCEx_PeriphCLKConfig(&periph);
       // if LSI selection also fails, return both errors
       if (status != HAL_OK) {
-        error |= status << 2;
+        error |= status << 8;
         return error;
       }
     }
 
+    _Bool lsi_ready = 1;
     // ensure LSI is ready
     uint32_t tickstart = HAL_GetTick();
     while (__HAL_RCC_GET_FLAG(RCC_FLAG_LSIRDY) == RESET) {
       if ((HAL_GetTick() - tickstart) > RCC_LSE_TIMEOUT_VALUE) {
-        error |= HAL_TIMEOUT << 4;
+        lsi_ready = 0;
         break;
       }
     }
@@ -75,7 +74,7 @@ static int init_rtc_clock_source(void)
     __HAL_RCC_RTC_ENABLE();
 
     // clock security system requires both LSE and LSI to be enabled.
-    if (!error) {
+    if (!error && lsi_ready) {
        HAL_RCCEx_EnableLSECSS();
        __HAL_RCC_ENABLE_IT(RCC_IT_LSECSS);
     }
@@ -84,7 +83,7 @@ static int init_rtc_clock_source(void)
     return error;
 }
 
-void handle_css_lse_interrupt()
+void css_lse_hndlr()
 {
     HAL_PWR_EnableBkUpAccess();
     __HAL_RCC_CLEAR_IT(RCC_IT_LSECSS);
@@ -309,12 +308,12 @@ void do_tick(void)
 }
 
 
-uint32_t get_rtc_backup_register(uint32_t index)
+uint32_t get_rtc_backup_register(uint8_t index)
 {
     return HAL_RTCEx_BKUPRead(&rtc_handle, RTC_BKP_DR0 + index);
 }
 
-void set_rtc_backup_register(uint32_t index, uint32_t value)
+void set_rtc_backup_register(uint8_t index, uint32_t value)
 {
     HAL_PWR_EnableBkUpAccess();
     HAL_RTCEx_BKUPWrite(&rtc_handle, RTC_BKP_DR0 + index, value);

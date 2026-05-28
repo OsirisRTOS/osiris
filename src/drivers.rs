@@ -1,12 +1,12 @@
 pub mod can;
-pub mod clock;
 pub mod i2c;
 pub mod key;
 pub mod led;
+pub mod rtc;
 pub mod spi;
 
 pub fn init() {
-    clock::init();
+    rtc::init();
     i2c::init();
     spi::init();
     can::init();
