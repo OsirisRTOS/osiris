@@ -87,11 +87,10 @@ impl hal_api::Machinelike for ArmMachine {
             panic!("failed to register monotonic timer IRQ at vector {vector}: {e}");
         }
 
-        /* TODO ensure NMI is not handled elsewhere
         let vector = 2;
         if let Err(e) = register(vector, nmi_irq, None) {
             panic!("failed to register CSS IRQ at vector {vector}: {e}");
-        }*/
+        }
 
         let vector = unsafe { bindings::CONST_RCC_IRQn as usize } + 16;
         if let Err(e) = register(vector, rcc_irq, None) {

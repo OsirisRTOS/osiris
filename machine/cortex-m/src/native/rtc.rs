@@ -17,12 +17,22 @@ pub(crate) fn init_rtc() -> Result<()> {
     match raw >> 56 {
         0 => Ok(()),
         0x04 => {
-            println!(
-                "failed to initialize RTC clock source: LSE failed with {}, LSI with {}",
-                raw & 0xff,
-                (raw >> 8) & 0xff
-            );
-            Err(PosixError::EIO)
+            let lse_status = raw & 0xff;
+            let lsi_status = (raw >> 8) & 0xff;
+            if lse_status != 0 && lsi_status != 0 {
+                println!(
+                    "failed to initialize RTC clock source: LSE failed with {}, LSI with {}",
+                    lse_status, lsi_status
+                );
+                Err(PosixError::EIO)
+            } else {
+                if lse_status != 0 {
+                    println!("only one RTC clock source works: LSE failed with {}", lse_status);
+                } else {
+                    println!("only one RTC clock source works: LSI failed with {}", lsi_status);
+                }
+                Ok(())
+            }
         }
         0x05 => {
             println!("failed to init RTC: {}", raw & 0xff);
