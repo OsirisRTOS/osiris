@@ -21,9 +21,11 @@ An RTOS for embedded systems.
 *   **Clang**: Used as the C/C++ compiler.
 *   **Kani**: A recent version of the Kani Rust Verifier.
 
-Furthermore the following repositories are automatically fetched to invoke a subproject of the build process:
-* **[Zephyr](https://github.com/zephyrproject-rtos/zephyr)**: Pinned to release v4.3.0
-* **[HAL_STM32](https://github.com/zephyrproject-rtos/hal_stm32)**: The utilized commit is bound to the Zephyr release and can be infered through the Zephyr manifest [west.yaml](https://github.com/zephyrproject-rtos/zephyr/blob/main/west.yml)
+#### Device Trees
+
+Furthermore Osiris uses the DeviceTree files made for Zephyr. The build system will thus use the following repos:
+* [Zephyr](https://github.com/zephyrproject-rtos/zephyr)
+* [HAL_STM32](https://github.com/zephyrproject-rtos/hal_stm32)
 
 ### Development & Debugging Tools
 These tools are used for flashing, debugging, and other development tasks.
