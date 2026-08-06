@@ -10,6 +10,8 @@ pub struct Frame {
     pub data: [u8; 8],
     pub len: u8,
     pub is_extended: bool,
+    /// Mirrors `native::can::Frame`; always 0 on the stub (no timer).
+    pub hw_timestamp_rx: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

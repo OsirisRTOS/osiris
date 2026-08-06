@@ -11,6 +11,9 @@ pub struct Frame {
     pub data: [u8; 8],
     pub len: u8,
     pub is_extended: bool,
+    /// 64-bit-extended bxCAN SOF hardware timestamp (1 tick = 1 CAN
+    /// bit-time, captured at the SOF sample point). RX only; 0 on Tx.
+    pub hw_timestamp_rx: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -92,7 +95,8 @@ fn frame_to_c(frame: &Frame) -> bindings::can_frame_t {
         data: frame.data,
         len: frame.len,
         is_extended: frame.is_extended as u8,
-        reserved: 0,
+        // Tx: unused (no Tx mailbox sets TGT).
+        hw_timestamp_rx: 0,
     }
 }
 
@@ -102,6 +106,7 @@ fn frame_from_c(c: &bindings::can_frame_t) -> Frame {
         data: c.data,
         len: c.len,
         is_extended: c.is_extended != 0,
+        hw_timestamp_rx: c.hw_timestamp_rx,
     }
 }
 
@@ -143,7 +148,7 @@ pub fn receive(dev: &Device, out: &mut Frame) -> Result<bool> {
         data: [0u8; 8],
         len: 0,
         is_extended: 0,
-        reserved: 0,
+        hw_timestamp_rx: 0,
     };
     let rc = unsafe { bindings::can_receive(dev.0.index, &mut cframe) };
     match rc {
