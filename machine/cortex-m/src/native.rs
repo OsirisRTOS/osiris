@@ -1,5 +1,3 @@
-use core::ffi::c_char;
-
 pub use hal_api::*;
 
 pub mod asm;
@@ -11,6 +9,7 @@ pub mod i2c;
 pub mod panic;
 pub mod sched;
 pub mod spi;
+pub mod uart;
 pub mod system;
 
 mod crit;
@@ -46,7 +45,9 @@ impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
             bindings::init_hal();
-            bindings::init_debug_uart();
+        }
+        let _ = uart::init_console_from_dt();
+        unsafe {
             bindings::dwt_init();
         }
     }
@@ -75,13 +76,10 @@ impl hal_api::Machinelike for ArmMachine {
     fn print(s: &str) -> Result<()> {
         // Mask PendSV only — a full cpsid_i across a polled-UART line at
         // 115200 baud (~13 ms) overruns the bxCAN FIFO at 1 Mbit/s.
+        // (bxCAN fix from main, carried onto the generic-UART console path.)
         let state = asm::disable_pendsv_save();
-
-        let ok =
-            unsafe { bindings::write_debug_uart(s.as_ptr() as *const c_char, s.len() as i32) } != 0;
-
+        let ok = uart::console_write(s.as_bytes()).is_ok();
         asm::enable_pendsv_restr(state);
-
         if ok {
             Ok(())
         } else {

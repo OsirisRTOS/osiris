@@ -338,6 +338,14 @@ fn main() {
         return;
     }
 
+    println!("cargo::rerun-if-env-changed=OSIRIS_DEBUG_UART");
+    if env::var_os("OSIRIS_DEBUG_UART").is_some() {
+        println!(
+            "cargo::error=OSIRIS_DEBUG_UART is removed; the console UART is now driven by `chosen.osiris,console` in the device tree. Drop the env var from your preset / .cargo/config.toml and pick the console in DTS."
+        );
+        std::process::exit(1);
+    }
+
     let dts = hal_builder::dt::check_dts()
         .expect("No DeviceTree specified. Set OSIRIS_DTS_PATH to specify.");
     let out = hal_builder::read_path_env("OUT_DIR");

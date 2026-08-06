@@ -8,6 +8,7 @@ pub mod gpio;
 pub mod i2c;
 pub mod sched;
 pub mod spi;
+pub mod uart;
 pub mod system;
 
 pub type Machine = StubMachine;

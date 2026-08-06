@@ -1,4 +1,4 @@
-use crate::ir::{DeviceTree, PropValue};
+use crate::ir::{DeviceTree, Node, PropValue};
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -7,6 +7,7 @@ mod i2c;
 mod key;
 mod led;
 mod spi;
+mod uart;
 
 pub fn generate_rust(dt: &DeviceTree) -> String {
     enforce_unique_gpio_pins(dt);
@@ -22,6 +23,8 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         i2c::emit_query_api(),
         spi::emit_registry(dt),
         spi::emit_query_api(),
+        uart::emit_registry(dt),
+        uart::emit_query_api(),
         can::emit_registry(dt),
         can::emit_query_api(),
         led::emit_registry(dt),
@@ -430,6 +433,15 @@ macro_rules! match_compatible {
 }
 
 pub(crate) use match_compatible;
+
+/// Decode the STM32_PINMUX macro encoding. Shared by every peripheral
+/// codegen module that talks to `st,stm32-pinctrl` (SPI, UART, ...).
+fn decode_stm32_pinmux(pinmux: u32) -> (usize, u8, u8) {
+    let port_idx = ((pinmux >> 9) & 0x1f) as usize;
+    let line = ((pinmux >> 5) & 0x0f) as u8;
+    let mode = (pinmux & 0x1f) as u8;
+    (port_idx, line, mode)
+}
 
 /// Returns true if the "status" prop is absent or set to okay.
 fn is_enabled(node: &crate::ir::Node) -> bool {

@@ -6,7 +6,6 @@ DTS_PATH = { value = "../boards/nucleo_l4r5zi.dts", relative = true }
 OSIRIS_MACHINE = "cortex-m"
 
 # Debugging configuration
-OSIRIS_DEBUG_UART = "LPUART1"
 OSIRIS_DEBUG_RUNTIMESYMBOLS = "false"
 OSIRIS_METRICS = "false"
 

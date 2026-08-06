@@ -8,8 +8,7 @@ void init_hal(void);
 __attribute__((noreturn)) void system_reset(void);
 
 // uart.c
-int init_debug_uart(void);
-int write_debug_uart(const char *buf, int len);
+#include "uart.h"
 
 // spi.c
 typedef struct

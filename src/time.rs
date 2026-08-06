@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use crate::hal::{self, Machinelike};
 
 use crate::{sched, sync};
@@ -22,6 +24,13 @@ pub fn to_secs(cnt: u64, hz: u32, digits: u8) -> (u64, u64) {
     let rem = cnt % (hz as u64);
     let frac = (rem * 10_u64.pow(digits as u32)) / (hz as u64);
     (secs, frac)
+}
+
+pub fn duration_to_ticks(d: Duration) -> u64 {
+    let freq = hal::Machine::systick_freq();
+    let secs = d.as_secs().saturating_mul(freq);
+    let sub = (d.subsec_micros() as u64).saturating_mul(freq) / 1_000_000;
+    secs.saturating_add(sub)
 }
 
 /// cbindgen:ignore

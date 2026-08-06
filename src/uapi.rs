@@ -7,3 +7,4 @@ pub mod sched;
 pub mod spi;
 pub mod system;
 pub mod time;
+pub mod uart;
