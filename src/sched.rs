@@ -296,10 +296,15 @@ impl<const N: usize> Scheduler<N> {
         Ok(())
     }
 
-    /// `kick` lookup by raw `UId::as_usize()`. Synthetic `tid` is a placeholder.
+    /// Lookup `UId` from a raw `UId::as_usize()`. Synthetic `tid` is a
+    /// placeholder; `UId` equality is by raw uid only.
+    fn synthetic_uid(uid: usize) -> thread::UId {
+        thread::UId::new(uid, thread::Id::new(0, crate::sched::task::UId::new(0)))
+    }
+
+    /// `kick` lookup by raw `UId::as_usize()`.
     pub fn kick_by_uid(&mut self, uid: usize) -> Result<()> {
-        let lookup_uid = thread::UId::new(uid, thread::Id::new(0, crate::sched::task::UId::new(0)));
-        self.kick(lookup_uid)
+        self.kick(Self::synthetic_uid(uid))
     }
 
     pub fn current_uid(&self) -> Option<usize> {
@@ -315,6 +320,10 @@ impl<const N: usize> Scheduler<N> {
 
         if let Some(thread) = self.threads.get_mut(uid) {
             thread.resume();
+            if res.is_err() {
+                // Not sleeping yet: latch the wake for the next park.
+                thread.set_pending_wake();
+            }
         } else {
             return Err(kerr!(EINVAL)); // Thread does not exist.
         }
@@ -323,6 +332,13 @@ impl<const N: usize> Scheduler<N> {
             self.enqueue(now, uid)?;
         }
         Ok(())
+    }
+
+    /// Take-and-clear the latched wake for `uid`.
+    pub fn take_pending_wake_by_uid(&mut self, uid: usize) -> bool {
+        self.threads
+            .get_mut(Self::synthetic_uid(uid))
+            .map_or(false, |t| t.take_pending_wake())
     }
 
     /// This will make the thread not runnable, but it will not remove it from other lists.

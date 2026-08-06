@@ -11,6 +11,12 @@ pub fn sleep_for(_duration: u64) -> isize {
     hal::asm::syscall!(2, (_duration >> 32) as u32, _duration as u32)
 }
 
+/// Sleep until `timeout_ticks` elapse, unless a wake was latched for
+/// this thread meanwhile. `u64::MAX` waits forever.
+pub fn park_pending(timeout_ticks: u64) -> isize {
+    hal::asm::syscall!(7, (timeout_ticks >> 32) as u32, timeout_ticks as u32)
+}
+
 pub fn yield_thread() -> isize {
     let _until = u64::MAX;
     hal::asm::syscall!(1, (_until >> 32) as u32, _until as u32)

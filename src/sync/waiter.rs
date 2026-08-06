@@ -82,4 +82,92 @@ impl ParkedWaiter {
             crate::sched::kick_thread(uid as u32);
         }
     }
+
+    /// Userspace wait: re-`probe`s, parking via the pending-wake
+    /// syscall between tries, until `Some` or `timeout_ticks` elapse.
+    /// `u64::MAX` waits forever. Single consumer: returns `probe()`
+    /// immediately if another waiter holds the slot (`EBUSY`).
+    /// Userspace-only; kernel code uses [`park`](Self::park).
+    pub fn wait_while<T>(
+        &self,
+        uid: usize,
+        timeout_ticks: u64,
+        mut probe: impl FnMut() -> Option<T>,
+    ) -> Option<T> {
+        if let Some(v) = probe() {
+            return Some(v);
+        }
+        if self.arm(uid).is_err() {
+            return probe();
+        }
+        let forever = timeout_ticks == u64::MAX;
+        let deadline = crate::uapi::time::tick().saturating_add(timeout_ticks);
+        let result = loop {
+            if let Some(v) = probe() {
+                break Some(v);
+            }
+            let now = crate::uapi::time::tick();
+            if !forever && now >= deadline {
+                break None;
+            }
+            let remaining = if forever { u64::MAX } else { deadline - now };
+            let _ = crate::uapi::sched::park_pending(remaining);
+        };
+        self.disarm();
+        result
+    }
+}
+
+#[cfg(test)]
+impl ParkedWaiter {
+    pub(crate) fn armed_uid(&self) -> usize {
+        self.uid.load(Ordering::Acquire)
+    }
+}
+
+// Scheduler-free contract tests. The arm↔kick / park_pending
+// interleaving is verified on QEMU/HW.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arm_is_single_consumer_without_overwrite() {
+        let w = ParkedWaiter::new();
+        assert!(w.arm(1).is_ok());
+        assert!(w.arm(2).is_err());
+        assert_eq!(w.armed_uid(), 1);
+        w.disarm();
+        assert!(w.arm(2).is_ok());
+    }
+
+    #[test]
+    fn arm_rejects_idle_uid() {
+        let w = ParkedWaiter::new();
+        assert!(matches!(
+            w.arm(UNARMED).unwrap_err().kind,
+            crate::error::PosixError::EINVAL
+        ));
+    }
+
+    #[test]
+    fn wake_unarmed_is_noop() {
+        ParkedWaiter::new().wake();
+    }
+
+    #[test]
+    fn wait_while_ready_returns_without_arming() {
+        let w = ParkedWaiter::new();
+        assert_eq!(w.wait_while(5, 0, || Some(42)), Some(42));
+        assert_eq!(w.armed_uid(), UNARMED);
+    }
+
+    #[test]
+    fn wait_while_degrades_when_slot_busy() {
+        let w = ParkedWaiter::new();
+        w.arm(1).unwrap();
+        assert_eq!(w.wait_while(2, 0, || -> Option<()> { None }), None);
+        // First consumer's uid is left intact.
+        assert_eq!(w.armed_uid(), 1);
+    }
 }
