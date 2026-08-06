@@ -9,6 +9,7 @@ pub mod excep;
 pub mod gpio;
 pub mod i2c;
 pub mod panic;
+pub mod rtc;
 pub mod sched;
 pub mod spi;
 pub mod system;
@@ -42,10 +43,25 @@ fn monotonic_overflow_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize
     unsafe { bindings::tim2_hndlr() };
 }
 
+fn nmi_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    if unsafe { bindings::irq_is_css() } {
+        unsafe { bindings::css_hndlr() }
+    }
+}
+
+fn rcc_irq(_ctx: *mut u8, _vector: usize, _userdata: Option<usize>) {
+    if unsafe { bindings::irq_is_lse_css() } {
+        unsafe { bindings::css_lse_hndlr() }
+    }
+}
+
 impl hal_api::Machinelike for ArmMachine {
     fn init() {
         unsafe {
-            bindings::init_hal();
+            let ret = bindings::init_hal();
+            if ret != 0 {
+                panic!("init_hal failed: {}", ret);
+            }
             bindings::init_debug_uart();
             bindings::dwt_init();
         }
@@ -69,6 +85,16 @@ impl hal_api::Machinelike for ArmMachine {
         let vector = irqn as usize + 16;
         if let Err(e) = register(vector, monotonic_overflow_irq, None) {
             panic!("failed to register monotonic timer IRQ at vector {vector}: {e}");
+        }
+
+        let vector = 2;
+        if let Err(e) = register(vector, nmi_irq, None) {
+            panic!("failed to register CSS IRQ at vector {vector}: {e}");
+        }
+
+        let vector = unsafe { bindings::CONST_RCC_IRQn as usize } + 16;
+        if let Err(e) = register(vector, rcc_irq, None) {
+            panic!("failed to register CSS LSE IRQ at vector {vector}: {e}");
         }
     }
 
@@ -108,6 +134,30 @@ impl hal_api::Machinelike for ArmMachine {
 
     fn monotonic_freq() -> u64 {
         unsafe { bindings::monotonic_freq() }
+    }
+
+    fn init_rtc() -> Result<()> {
+        rtc::init_rtc()
+    }
+
+    fn rtc() -> Result<u64> {
+        rtc::rtc()
+    }
+
+    fn set_rtc(time: u64) -> Result<()> {
+        rtc::set_rtc(time)
+    }
+
+    fn rtc_backup_register(index: u8) -> u32 {
+        assert!(index < 32, "RTC backup register index out of bounds");
+        assert!(index != 31, "RTC uses this register for restart continuity");
+        unsafe { bindings::rtc_backup_register(index) }
+    }
+
+    fn set_rtc_backup_register(index: u8, value: u32) {
+        assert!(index < 32, "RTC backup register index out of bounds");
+        assert!(index != 31, "RTC uses this register for restart continuity");
+        unsafe { bindings::set_rtc_backup_register(index, value) }
     }
 
     fn systick_freq() -> u64 {

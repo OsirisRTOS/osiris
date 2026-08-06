@@ -47,6 +47,24 @@ impl hal_api::Machinelike for StubMachine {
         0
     }
 
+    fn init_rtc() -> Result<()> {
+        Ok(())
+    }
+
+    fn rtc() -> Result<u64> {
+        Ok(0)
+    }
+
+    fn set_rtc(time: u64) -> Result<()> {
+        Ok(())
+    }
+
+    fn rtc_backup_register(index: u8) -> u32 {
+        0
+    }
+
+    fn set_rtc_backup_register(index: u8, value: u32) {}
+
     fn systick_freq() -> u64 {
         0
     }

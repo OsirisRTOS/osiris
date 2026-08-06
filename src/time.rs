@@ -1,8 +1,44 @@
+use crate::drivers::rtc;
 use crate::hal::{self, Machinelike};
 
 use crate::{sched, sync};
 
 static TICKS: sync::atomic::AtomicU64 = sync::atomic::AtomicU64::new(0);
+
+extern "C" fn update_time(_ctx: *mut core::ffi::c_void) {
+    let interval: u64 = 100_000; // ~100 seconds in ticks
+    kprintln!(
+        "Time thread started with tick interval {} at {:?}",
+        interval,
+        rtc::walltime()
+    );
+    loop {
+        let tick = tick();
+        sched::with(|sched| {
+            let _ = sched.sleep_until(None, tick + interval, tick);
+        });
+        kprintln!("time is now {:?}", rtc::walltime());
+    }
+}
+
+pub fn init() {
+    let attrs = sched::thread::Attributes {
+        entry: update_time,
+        ctx: core::ptr::null_mut(),
+        fin: None,
+        attrs: None,
+    };
+
+    sched::with(|sched| {
+        if let Ok(uid) = sched.create_thread(Some(sched::task::KERNEL_TASK), &attrs) {
+            if sched.enqueue(tick(), uid).is_err() {
+                panic!("failed to enqueue time thread.");
+            }
+        } else {
+            panic!("failed to create time task.");
+        }
+    })
+}
 
 pub fn tick() -> u64 {
     TICKS.load(sync::atomic::Ordering::Acquire)
