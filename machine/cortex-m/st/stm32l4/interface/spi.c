@@ -317,6 +317,13 @@ static int spi_select_device(void *bus, const spi_device_cfg_t *dev_cfg)
         LL_SPI_SetClockPolarity(hspi->Instance, polarity);
         LL_SPI_SetClockPhase(hspi->Instance, phase);
         LL_SPI_SetDataWidth(hspi->Instance, datasize);
+        /* FRXTH must track the data width, or RXNE fires at the wrong FIFO
+         * level and >8-bit reads return corrupt data: half-full for >8-bit
+         * words, quarter-full otherwise. */
+        LL_SPI_SetRxFIFOThreshold(
+            hspi->Instance,
+            dev_cfg->bits_per_word > 8 ? LL_SPI_RX_FIFO_TH_HALF
+                                      : LL_SPI_RX_FIFO_TH_QUARTER);
         LL_SPI_SetTransferBitOrder(hspi->Instance, bit_order);
 
         __HAL_SPI_ENABLE(hspi);

@@ -6,6 +6,7 @@ pub mod can;
 pub mod device_tree;
 pub mod gpio;
 pub mod i2c;
+pub mod mcu_temp;
 pub mod sched;
 pub mod spi;
 pub mod system;
