@@ -55,7 +55,7 @@ fn check_cortex_m() -> bool {
 /// This function scans all environment variables and forwards any that start
 /// with "OSIRIS_" to the CMake build system. Boolean-like values are normalized:
 /// - "0", "false", "off" -> "0"
-/// - "1", "true", "on" -> "1"  
+/// - "1", "true", "on" -> "1"
 /// - Other values are passed through unchanged
 ///
 /// # Arguments
@@ -176,12 +176,52 @@ fn forward_fpu_config(config: &mut Config) -> Result<()> {
 /// - Header file cannot be found or parsed
 /// - Binding generation fails
 /// - Output file cannot be written
-fn generate_bindings(out: &Path, hal: &Path) -> Result<()> {
-    let bindgen = bindgen::Builder::default()
-        .header(hal.join("interface").join("export.h").to_str().unwrap())
+#[derive(Debug)]
+struct MacroFilter {
+    patterns: Vec<regex::Regex>,
+}
+
+impl bindgen::callbacks::ParseCallbacks for MacroFilter {
+    fn will_parse_macro(&self, name: &str) -> bindgen::callbacks::MacroParsingBehavior {
+        if self.patterns.iter().any(|r| r.is_match(name)) {
+            bindgen::callbacks::MacroParsingBehavior::Default
+        } else {
+            bindgen::callbacks::MacroParsingBehavior::Ignore
+        }
+    }
+}
+
+fn generate_bindings(out: &Path, hal: &Path, soc: &[(&str, &str)]) -> Result<()> {
+    let header = hal.join("interface").join("export.h");
+    let src = std::fs::read_to_string(&header)?;
+
+    let mut patterns = Vec::new();
+    let mut builder = bindgen::Builder::default()
+        .header(header.to_str().unwrap())
+        .clang_arg(format!("-I{}", hal.join("hal").display()))
+        .clang_arg(format!("-I{}", hal.join("device").display()))
+        .clang_arg("-Icmsis")
+        .allowlist_file(".*export\\.h")
+        .clang_macro_fallback()
         .use_core()
-        .wrap_unsafe_ops(true)
-        .generate()?;
+        .wrap_unsafe_ops(true);
+
+    for (vendor, name) in soc {
+        if *vendor == "st" {
+            builder = builder.clang_arg(format!("-D{}xx", name.to_uppercase()));
+        }
+        builder = builder.clang_arg(format!("-D{}", name.to_uppercase()));
+    }
+
+    for line in src.lines() {
+        if let Some(pat) = line.trim_start().strip_prefix("// bindgen-export:") {
+            let pat = pat.trim();
+            builder = builder.allowlist_var(pat);
+            patterns.push(regex::Regex::new(&format!("^{pat}$"))?);
+        }
+    }
+    builder = builder.parse_callbacks(Box::new(MacroFilter { patterns }));
+    let bindgen = builder.generate()?;
 
     bindgen.write_to_file(out.join("bindings.rs"))?;
 
@@ -309,7 +349,7 @@ mod vector_table {
 /// This function orchestrates the entire build process:
 ///
 /// 1. **Environment Setup**: Reads configuration from environment variables
-/// 2. **Binding Generation**: Creates Rust FFI bindings from C headers  
+/// 2. **Binding Generation**: Creates Rust FFI bindings from C headers
 /// 3. **Core Configuration**: Sets up ARM core-specific cfg flags
 /// 4. **Host Detection**: Skips hardware builds when targeting host
 /// 5. **HAL Compilation**: Builds hardware abstraction layer via CMake
@@ -351,12 +391,14 @@ fn main() {
         panic!("Failed to generate device tree scripts: {e}");
     }
 
-    for (vendor, name) in hal_builder::dt::soc(&dt) {
+    let soc = hal_builder::dt::soc(&dt);
+
+    for &(vendor, name) in &soc {
         let hal = Path::new(vendor).join(name);
 
         if hal.exists() {
             fail_on_error(generate_hal_api_header(&out));
-            fail_on_error(generate_bindings(&out, &hal));
+            fail_on_error(generate_bindings(&out, &hal, &soc));
             let vector_code = vector_table::generate();
 
             if let Err(e) = fs::write(PathBuf::from(&out).join("vector_table.rs"), vector_code) {
@@ -373,7 +415,7 @@ fn main() {
             libhal_config.define("OUT_DIR", &out);
             libhal_config.cflag(format!("-I{}", out.display()));
 
-            for (vendor, name) in hal_builder::dt::soc(&dt) {
+            for &(vendor, name) in &soc {
                 if vendor == "st" {
                     libhal_config.cflag(format!("-D{}xx", name.to_uppercase()));
                 }

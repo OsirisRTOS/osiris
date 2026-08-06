@@ -1,4 +1,5 @@
 pub mod can;
+pub mod flash;
 pub mod i2c;
 pub mod key;
 pub mod led;

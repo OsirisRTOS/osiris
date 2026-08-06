@@ -11,8 +11,8 @@
 //! [`wake`]: ParkedWaiter::wake
 
 use crate::error::Result;
-use crate::sched::thread::{self, Id};
-use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use crate::sched::thread::{self};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 // 0 is the idle thread's uid, which is never allowed to park.
 const UNARMED: usize = 0;

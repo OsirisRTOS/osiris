@@ -1,7 +1,9 @@
 #![cfg_attr(not(test), no_std)]
 
 use core::fmt::Display;
+
 pub mod error;
+pub mod flash_addr;
 pub mod mem;
 pub mod stack;
 

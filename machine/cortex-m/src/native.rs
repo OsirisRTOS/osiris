@@ -6,6 +6,7 @@ pub mod asm;
 pub mod can;
 pub mod debug;
 pub mod excep;
+pub mod flash;
 pub mod gpio;
 pub mod i2c;
 pub mod panic;

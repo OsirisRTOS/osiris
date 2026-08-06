@@ -193,6 +193,24 @@ impl From<PosixError> for Error {
     }
 }
 
+impl From<crate::hal::flash::Error> for Error {
+    fn from(e: crate::hal::flash::Error) -> Self {
+        use crate::hal::flash::Error as F;
+        let kind = match e {
+            F::NotFound => PosixError::ENOENT,
+            F::InvalidArgument | F::Misaligned | F::InvalidPage => PosixError::EINVAL,
+            F::OutOfBounds => PosixError::ERANGE,
+            F::Busy | F::Locked => PosixError::EBUSY,
+            F::DoubleUnlock => PosixError::EALREADY,
+            F::TimedOut => PosixError::ETIMEDOUT,
+            F::ReadOnly => PosixError::EROFS,
+            F::Protected => PosixError::EACCES,
+            F::NotErased | F::ProgrammingFailed | F::EccError | F::Io => PosixError::EIO,
+        };
+        Self::new(kind)
+    }
+}
+
 impl PartialEq for Error {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind

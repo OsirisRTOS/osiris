@@ -3,6 +3,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 mod can;
+mod flash;
 mod i2c;
 mod key;
 mod led;
@@ -24,6 +25,8 @@ pub fn generate_rust(dt: &DeviceTree) -> String {
         spi::emit_query_api(),
         can::emit_registry(dt),
         can::emit_query_api(),
+        flash::emit_registry(dt),
+        flash::emit_query_api(),
         led::emit_registry(dt),
         key::emit_registry(dt),
         emit_aliases_module(dt),
